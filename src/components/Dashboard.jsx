@@ -1,0 +1,373 @@
+import { useState, useEffect, useRef } from 'react'
+import { supabase } from '../supabase'
+import { useAuth } from '../context/AuthContext'
+import { fetchTransactions, addTransaction, deleteTransaction } from '../services/transactions'
+import { parseTransaction, analyseSpending } from '../services/ai'
+import './Dashboard.css'
+
+const BUDGETS = {
+  Housing: 9500, Groceries: 3000, 'Eating out': 2000, Transport: 2500,
+  Entertainment: 1500, Health: 1000, Clothing: 1000, Subscriptions: 500, Other: 1000
+}
+
+const CAT_COLORS = {
+  Housing: '#378ADD', Groceries: '#1D9E75', 'Eating out': '#D85A30',
+  Transport: '#BA7517', Entertainment: '#7F77DD', Health: '#D4537E',
+  Clothing: '#639922', Subscriptions: '#888780', Income: '#1a6b45', Other: '#888'
+}
+
+const CAT_ICONS = {
+  Housing: '🏠', Groceries: '🛒', 'Eating out': '🍽️', Transport: '🚗',
+  Entertainment: '🎉', Health: '💊', Clothing: '👕', Subscriptions: '📱', Income: '💰', Other: '📦'
+}
+
+const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
+const monthLabel = () => new Date().toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })
+
+export default function Dashboard() {
+  const { user } = useAuth()
+  const [tab, setTab] = useState('overview')
+  const [transactions, setTransactions] = useState([])
+  const [excludeSalary, setExcludeSalary] = useState(true)
+  const [aiText, setAiText] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [chatMessages, setChatMessages] = useState([
+    { id: 0, type: 'bot', text: "Hey — just type what you spent, paste transactions, or upload a statement. I'll handle the rest." }
+  ])
+  const [chatInput, setChatInput] = useState('')
+  const [chatLoading, setChatLoading] = useState(false)
+  const chatEndRef = useRef(null)
+  const textareaRef = useRef(null)
+
+  useEffect(() => {
+    loadTransactions()
+  }, [])
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chatMessages])
+
+  async function loadTransactions() {
+    try {
+      const data = await fetchTransactions(user.id)
+      setTransactions(data)
+    } catch (err) {
+      console.error('Failed to load transactions:', err)
+    }
+  }
+
+  const spendTxns = transactions.filter(t => t.category !== 'Income')
+  const income = transactions.filter(t => t.category === 'Income').reduce((s, t) => s + t.amount, 0)
+  const totalSpend = spendTxns.reduce((s, t) => s + t.amount, 0)
+  const net = income - totalSpend
+
+  const catTotals = {}
+  spendTxns.forEach(t => { catTotals[t.category] = (catTotals[t.category] || 0) + t.amount })
+  const maxCat = Math.max(...Object.values(catTotals), 1)
+
+  async function handleSendChat() {
+    const msg = chatInput.trim()
+    if (!msg || chatLoading) return
+    setChatInput('')
+    textareaRef.current.style.height = 'auto'
+
+    const userMsgId = Date.now()
+    setChatMessages(prev => [...prev, { id: userMsgId, type: 'user', text: msg }])
+    setChatLoading(true)
+
+    try {
+      const result = await parseTransaction(msg)
+      if (result.parsed) {
+        setChatMessages(prev => [...prev, {
+          id: userMsgId + 1, type: 'confirm', txn: result
+        }])
+      } else {
+        setChatMessages(prev => [...prev, {
+          id: userMsgId + 1, type: 'bot', text: result.reply
+        }])
+      }
+    } catch {
+      setChatMessages(prev => [...prev, {
+        id: userMsgId + 1, type: 'bot', text: "Couldn't parse that. Try \"Woolies R340\" or \"Uber Eats R180\"."
+      }])
+    }
+    setChatLoading(false)
+  }
+
+  async function confirmTxn(txn, msgId) {
+    try {
+      const saved = await addTransaction(user.id, {
+        name: txn.name,
+        amount: txn.amount,
+        category: txn.category
+      })
+      setTransactions(prev => [saved, ...prev])
+      setChatMessages(prev => prev.map(m =>
+        m.id === msgId
+          ? { ...m, type: 'confirmed', text: `Added — ${txn.name} ${fmt(txn.amount)} to ${txn.category}.` }
+          : m
+      ))
+    } catch {
+      setChatMessages(prev => prev.map(m =>
+        m.id === msgId ? { ...m, type: 'bot', text: 'Failed to save. Try again.' } : m
+      ))
+    }
+  }
+
+  function dismissTxn(msgId) {
+    setChatMessages(prev => prev.filter(m => m.id !== msgId))
+  }
+
+  async function handleDelete(id) {
+    try {
+      await deleteTransaction(id)
+      setTransactions(prev => prev.filter(t => t.id !== id))
+    } catch (err) {
+      console.error('Delete failed:', err)
+    }
+  }
+
+  async function runAnalysis() {
+    setAiLoading(true)
+    setAiText('')
+    try {
+      const result = await analyseSpending(transactions, [], income)
+      setAiText(result.analysis)
+    } catch {
+      setAiText('Analysis failed — check your connection and try again.')
+    }
+    setAiLoading(false)
+  }
+
+  function handleTextareaKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSendChat()
+    }
+  }
+
+  function autoResize(el) {
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px'
+  }
+
+  return (
+    <div className="app-shell">
+      {/* NAV */}
+      <nav className="nav">
+        <div className="nav-logo">bump<em>budget</em></div>
+        <div className="nav-right">
+          <span className="nav-month">{monthLabel()}</span>
+          <button className="avatar" onClick={() => supabase.auth.signOut()} title="Sign out">
+            {user.email?.[0]?.toUpperCase() || 'U'}
+          </button>
+        </div>
+      </nav>
+
+      {/* TABS */}
+      <div className="tabs">
+        {['overview', 'add spend', 'transactions'].map(t => (
+          <button
+            key={t}
+            className={`tab ${tab === t ? 'active' : ''}`}
+            onClick={() => setTab(t)}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {/* OVERVIEW */}
+      {tab === 'overview' && (
+        <div className="tab-body">
+          {/* Salary toggle */}
+          <div className="salary-row">
+            <div>
+              <div className="salary-title">Salary exclusion</div>
+              <div className="salary-sub">Strip income from spend view</div>
+            </div>
+            <div className="pill-toggle">
+              <button className={excludeSalary ? 'active' : ''} onClick={() => setExcludeSalary(true)}>On</button>
+              <button className={!excludeSalary ? 'active' : ''} onClick={() => setExcludeSalary(false)}>Off</button>
+            </div>
+          </div>
+
+          {/* Metrics */}
+          <div className="metrics">
+            <div className="metric">
+              <div className="metric-label">Total spend</div>
+              <div className="metric-val">{fmt(totalSpend)}</div>
+              <div className="metric-sub">{excludeSalary ? 'salary excluded' : 'all transactions'}</div>
+            </div>
+            <div className="metric">
+              <div className="metric-label">Income</div>
+              <div className="metric-val green">{fmt(income)}</div>
+              <div className="metric-sub">this month</div>
+            </div>
+            <div className="metric">
+              <div className="metric-label">Net position</div>
+              <div className={`metric-val ${net >= 0 ? 'green' : 'red'}`}>{fmt(net)}</div>
+              <div className="metric-sub">{net >= 0 ? 'surplus' : 'deficit'}</div>
+            </div>
+            <div className="metric">
+              <div className="metric-label">Transactions</div>
+              <div className="metric-val">{spendTxns.length}</div>
+              <div className="metric-sub">logged this month</div>
+            </div>
+          </div>
+
+          {/* Categories */}
+          {Object.keys(catTotals).length > 0 && (
+            <>
+              <div className="section-head">Spend by category</div>
+              <div className="cats">
+                {Object.entries(catTotals).sort((a, b) => b[1] - a[1]).map(([cat, amt]) => {
+                  const budget = BUDGETS[cat] || 1000
+                  const over = amt > budget
+                  const near = !over && amt > budget * 0.8
+                  return (
+                    <div className="cat-card" key={cat}>
+                      <div className="cat-top">
+                        <span className="cat-name">{cat}</span>
+                        <span className={`cat-badge ${over ? 'over' : near ? 'near' : 'ok'}`}>
+                          {over ? 'over budget' : near ? 'near limit' : 'on track'}
+                        </span>
+                      </div>
+                      <div className="cat-amts">
+                        <span>{fmt(amt)}</span>
+                        <span>budget {fmt(budget)}</span>
+                      </div>
+                      <div className="bar-bg">
+                        <div
+                          className="bar-fill"
+                          style={{
+                            width: `${Math.min(Math.round(amt / maxCat * 100), 100)}%`,
+                            background: CAT_COLORS[cat] || '#888'
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )}
+
+          {transactions.length === 0 && (
+            <div className="empty-state">
+              <p>No transactions yet.</p>
+              <p>Tap <strong>Add spend</strong> to log your first one.</p>
+            </div>
+          )}
+
+          {/* AI Analysis */}
+          <div className="ai-panel">
+            <div className="ai-head">
+              <div className="ai-dot" />
+              <span className="ai-head-label">AI analysis</span>
+            </div>
+            <div className="ai-body">
+              {aiLoading
+                ? <div className="typing"><span/><span/><span/></div>
+                : aiText
+                  ? <div dangerouslySetInnerHTML={{ __html: aiText.replace(/\n\n/g, '</p><p>').replace(/^/, '<p>').replace(/$/, '</p>') }} />
+                  : <p>Tap below to get personalised cut recommendations and overspend alerts.</p>
+              }
+            </div>
+            <div className="ai-chips">
+              <button className="chip" onClick={() => setTab('add spend')}>Add a transaction ↗</button>
+            </div>
+          </div>
+          <button className="analyse-btn" onClick={runAnalysis} disabled={aiLoading || transactions.length === 0}>
+            {aiLoading ? 'Analysing...' : aiText ? 'Re-analyse ↗' : 'Analyse my spending ↗'}
+          </button>
+        </div>
+      )}
+
+      {/* ADD SPEND */}
+      {tab === 'add spend' && (
+        <div className="chat-shell">
+          <div className="chat-body">
+            {chatMessages.map(msg => (
+              <div key={msg.id} className="fade-up">
+                {msg.type === 'user' && (
+                  <div className="chat-bubble user">{msg.text}</div>
+                )}
+                {(msg.type === 'bot' || msg.type === 'confirmed') && (
+                  <div className={`chat-bubble bot ${msg.type === 'confirmed' ? 'confirmed' : ''}`}>
+                    {msg.text}
+                  </div>
+                )}
+                {msg.type === 'confirm' && (
+                  <div className="chat-bubble bot">
+                    <span>Got it — does this look right?</span>
+                    <div className="txn-preview">
+                      <div className="txn-preview-row"><span>Merchant</span><strong>{msg.txn.name}</strong></div>
+                      <div className="txn-preview-row"><span>Amount</span><strong>{fmt(msg.txn.amount)}</strong></div>
+                      <div className="txn-preview-row"><span>Category</span><strong>{msg.txn.category}</strong></div>
+                    </div>
+                    <div className="confirm-btns">
+                      <button className="confirm-yes" onClick={() => confirmTxn(msg.txn, msg.id)}>Yes, add it</button>
+                      <button className="confirm-no" onClick={() => dismissTxn(msg.id)}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+            {chatLoading && (
+              <div className="chat-bubble bot fade-up">
+                <div className="typing"><span/><span/><span/></div>
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+          <div className="chat-hint">Try: "Woolies R340" · "Uber Eats R180 last night" · "Salary R35000"</div>
+          <div className="chat-input-bar">
+            <textarea
+              ref={textareaRef}
+              value={chatInput}
+              onChange={e => { setChatInput(e.target.value); autoResize(e.target) }}
+              onKeyDown={handleTextareaKey}
+              placeholder="What did you spend?"
+              rows={1}
+            />
+            <button className="send-btn" onClick={handleSendChat} disabled={chatLoading}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"/>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* TRANSACTIONS */}
+      {tab === 'transactions' && (
+        <div className="tab-body">
+          {transactions.length === 0 ? (
+            <div className="empty-state">
+              <p>No transactions yet.</p>
+              <p>Tap <strong>Add spend</strong> to get started.</p>
+            </div>
+          ) : (
+            transactions.map(t => (
+              <div className="txn-item fade-up" key={t.id}>
+                <div className="txn-icon" style={{ background: (CAT_COLORS[t.category] || '#888') + '22' }}>
+                  {CAT_ICONS[t.category] || '📦'}
+                </div>
+                <div className="txn-detail">
+                  <div className="txn-name">{t.name}</div>
+                  <div className="txn-meta">{t.category} · {new Date(t.date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}</div>
+                </div>
+                <div className={`txn-amt ${t.category === 'Income' ? 'inc' : ''}`}>
+                  {t.category === 'Income' ? '+' : ''}{fmt(t.amount)}
+                </div>
+                <button className="txn-del" onClick={() => handleDelete(t.id)} title="Delete">×</button>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
