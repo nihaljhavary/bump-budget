@@ -1,0 +1,326 @@
+/* ── Shell ─────────────────────────────────────────────────────────────────── */
+.book-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  max-width: 480px;
+  margin: 0 auto;
+  background: var(--bg);
+}
+
+/* ── Reuse nav styles from Dashboard (already in scope via index.css vars) ── */
+.btn-ghost-sm {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  transition: all 0.15s;
+}
+.btn-ghost-sm:hover {
+  border-color: var(--coral);
+  color: var(--coral);
+}
+
+/* ── Body ──────────────────────────────────────────────────────────────────── */
+.book-body {
+  flex: 1;
+  padding: 20px 16px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+/* ── Hero ──────────────────────────────────────────────────────────────────── */
+.book-hero { text-align: center; }
+
+.book-title {
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  margin-bottom: 6px;
+}
+
+.book-sub {
+  font-size: 0.875rem;
+  color: var(--muted);
+  line-height: 1.5;
+  max-width: 320px;
+  margin: 0 auto;
+}
+
+/* ── Tier list ─────────────────────────────────────────────────────────────── */
+.tier-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tier-card {
+  position: relative;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.tier-card:hover {
+  border-color: rgba(255, 107, 107, 0.4);
+  box-shadow: 0 2px 8px rgba(255, 107, 107, 0.08);
+}
+
+.tier-card.selected {
+  border-color: var(--coral);
+  border-left-color: var(--coral);
+  box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.12);
+}
+
+.tier-card.highlight {
+  border-color: var(--coral);
+  border-left-color: var(--coral);
+  background: #fff8f7;
+}
+
+/* ── Subscription card ────────────────────────────────────────────────────── */
+.tier-card.subscription {
+  border-color: var(--coral);
+  border-left: 3px solid var(--coral);
+  background: #fff8f7;
+}
+
+.tier-card.subscription.selected {
+  box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.18);
+}
+
+.tier-popular {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--coral);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 12px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.tier-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.tier-name {
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: 'Syne', sans-serif;
+}
+
+.tier-duration {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.tier-price {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--coral);
+  letter-spacing: -0.5px;
+  font-family: 'Syne', sans-serif;
+}
+
+.tier-price-sub {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 400;
+  font-family: 'DM Sans', sans-serif;
+  margin-top: 2px;
+}
+
+.tier-desc {
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+
+.tier-features {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.tier-features li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+.check {
+  color: var(--coral);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.tier-radio {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 500;
+  transition: color 0.15s;
+}
+
+.tier-radio.active {
+  color: var(--coral);
+  font-weight: 600;
+}
+
+/* ── Pay button ────────────────────────────────────────────────────────────── */
+.book-pay-btn {
+  width: 100%;
+  padding: 14px;
+  background: var(--coral);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 1rem;
+  font-weight: 600;
+  transition: background 0.15s;
+  margin-top: 4px;
+}
+
+.book-pay-btn:hover  { background: var(--coral-deep); }
+.book-pay-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Trust line ────────────────────────────────────────────────────────────── */
+.book-trust {
+  text-align: center;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+/* ── Error ─────────────────────────────────────────────────────────────────── */
+.book-error {
+  background: var(--red-light);
+  color: var(--red);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+}
+
+/* ── Confirmation screen ───────────────────────────────────────────────────── */
+.book-confirm-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 24px;
+  text-align: center;
+  gap: 12px;
+}
+
+.confirm-circle {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: var(--coral-light);
+  color: var(--coral);
+  font-size: 1.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.book-confirm-screen h2 {
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+}
+
+.confirm-sub {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.confirm-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 360px;
+  margin-top: 8px;
+  text-align: left;
+}
+
+.confirm-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--coral);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.step-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--coral);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.book-back-btn {
+  margin-top: 8px;
+  padding: 11px 24px;
+  background: var(--coral);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: background 0.15s;
+}
+
+.book-back-btn:hover { background: var(--coral-deep); }
+
+/* ── Subscription confirmation extras ─────────────────────────────────────── */
+.confirm-subscription-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--coral-light);
+  color: var(--coral-deep);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  border-radius: 20px;
+  padding: 4px 14px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin-top: 4px;
+}

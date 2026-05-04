@@ -17,30 +17,35 @@ const CAT_COLORS = {
 }
 
 const CAT_ICONS = {
-  Housing: '🏠', Groceries: '🛒', 'Eating out': '🍽️', Transport: '🚗',
-  Entertainment: '🎉', Health: '💊', Clothing: '👕', Subscriptions: '📱', Income: '💰', Other: '📦'
+  Housing: '\u{1F3E0}', Groceries: '\u{1F6D2}', 'Eating out': '\u{1F37D}\u{FE0F}', Transport: '\u{1F697}',
+  Entertainment: '\u{1F389}', Health: '\u{1F48A}', Clothing: '\u{1F455}', Subscriptions: '\u{1F4F1}', Income: '\u{1F4B0}', Other: '\u{1F4E6}'
 }
 
 const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
 const monthLabel = () => new Date().toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })
 
-export default function Dashboard() {
-  const { user } = useAuth()
+export default function Dashboard({ onNavigate }) {
+  const { user, profile } = useAuth()
   const [tab, setTab] = useState('overview')
   const [transactions, setTransactions] = useState([])
   const [excludeSalary, setExcludeSalary] = useState(true)
   const [aiText, setAiText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [chatMessages, setChatMessages] = useState([
-    { id: 0, type: 'bot', text: "Hey — just type what you spent, paste transactions, or upload a statement. I'll handle the rest." }
+    { id: 0, type: 'bot', text: "Hey -- just type what you spent, paste transactions, or upload a statement. I'll handle the rest." }
   ])
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
   const chatEndRef = useRef(null)
   const textareaRef = useRef(null)
 
+  // Consultation state
+  const [consultRequests, setConsultRequests] = useState([])
+  const [consultActionId, setConsultActionId] = useState(null)
+
   useEffect(() => {
     loadTransactions()
+    loadConsultRequests()
   }, [])
 
   useEffect(() => {
@@ -54,6 +59,38 @@ export default function Dashboard() {
     } catch (err) {
       console.error('Failed to load transactions:', err)
     }
+  }
+
+  async function loadConsultRequests() {
+    try {
+      const { data } = await supabase
+        .from('consultant_access')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+      setConsultRequests(data || [])
+    } catch (err) {
+      console.error('Failed to load consult requests:', err)
+    }
+  }
+
+  async function handleConsultResponse(requestId, status, podcastConsent = false) {
+    setConsultActionId(requestId)
+    try {
+      const update = { status }
+      if (status === 'approved') {
+        update.granted_at = new Date().toISOString()
+        update.podcast_consent = podcastConsent
+      }
+      await supabase
+        .from('consultant_access')
+        .update(update)
+        .eq('id', requestId)
+      await loadConsultRequests()
+    } catch (err) {
+      console.error('Consult response failed:', err)
+    }
+    setConsultActionId(null)
   }
 
   const spendTxns = transactions.filter(t => t.category !== 'Income')
@@ -78,13 +115,9 @@ export default function Dashboard() {
     try {
       const result = await parseTransaction(msg)
       if (result.parsed) {
-        setChatMessages(prev => [...prev, {
-          id: userMsgId + 1, type: 'confirm', txn: result
-        }])
+        setChatMessages(prev => [...prev, { id: userMsgId + 1, type: 'confirm', txn: result }])
       } else {
-        setChatMessages(prev => [...prev, {
-          id: userMsgId + 1, type: 'bot', text: result.reply
-        }])
+        setChatMessages(prev => [...prev, { id: userMsgId + 1, type: 'bot', text: result.reply }])
       }
     } catch {
       setChatMessages(prev => [...prev, {
@@ -97,14 +130,12 @@ export default function Dashboard() {
   async function confirmTxn(txn, msgId) {
     try {
       const saved = await addTransaction(user.id, {
-        name: txn.name,
-        amount: txn.amount,
-        category: txn.category
+        name: txn.name, amount: txn.amount, category: txn.category
       })
       setTransactions(prev => [saved, ...prev])
       setChatMessages(prev => prev.map(m =>
         m.id === msgId
-          ? { ...m, type: 'confirmed', text: `Added — ${txn.name} ${fmt(txn.amount)} to ${txn.category}.` }
+          ? { ...m, type: 'confirmed', text: `Added -- ${txn.name} ${fmt(txn.amount)} to ${txn.category}.` }
           : m
       ))
     } catch {
@@ -134,16 +165,13 @@ export default function Dashboard() {
       const result = await analyseSpending(transactions, [], income)
       setAiText(result.analysis)
     } catch {
-      setAiText('Analysis failed — check your connection and try again.')
+      setAiText('Analysis failed -- check your connection and try again.')
     }
     setAiLoading(false)
   }
 
   function handleTextareaKey(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSendChat()
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendChat() }
   }
 
   function autoResize(el) {
@@ -151,13 +179,25 @@ export default function Dashboard() {
     el.style.height = Math.min(el.scrollHeight, 120) + 'px'
   }
 
+  const pendingRequests = consultRequests.filter(r => r.status === 'pending')
+  const approvedRequest = consultRequests.find(r => r.status === 'approved')
+
   return (
     <div className="app-shell">
       {/* NAV */}
       <nav className="nav">
-        <div className="nav-logo">bump<em>budget</em></div>
+        <div className="nav-logo">bump<span className="logo-dot" aria-hidden="true" /></div>
         <div className="nav-right">
           <span className="nav-month">{monthLabel()}</span>
+          {profile?.role === 'admin' && (
+            <button
+              className="nav-admin-btn"
+              onClick={() => onNavigate('admin')}
+              title="Admin Dashboard"
+            >
+              &#9881;
+            </button>
+          )}
           <button className="avatar" onClick={() => supabase.auth.signOut()} title="Sign out">
             {user.email?.[0]?.toUpperCase() || 'U'}
           </button>
@@ -180,6 +220,30 @@ export default function Dashboard() {
       {/* OVERVIEW */}
       {tab === 'overview' && (
         <div className="tab-body">
+
+          {/* Consultant access banner */}
+          {approvedRequest && (
+            <div className="consult-banner">
+              <span className="consult-banner-dot" />
+              <span>Your consultant has view access to your budget.</span>
+            </div>
+          )}
+
+          {/* Pending consultation requests */}
+          {pendingRequests.length > 0 && (
+            <div className="consult-requests-section">
+              <div className="section-head">Consultation Requests</div>
+              {pendingRequests.map(req => (
+                <ConsultRequestCard
+                  key={req.id}
+                  request={req}
+                  loading={consultActionId === req.id}
+                  onRespond={handleConsultResponse}
+                />
+              ))}
+            </div>
+          )}
+
           {/* Salary toggle */}
           <div className="salary-row">
             <div>
@@ -275,12 +339,18 @@ export default function Dashboard() {
               }
             </div>
             <div className="ai-chips">
-              <button className="chip" onClick={() => setTab('add spend')}>Add a transaction ↗</button>
+              <button className="chip" onClick={() => setTab('add spend')}>Add a transaction</button>
             </div>
           </div>
           <button className="analyse-btn" onClick={runAnalysis} disabled={aiLoading || transactions.length === 0}>
-            {aiLoading ? 'Analysing...' : aiText ? 'Re-analyse ↗' : 'Analyse my spending ↗'}
+            {aiLoading ? 'Analysing...' : aiText ? 'Re-analyse' : 'Analyse my spending'}
           </button>
+
+          {/* Book a Consultation CTA */}
+          <button className="book-consult-btn" onClick={() => onNavigate('book-consult')}>
+            Book a financial consultation
+          </button>
+
         </div>
       )}
 
@@ -300,7 +370,7 @@ export default function Dashboard() {
                 )}
                 {msg.type === 'confirm' && (
                   <div className="chat-bubble bot">
-                    <span>Got it — does this look right?</span>
+                    <span>Got it -- does this look right?</span>
                     <div className="txn-preview">
                       <div className="txn-preview-row"><span>Merchant</span><strong>{msg.txn.name}</strong></div>
                       <div className="txn-preview-row"><span>Amount</span><strong>{fmt(msg.txn.amount)}</strong></div>
@@ -321,7 +391,7 @@ export default function Dashboard() {
             )}
             <div ref={chatEndRef} />
           </div>
-          <div className="chat-hint">Try: "Woolies R340" · "Uber Eats R180 last night" · "Salary R35000"</div>
+          <div className="chat-hint">Try: "Woolies R340" - "Uber Eats R180 last night" - "Salary R35000"</div>
           <div className="chat-input-bar">
             <textarea
               ref={textareaRef}
@@ -353,21 +423,64 @@ export default function Dashboard() {
             transactions.map(t => (
               <div className="txn-item fade-up" key={t.id}>
                 <div className="txn-icon" style={{ background: (CAT_COLORS[t.category] || '#888') + '22' }}>
-                  {CAT_ICONS[t.category] || '📦'}
+                  {CAT_ICONS[t.category] || '\u{1F4E6}'}
                 </div>
                 <div className="txn-detail">
                   <div className="txn-name">{t.name}</div>
-                  <div className="txn-meta">{t.category} · {new Date(t.date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}</div>
+                  <div className="txn-meta">{t.category} - {new Date(t.date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}</div>
                 </div>
                 <div className={`txn-amt ${t.category === 'Income' ? 'inc' : ''}`}>
                   {t.category === 'Income' ? '+' : ''}{fmt(t.amount)}
                 </div>
-                <button className="txn-del" onClick={() => handleDelete(t.id)} title="Delete">×</button>
+                <button className="txn-del" onClick={() => handleDelete(t.id)} title="Delete">x</button>
               </div>
             ))
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ConsultRequestCard sub-component
+function ConsultRequestCard({ request, loading, onRespond }) {
+  const [podcastConsent, setPodcastConsent] = useState(false)
+
+  return (
+    <div className="consult-request-card">
+      <div className="consult-request-head">
+        <span className="consult-request-icon">&#128276;</span>
+        <div>
+          <div className="consult-request-title">Your consultant is requesting budget access</div>
+          <div className="consult-request-sub">
+            This lets them view your transactions before your session.
+          </div>
+        </div>
+      </div>
+      <label className="consult-consent-row">
+        <input
+          type="checkbox"
+          checked={podcastConsent}
+          onChange={e => setPodcastConsent(e.target.checked)}
+        />
+        <span>I am happy for anonymised insights from my session to be used on a podcast.</span>
+      </label>
+      <div className="consult-request-actions">
+        <button
+          className="consult-approve-btn"
+          onClick={() => onRespond(request.id, 'approved', podcastConsent)}
+          disabled={loading}
+        >
+          {loading ? '...' : 'Approve access'}
+        </button>
+        <button
+          className="consult-deny-btn"
+          onClick={() => onRespond(request.id, 'denied')}
+          disabled={loading}
+        >
+          Deny
+        </button>
+      </div>
     </div>
   )
 }

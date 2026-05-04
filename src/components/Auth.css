@@ -9,16 +9,14 @@
 }
 
 .auth-logo {
+  font-family: 'Syne', sans-serif;
   font-size: 1.7rem;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--text);
   letter-spacing: -0.5px;
   margin-bottom: 4px;
-}
-
-.auth-logo em {
-  font-style: normal;
-  color: var(--green);
+  display: flex;
+  align-items: center;
 }
 
 .auth-tagline {
@@ -30,6 +28,7 @@
 .auth-card {
   background: var(--surface);
   border: 1px solid var(--border);
+  border-left: 3px solid var(--coral);
   border-radius: var(--radius);
   padding: 28px 24px;
   width: 100%;
@@ -39,7 +38,7 @@
 
 .auth-card h2 {
   font-size: 1.2rem;
-  font-weight: 600;
+  font-weight: 700;
   margin-bottom: 6px;
 }
 
@@ -77,7 +76,7 @@
 }
 
 .field input:focus {
-  border-color: var(--green);
+  border-color: var(--coral);
   background: #fff;
 }
 
@@ -93,16 +92,16 @@
 .btn-primary {
   width: 100%;
   padding: 11px;
-  background: var(--green);
+  background: var(--coral);
   color: #fff;
   border: none;
   border-radius: 8px;
   font-size: 0.95rem;
   font-weight: 600;
-  transition: opacity 0.15s;
+  transition: background 0.15s;
 }
 
-.btn-primary:hover { opacity: 0.88; }
+.btn-primary:hover { background: var(--coral-deep); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-ghost {
@@ -116,7 +115,7 @@
   transition: background 0.15s;
 }
 
-.btn-ghost:hover { background: var(--bg); }
+.btn-ghost:hover { background: var(--bg-alt); }
 
 .auth-divider {
   display: flex;
@@ -146,14 +145,14 @@
   justify-content: center;
   width: 46px;
   height: 46px;
-  background: var(--green-light);
+  background: var(--coral-light);
   border-radius: 50%;
   margin-bottom: 14px;
 }
 
 .magic-sent h3 {
   font-size: 1.1rem;
-  font-weight: 600;
+  font-weight: 700;
   margin-bottom: 8px;
 }
 
@@ -167,7 +166,7 @@
   background: none;
   border: none;
   padding: 0;
-  color: var(--green);
+  color: var(--coral);
   font-size: inherit;
   font-weight: 500;
   text-decoration: underline;

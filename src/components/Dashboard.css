@@ -22,14 +22,12 @@
 }
 
 .nav-logo {
+  font-family: 'Syne', sans-serif;
   font-size: 1.15rem;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: -0.4px;
-}
-
-.nav-logo em {
-  font-style: normal;
-  color: var(--green);
+  display: flex;
+  align-items: center;
 }
 
 .nav-right {
@@ -47,7 +45,7 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: var(--green);
+  background: var(--coral);
   color: #fff;
   border: none;
   font-size: 0.8rem;
@@ -55,6 +53,26 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* ── Nav admin button ── */
+.nav-admin-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.nav-admin-btn:hover {
+  border-color: var(--coral);
+  color: var(--coral);
+  background: var(--coral-light);
 }
 
 /* ── Tabs ── */
@@ -79,8 +97,8 @@
 }
 
 .tab.active {
-  color: var(--green);
-  border-bottom-color: var(--green);
+  color: var(--coral);
+  border-bottom-color: var(--coral);
 }
 
 /* ── Tab body ── */
@@ -93,6 +111,139 @@
   overflow-y: auto;
 }
 
+/* ── Consultant access banner ── */
+.consult-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--coral-light);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  color: var(--coral-deep);
+  font-weight: 500;
+}
+
+.consult-banner-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--coral);
+  flex-shrink: 0;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* ── Consultation request section ── */
+.consult-requests-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.consult-request-card {
+  background: var(--surface);
+  border: 1.5px solid #f0c057;
+  border-radius: var(--radius);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: fadeUp 0.2s ease forwards;
+}
+
+.consult-request-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.consult-request-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.consult-request-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.consult-request-sub {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+.consult-consent-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.consult-consent-row input[type="checkbox"] {
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: var(--coral);
+}
+
+.consult-request-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.consult-approve-btn {
+  flex: 1;
+  padding: 9px;
+  background: var(--coral);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: background 0.15s;
+}
+
+.consult-approve-btn:hover   { background: var(--coral-deep); }
+.consult-approve-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.consult-deny-btn {
+  padding: 9px 16px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  transition: all 0.15s;
+}
+
+.consult-deny-btn:hover { color: var(--red); border-color: var(--red); }
+
+/* ── Book consultation CTA ── */
+.book-consult-btn {
+  width: 100%;
+  padding: 13px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-align: center;
+  transition: all 0.15s;
+}
+
+.book-consult-btn:hover {
+  border-color: var(--coral);
+  color: var(--coral);
+  background: var(--coral-light);
+}
+
 /* ── Salary row ── */
 .salary-row {
   display: flex;
@@ -100,6 +251,7 @@
   justify-content: space-between;
   background: var(--surface);
   border: 1px solid var(--border);
+  border-left: 3px solid var(--coral);
   border-radius: var(--radius);
   padding: 12px 14px;
 }
@@ -133,7 +285,7 @@
 }
 
 .pill-toggle button.active {
-  background: var(--green);
+  background: var(--coral);
   color: #fff;
   border-radius: 20px;
 }
@@ -148,6 +300,7 @@
 .metric {
   background: var(--surface);
   border: 1px solid var(--border);
+  border-left: 3px solid var(--coral);
   border-radius: var(--radius);
   padding: 14px;
 }
@@ -164,9 +317,10 @@
   font-size: 1.25rem;
   font-weight: 700;
   letter-spacing: -0.5px;
+  font-family: 'Syne', sans-serif;
 }
 
-.metric-val.green { color: var(--green); }
+.metric-val.green { color: var(--success); }
 .metric-val.red { color: var(--red); }
 
 .metric-sub {
@@ -195,6 +349,7 @@
 .cat-card {
   background: var(--surface);
   border: 1px solid var(--border);
+  border-left: 3px solid var(--coral);
   border-radius: var(--radius);
   padding: 12px 14px;
 }
@@ -218,7 +373,7 @@
   border-radius: 20px;
 }
 
-.cat-badge.ok { background: var(--green-light); color: var(--green); }
+.cat-badge.ok   { background: var(--success-light); color: #16a34a; }
 .cat-badge.near { background: #fef3c7; color: var(--amber); }
 .cat-badge.over { background: var(--red-light); color: var(--red); }
 
@@ -252,6 +407,7 @@
 .ai-panel {
   background: var(--surface);
   border: 1px solid var(--border);
+  border-left: 3px solid var(--coral);
   border-radius: var(--radius);
   overflow: hidden;
   margin-top: 4px;
@@ -269,7 +425,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--green);
+  background: var(--coral);
   animation: pulse 2s ease-in-out infinite;
 }
 
@@ -315,22 +471,22 @@
   transition: background 0.15s;
 }
 
-.chip:hover { background: var(--green-light); border-color: var(--green); color: var(--green); }
+.chip:hover { background: var(--coral-light); border-color: var(--coral); color: var(--coral-deep); }
 
 .analyse-btn {
   width: 100%;
   padding: 13px;
-  background: var(--green);
+  background: var(--coral);
   color: #fff;
   border: none;
   border-radius: var(--radius);
   font-size: 0.95rem;
   font-weight: 600;
-  transition: opacity 0.15s;
+  transition: background 0.15s;
   margin-top: 4px;
 }
 
-.analyse-btn:hover { opacity: 0.88; }
+.analyse-btn:hover { background: var(--coral-deep); }
 .analyse-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* ── Empty state ── */
@@ -370,7 +526,7 @@
 
 .chat-bubble.user {
   align-self: flex-end;
-  background: var(--green);
+  background: var(--coral);
   color: #fff;
   border-bottom-right-radius: 4px;
 }
@@ -383,9 +539,9 @@
 }
 
 .chat-bubble.confirmed {
-  background: var(--green-light);
+  background: var(--coral-light);
   border-color: transparent;
-  color: var(--green);
+  color: var(--coral-deep);
   font-weight: 500;
 }
 
@@ -417,7 +573,7 @@
 .confirm-yes {
   flex: 1;
   padding: 8px;
-  background: var(--green);
+  background: var(--coral);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -469,7 +625,7 @@
 }
 
 .chat-input-bar textarea:focus {
-  border-color: var(--green);
+  border-color: var(--coral);
   background: #fff;
 }
 
@@ -477,14 +633,14 @@
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  background: var(--green);
+  background: var(--coral);
   border: none;
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: opacity 0.15s;
+  transition: background 0.15s;
 }
 
 .send-btn svg {
@@ -492,6 +648,7 @@
   height: 16px;
 }
 
+.send-btn:hover { background: var(--coral-deep); }
 .send-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* ── Transactions list ── */
@@ -541,7 +698,7 @@
   flex-shrink: 0;
 }
 
-.txn-amt.inc { color: var(--green); }
+.txn-amt.inc { color: var(--success); }
 
 .txn-del {
   background: none;

@@ -1,18 +1,31 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --green: #1a6b45;
-  --green-light: #e8f5ee;
-  --red: #c0392b;
-  --red-light: #fdecea;
-  --amber: #b45309;
-  --bg: #f5f5f3;
-  --surface: #ffffff;
-  --border: #e5e5e3;
-  --text: #1a1a18;
-  --muted: #888780;
+  /* ── bump. brand palette ── */
+  --coral:        #FF6B6B;   /* primary accent */
+  --coral-deep:   #E84A4A;   /* hover / active */
+  --coral-light:  rgba(255, 107, 107, 0.12);
+
+  --ember:        #110A08;   /* dark background */
+  --ember-surface:#2A1512;   /* dark cards */
+  --ember-mid:    #1A0C09;   /* deeper surface */
+
+  --bg:           #FFF2EE;   /* peach white */
+  --bg-alt:       #F5EDE8;   /* peach off-white */
+  --surface:      #FFFFFF;
+  --border:       #EAD8D2;
+  --text:         #1A0600;   /* dark brown */
+  --muted:        #9E8278;   /* warm muted */
+  --dusty-rose:   #C4A49A;
+
+  --success:      #4ADE80;   /* positive financial indicators */
+  --success-light:rgba(74, 222, 128, 0.14);
+  --amber:        #F59E0B;
+  --red:          #E84A4A;
+  --red-light:    #FFECEC;
+
   --radius: 12px;
-  --shadow: 0 1px 4px rgba(0,0,0,0.07);
+  --shadow: 0 1px 4px rgba(26, 6, 0, 0.07);
 }
 
 html, body, #root {
@@ -20,7 +33,7 @@ html, body, #root {
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -28,5 +41,21 @@ body {
   line-height: 1.5;
 }
 
+h1, h2, h3 {
+  font-family: 'Syne', sans-serif;
+}
+
 button { cursor: pointer; font-family: inherit; }
 input, textarea { font-family: inherit; }
+
+/* ── Logo dot — coral circle after "bump" ── */
+.logo-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  background: var(--coral);
+  border-radius: 50%;
+  margin-left: 2px;
+  vertical-align: 0.15em;
+  flex-shrink: 0;
+}
