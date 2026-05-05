@@ -3,6 +3,7 @@ import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { fetchTransactions, addTransaction, deleteTransaction } from '../services/transactions'
 import { parseTransaction, analyseSpending } from '../services/ai'
+import ImportTransactions from './ImportTransactions'
 import './Dashboard.css'
 
 const BUDGETS = {
@@ -13,12 +14,19 @@ const BUDGETS = {
 const CAT_COLORS = {
   Housing: '#378ADD', Groceries: '#1D9E75', 'Eating out': '#D85A30',
   Transport: '#BA7517', Entertainment: '#7F77DD', Health: '#D4537E',
-  Clothing: '#639922', Subscriptions: '#888780', Income: '#1a6b45', Other: '#888'
+  Clothing: '#639922', Subscriptions: '#888780', Income: '#1a6b45',
+  Education: '#0891B2', Insurance: '#7C3AED', Savings: '#059669',
+  Fuel: '#D97706', 'ATM / Cash': '#6B7280', 'Fees & Charges': '#DC2626',
+  Utilities: '#0D9488', Travel: '#2563EB', Gifts: '#EC4899', Other: '#888'
 }
 
 const CAT_ICONS = {
-  Housing: '\u{1F3E0}', Groceries: '\u{1F6D2}', 'Eating out': '\u{1F37D}\u{FE0F}', Transport: '\u{1F697}',
-  Entertainment: '\u{1F389}', Health: '\u{1F48A}', Clothing: '\u{1F455}', Subscriptions: '\u{1F4F1}', Income: '\u{1F4B0}', Other: '\u{1F4E6}'
+  Housing: '\u{1F3E0}', Groceries: '\u{1F6D2}', 'Eating out': '\u{1F37D}\u{FE0F}',
+  Transport: '\u{1F697}', Entertainment: '\u{1F389}', Health: '\u{1F48A}',
+  Clothing: '\u{1F455}', Subscriptions: '\u{1F4F1}', Income: '\u{1F4B0}',
+  Education: '\u{1F393}', Insurance: '\u{1F6E1}\u{FE0F}', Savings: '\u{1F4B9}',
+  Fuel: '\u{26FD}', 'ATM / Cash': '\u{1F4B5}', 'Fees & Charges': '\u{1F4CB}',
+  Utilities: '\u{1F4A1}', Travel: '\u{2708}\u{FE0F}', Gifts: '\u{1F381}', Other: '\u{1F4E6}'
 }
 
 const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
@@ -206,13 +214,13 @@ export default function Dashboard({ onNavigate }) {
 
       {/* TABS */}
       <div className="tabs">
-        {['overview', 'add spend', 'transactions'].map(t => (
+        {['overview', 'add spend', 'import', 'transactions'].map(t => (
           <button
             key={t}
             className={`tab ${tab === t ? 'active' : ''}`}
             onClick={() => setTab(t)}
           >
-            {t}
+            {t === 'import' ? '↑ import' : t}
           </button>
         ))}
       </div>
@@ -317,10 +325,19 @@ export default function Dashboard({ onNavigate }) {
             </>
           )}
 
+          {/* Import CTA */}
+          <button className="import-cta-btn" onClick={() => setTab('import')}>
+            <span className="import-cta-icon">↑</span>
+            <div>
+              <div className="import-cta-title">Import bank statement</div>
+              <div className="import-cta-sub">Upload CSV or Excel — Claude categorises everything</div>
+            </div>
+          </button>
+
           {transactions.length === 0 && (
             <div className="empty-state">
               <p>No transactions yet.</p>
-              <p>Tap <strong>Add spend</strong> to log your first one.</p>
+              <p>Import a statement above or tap <strong>Add spend</strong> to log manually.</p>
             </div>
           )}
 
@@ -438,6 +455,16 @@ export default function Dashboard({ onNavigate }) {
           )}
         </div>
       )}
+
+      {/* IMPORT */}
+      {tab === 'import' && (
+        <ImportTransactions
+          onImportComplete={() => {
+            loadTransactions()
+            setTab('overview')
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -482,5 +509,68 @@ function ConsultRequestCard({ request, loading, onRespond }) {
         </button>
       </div>
     </div>
+  )
+}
+PORT */}
+      {tab === 'import' && (
+        <ImportTransactions
+          onImportComplete={() => {
+            loadTransactions()
+            setTab('overview')
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ConsultRequestCard sub-component
+function ConsultRequestCard({ request, loading, onRespond }) {
+  const [podcastConsent, setPodcastConsent] = useState(false)
+
+  return (
+    <div className="consult-request-card">
+      <div className="consult-request-head">
+        <span className="consult-request-icon">&#128276;</span>
+        <div>
+          <div className="consult-request-title">Your consultant is requesting budget access</div>
+          <div className="consult-request-sub">
+            This lets them view your transactions before your session.
+          </div>
+        </div>
+      </div>
+      <label className="consult-consent-row">
+        <input
+          type="checkbox"
+          checked={podcastConsent}
+          onChange={e => setPodcastConsent(e.target.checked)}
+        />
+        <span>I am happy for anonymised insights from my session to be used on a podcast.</span>
+      </label>
+      <div className="consult-request-actions">
+        <button
+          className="consult-btn-approve"
+          disabled={loading}
+          onClick={() => onRespond(request.id, 'approved', podcastConsent)}
+        >
+          {loading ? '...' : 'Approve access'}
+        </button>
+        <button
+          className="consult-btn-deny"
+          disabled={loading}
+          onClick={() => onRespond(request.id, 'denied')}
+        >
+          Deny
+        </button>
+      </div>
+    </div>
+  )
+}
+
+        </button>
+      </div>
+    </div>
+  )
+}
   )
 }

@@ -746,3 +746,50 @@
 .fade-up {
   animation: fadeUp 0.2s ease forwards;
 }
+
+/* ── Import CTA button ── */
+.import-cta-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  background: linear-gradient(135deg, var(--coral-light), rgba(255,107,107,0.06));
+  border: 1.5px solid rgba(255,107,107,0.3);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  cursor: pointer;
+  text-align: left;
+  margin-bottom: 16px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.import-cta-btn:hover {
+  border-color: var(--coral);
+  background: var(--coral-light);
+}
+
+.import-cta-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--coral);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.import-cta-title {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.import-cta-sub {
+  font-size: 0.75rem;
+  color: var(--muted);
+}

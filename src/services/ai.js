@@ -1,4 +1,3 @@
-// Calls the Netlify serverless functions for AI features
 import { supabase } from '../supabase'
 
 async function getToken() {
