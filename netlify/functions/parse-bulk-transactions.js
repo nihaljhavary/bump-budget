@@ -55,8 +55,8 @@ export async function handler(event) {
     return { statusCode: 400, body: JSON.stringify({ error: '`transactions` must be a non-empty array' }) }
   }
 
-  if (transactions.length > 500) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'Maximum 500 transactions per import' }) }
+  if (transactions.length > 2000) {
+    return { statusCode: 400, body: JSON.stringify({ error: 'Maximum 2000 transactions per import' }) }
   }
 
   // Validate each row
