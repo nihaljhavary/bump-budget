@@ -92,15 +92,18 @@ export async function handler(event) {
   // ── 3. Rate limiting ───────────────────────────────────────────────────────
   const { data: profile } = await adminClient
     .from('profiles')
-    .select('subscription_tier')
+    .select('subscription_plan, is_admin')
     .eq('id', user.id)
     .single()
 
-  const limit = profile?.subscription_tier === 'budget_coach' ? 500 : 50
+  // Admins get unlimited; pro/growth get 500; starter/free get 50
+  const plan = profile?.subscription_plan || 'free'
+  const isAdmin = profile?.is_admin || false
+  const limit = isAdmin ? Infinity : (plan === 'pro' || plan === 'growth') ? 500 : 50
   const month = new Date().toISOString().slice(0, 7)
 
   const { data: usage } = await adminClient
-    .from('claude_usage')
+    .from('ai_usage')
     .select('call_count')
     .eq('user_id', user.id)
     .eq('month', month)
@@ -109,12 +112,12 @@ export async function handler(event) {
   const callCount = usage?.call_count ?? 0
 
   // Bulk import counts as 1 call (not one per transaction)
-  if (callCount >= limit) {
+  if (limit !== Infinity && callCount >= limit) {
     return {
       statusCode: 429,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        error: `Monthly limit of ${limit} AI calls reached.${limit < 500 ? ' Upgrade to Budget Coach for 500 calls/month.' : ''}`
+        error: `Monthly limit of ${limit} AI analyses reached. Upgrade your plan for more.`
       })
     }
   }
@@ -229,12 +232,14 @@ ${JSON.stringify(chunkItems.map(t => ({ idx: t.idx, description: t.description, 
   }))
 
   // ── 7. Increment usage (1 call per bulk import) ───────────────────────────
-  await adminClient
-    .from('claude_usage')
-    .upsert(
-      { user_id: user.id, month, call_count: callCount + 1 },
-      { onConflict: 'user_id,month' }
-    )
+  if (limit !== Infinity) {
+    await adminClient
+      .from('ai_usage')
+      .upsert(
+        { user_id: user.id, month, call_count: callCount + 1 },
+        { onConflict: 'user_id,month' }
+      )
+  }
 
   return {
     statusCode: 200,

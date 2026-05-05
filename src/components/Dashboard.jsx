@@ -343,7 +343,7 @@ export default function Dashboard({ onNavigate }) {
             <span className="import-cta-icon">↑</span>
             <div>
               <div className="import-cta-title">Import bank statement</div>
-              <div className="import-cta-sub">Upload CSV or Excel — AI categorises everything</div>
+              <div className="import-cta-sub">Upload CSV or Excel — bump. categorises everything</div>
             </div>
           </button>
 
@@ -358,14 +358,14 @@ export default function Dashboard({ onNavigate }) {
           <div className="ai-panel">
             <div className="ai-head">
               <div className="ai-dot" />
-              <span className="ai-head-label">AI analysis</span>
+              <span className="ai-head-label">bump. insights</span>
             </div>
             <div className="ai-body">
               {aiLoading
                 ? <div className="typing"><span/><span/><span/></div>
                 : aiText
                   ? <div dangerouslySetInnerHTML={{ __html: aiText.replace(/\n\n/g, '</p><p>').replace(/^/, '<p>').replace(/$/, '</p>') }} />
-                  : <p>Tap below to get personalised cut recommendations and overspend alerts.</p>
+                  : <p>Tap below and bump. will analyse your spending, flag overspends and suggest where to cut.</p>
               }
             </div>
             <div className="ai-chips">
@@ -373,7 +373,7 @@ export default function Dashboard({ onNavigate }) {
             </div>
           </div>
           <button className="analyse-btn" onClick={runAnalysis} disabled={aiLoading || transactions.length === 0}>
-            {aiLoading ? 'Analysing...' : aiText ? 'Re-analyse' : 'Analyse my spending'}
+            {aiLoading ? 'bump. is working on it...' : aiText ? 'Re-analyse' : 'Analyse my spending'}
           </button>
 
           {/* Book a Consultation CTA — Pro only */}
@@ -386,7 +386,7 @@ export default function Dashboard({ onNavigate }) {
           {/* Tier upgrade nudge for free users */}
           {!tier.isAdmin && tier.plan === 'free' && (
             <div className="tier-nudge">
-              🚀 <strong>Free plan:</strong> showing last 30 days. <a href="#upgrade" className="tier-nudge-link">Upgrade from R49/mo</a> for full history, AI insights & more.
+              🚀 <strong>Free plan:</strong> showing last 30 days. <a href="#upgrade" className="tier-nudge-link">Upgrade from R49/mo</a> for full history, bump. insights & more.
             </div>
           )}
 

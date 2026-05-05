@@ -411,7 +411,7 @@ export default function ImportTransactions({ onImportComplete }) {
             <h2>Review transactions</h2>
             <p className="preview-sub">
               {loading
-                ? 'Analysing your transactions...'
+                ? 'bump. is analysing your transactions...'
                 : `${categorised.length} transactions found — review and adjust categories`
               }
             </p>

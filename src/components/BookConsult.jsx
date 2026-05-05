@@ -11,7 +11,7 @@ const TIERS = [
     duration: 'Monthly',
     isSubscription: true,
     badge: 'Most Popular',
-    description: 'Ongoing AI-powered budget coaching with unlimited imports and analysis.',
+    description: 'Ongoing bump.-powered budget coaching with unlimited imports and analysis.',
     features: [
       '500 AI analyses/month',
       'Bulk bank statement import',
