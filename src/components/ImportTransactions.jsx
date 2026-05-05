@@ -290,7 +290,7 @@ export default function ImportTransactions({ onImportComplete }) {
   async function handleSave() {
     setSaving(true)
     setError(null)
-    const batchId = `import_${Date.now()}`
+    const batchId = crypto.randomUUID()
     const toSave = categorised
       .filter(t => t.include)
       .map(t => ({
