@@ -144,11 +144,10 @@ export async function handler(event) {
   let claudeCategorised = []
 
   if (needsClaude.length > 0) {
-    // Process in chunks of 50 to stay within Claude's context
-    const chunks = chunk(needsClaude, 50)
+    // Process in parallel chunks of 150 to stay within Claude's context
+    const chunks = chunk(needsClaude, 150)
 
-    for (const chunkItems of chunks) {
-      const prompt = `You are categorising South African bank transactions for a personal budget app.
+    const buildPrompt = (chunkItems) => `You are categorising South African bank transactions for a personal budget app.
 
 Bank: ${bank || 'Generic'}
 
@@ -179,9 +178,9 @@ Respond with ONLY a raw JSON array — no markdown, no explanation:
 [{"idx": number, "category": "CategoryName"}, ...]
 
 Transactions:
-${JSON.stringify(chunkItems.map(t => ({ idx: t.idx, description: t.description, amount: t.amount })))}
-`
+${JSON.stringify(chunkItems.map(t => ({ idx: t.idx, description: t.description, amount: t.amount })))}`
 
+    const processChunk = async (chunkItems) => {
       try {
         const res = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
@@ -192,31 +191,27 @@ ${JSON.stringify(chunkItems.map(t => ({ idx: t.idx, description: t.description, 
           },
           body: JSON.stringify({
             model: 'claude-haiku-4-5-20251001',
-            max_tokens: 2000,
+            max_tokens: 4000,
             system: SYSTEM_PROMPT,
-            messages: [{ role: 'user', content: prompt }]
+            messages: [{ role: 'user', content: buildPrompt(chunkItems) }]
           })
         })
-
         const data = await res.json()
         const text = data.content?.[0]?.text || '[]'
-
-        let parsed = []
         try {
-          // Strip any markdown fences if present
           const clean = text.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
-          parsed = JSON.parse(clean)
+          return JSON.parse(clean)
         } catch {
-          // Fallback: mark all as Other
-          parsed = chunkItems.map(t => ({ idx: t.idx, category: 'Other' }))
+          return chunkItems.map(t => ({ idx: t.idx, category: 'Other' }))
         }
-
-        claudeCategorised = [...claudeCategorised, ...parsed]
       } catch {
-        // On error, mark as Other
-        claudeCategorised = [...claudeCategorised, ...chunkItems.map(t => ({ idx: t.idx, category: 'Other' }))]
+        return chunkItems.map(t => ({ idx: t.idx, category: 'Other' }))
       }
     }
+
+    // Run all chunks in parallel
+    const results = await Promise.all(chunks.map(processChunk))
+    claudeCategorised = results.flat()
   }
 
   // ── 6. Merge results ───────────────────────────────────────────────────────
