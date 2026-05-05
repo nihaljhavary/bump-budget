@@ -31,6 +31,7 @@ function chunk(arr, n) {
 }
 
 export async function handler(event) {
+  console.log('parse-bulk-transactions called', event.httpMethod)
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' }
   }
@@ -70,8 +71,10 @@ export async function handler(event) {
 
   // ── 2. Auth ────────────────────────────────────────────────────────────────
   const authHeader = event.headers['authorization'] || event.headers['Authorization'] || ''
+  console.log('auth header present:', authHeader.startsWith('Bearer '))
   if (!authHeader.startsWith('Bearer ')) {
-    return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized' }) }
+    console.log('returning 401 - no bearer token')
+    return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized - no session token' }) }
   }
   const token = authHeader.slice(7)
 

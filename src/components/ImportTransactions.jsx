@@ -229,7 +229,10 @@ export default function ImportTransactions({ onImportComplete }) {
         const d = await res.json().catch(() => ({}))
         throw new Error(d.error || 'Monthly AI limit reached')
       }
-      if (!res.ok) throw new Error('Categorisation failed')
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d.error || `Categorisation failed (${res.status})`)
+      }
 
       const data = await res.json()
       setCategorised(data.transactions.map((t, i) => ({
