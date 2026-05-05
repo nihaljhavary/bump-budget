@@ -511,7 +511,6 @@ function ConsultRequestCard({ request, loading, onRespond }) {
     </div>
   )
 }
-PORT */}
       {tab === 'import' && (
         <ImportTransactions
           onImportComplete={() => {
