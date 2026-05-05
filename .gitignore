@@ -11,6 +11,7 @@ dist/
 
 # Vite
 .vite/
+vite.config.js.timestamp-*
 
 # Logs
 *.log
