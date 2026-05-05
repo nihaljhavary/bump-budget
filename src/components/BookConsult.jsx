@@ -13,7 +13,7 @@ const TIERS = [
     badge: 'Most Popular',
     description: 'Ongoing AI-powered budget coaching with unlimited imports and analysis.',
     features: [
-      '500 Claude AI calls/month',
+      '500 AI analyses/month',
       'Bulk bank statement import',
       'Merchant categorisation rules',
       'Monthly spending dashboard',

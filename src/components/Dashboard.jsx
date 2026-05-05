@@ -343,7 +343,7 @@ export default function Dashboard({ onNavigate }) {
             <span className="import-cta-icon">↑</span>
             <div>
               <div className="import-cta-title">Import bank statement</div>
-              <div className="import-cta-sub">Upload CSV or Excel — Claude categorises everything</div>
+              <div className="import-cta-sub">Upload CSV or Excel — AI categorises everything</div>
             </div>
           </button>
 

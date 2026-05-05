@@ -411,7 +411,7 @@ export default function ImportTransactions({ onImportComplete }) {
             <h2>Review transactions</h2>
             <p className="preview-sub">
               {loading
-                ? 'Claude is categorising your transactions...'
+                ? 'Analysing your transactions...'
                 : `${categorised.length} transactions found — review and adjust categories`
               }
             </p>
@@ -431,8 +431,8 @@ export default function ImportTransactions({ onImportComplete }) {
         </div>
 
         {loading && (
-          <div className="claude-loading">
-            <div className="claude-spinner">
+          <div className="ai-loading">
+            <div className="ai-spinner">
               <span/><span/><span/>
             </div>
             <p>Analysing {parsed.length} transactions...</p>
