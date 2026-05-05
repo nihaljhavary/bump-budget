@@ -5,6 +5,7 @@ import Dashboard from './components/Dashboard'
 import AdminDashboard from './components/AdminDashboard'
 import BookConsult from './components/BookConsult'
 import { AuthProvider } from './context/AuthContext'
+import { TierProvider } from './context/TierContext'
 
 function AppInner() {
   const { user, profile, loading } = useAuth()
@@ -23,7 +24,10 @@ function AppInner() {
 
   if (!user) return <Auth />
 
-  if (page === 'admin' && profile?.role === 'admin') {
+  // Block access until T&Cs accepted — show Auth in terms-pending mode
+  if (!profile?.terms_accepted_at) return <Auth termsOnly />
+
+  if (page === 'admin' && (profile?.role === 'admin' || profile?.is_admin)) {
     return <AdminDashboard onBack={() => setPage('dashboard')} />
   }
 
@@ -37,7 +41,9 @@ function AppInner() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppInner />
+      <TierProvider>
+        <AppInner />
+      </TierProvider>
     </AuthProvider>
   )
 }

@@ -1,0 +1,72 @@
+.locked-feature-wrap {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.locked-feature-content {
+  transition: filter 0.2s ease;
+}
+
+.locked-feature-content.blur-only,
+.locked-feature-wrap .locked-feature-content {
+  filter: blur(4px);
+  pointer-events: none;
+  user-select: none;
+}
+
+.locked-feature-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(2px);
+  border-radius: 12px;
+  z-index: 10;
+}
+
+.locked-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: #fff;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 16px 24px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+  text-align: center;
+}
+
+.locked-icon {
+  font-size: 22px;
+}
+
+.locked-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111;
+}
+
+.locked-price {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* Row-level blur — no overlay badge, just a soft mask */
+.locked-row {
+  filter: blur(3px);
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.6;
+  position: relative;
+}
+
+.locked-row::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to right, transparent 60%, rgba(255,255,255,0.8));
+}

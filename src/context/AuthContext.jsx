@@ -28,7 +28,7 @@ export function AuthProvider({ children }) {
     try {
       const { data } = await supabase
         .from('profiles')
-        .select('*')
+        .select('*, subscription_plan, subscription_status, is_admin, terms_accepted_at, free_consult_used, next_billing_date')
         .eq('id', userId)
         .single()
       setProfile(data)
@@ -39,8 +39,12 @@ export function AuthProvider({ children }) {
     }
   }
 
+  async function refreshProfile() {
+    if (user) await fetchProfile(user.id)
+  }
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading }}>
+    <AuthContext.Provider value={{ user, profile, loading, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )

@@ -1,22 +1,39 @@
+/**
+ * create-subscription.js
+ * Returns a Paystack plan code for the requested tier, creating it if needed.
+ * Also handles activating a subscription after a successful Paystack payment.
+ *
+ * POST with { plan: 'starter' | 'growth' | 'pro' }
+ *   → returns { planCode, email }
+ *
+ * POST with { plan, reference }
+ *   → verifies payment and activates subscription in Supabase
+ */
+
 import { createClient } from '@supabase/supabase-js'
 
-const PLAN_NAME   = 'Budget Coach Monthly'
-const PLAN_AMOUNT = 19900   // R199 in kobo (Paystack ZAR uses kobo = cents × 100 ... actually ZAR uses cents, R199 = 19900 cents)
-const PLAN_INTERVAL = 'monthly'
+const PLAN_DEFINITIONS = {
+  starter: { name: 'bump. Starter',  amount: 4900,  interval: 'monthly' },
+  growth:  { name: 'bump. Growth',   amount: 9900,  interval: 'monthly' },
+  pro:     { name: 'bump. Pro',      amount: 19900, interval: 'monthly' },
+}
 
-async function getOrCreatePlan() {
-  // List existing plans and find ours by name
+async function getOrCreatePlan(planKey) {
+  const planDef = PLAN_DEFINITIONS[planKey]
+  if (!planDef) throw new Error(`Unknown plan: ${planKey}`)
+
+  // Check if plan already exists on Paystack
   const listRes = await fetch('https://api.paystack.co/plan?perPage=100', {
     headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` }
   })
   const listData = await listRes.json()
 
   if (listData.status && Array.isArray(listData.data)) {
-    const existing = listData.data.find(p => p.name === PLAN_NAME)
+    const existing = listData.data.find(p => p.name === planDef.name)
     if (existing) return existing.plan_code
   }
 
-  // Create plan if not found
+  // Create plan
   const createRes = await fetch('https://api.paystack.co/plan', {
     method: 'POST',
     headers: {
@@ -24,9 +41,9 @@ async function getOrCreatePlan() {
       Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`
     },
     body: JSON.stringify({
-      name:     PLAN_NAME,
-      amount:   PLAN_AMOUNT,
-      interval: PLAN_INTERVAL,
+      name:     planDef.name,
+      amount:   planDef.amount,
+      interval: planDef.interval,
       currency: 'ZAR'
     })
   })
@@ -42,7 +59,7 @@ export async function handler(event) {
     return { statusCode: 405, body: 'Method not allowed' }
   }
 
-  // ── Auth ────────────────────────────────────────────────────────────────────
+  // ── Auth ───────────────────────────────────────────────────────────────────
   const authHeader = event.headers['authorization'] || event.headers['Authorization'] || ''
   if (!authHeader.startsWith('Bearer ')) {
     return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized' }) }
@@ -63,15 +80,20 @@ export async function handler(event) {
     return { statusCode: 401, body: JSON.stringify({ error: 'Invalid or expired session' }) }
   }
 
-  // ── Parse body ──────────────────────────────────────────────────────────────
+  // ── Parse body ─────────────────────────────────────────────────────────────
   let body = {}
-  try { body = JSON.parse(event.body || '{}') } catch { /* empty body is fine */ }
+  try { body = JSON.parse(event.body || '{}') } catch { /* ok */ }
 
-  // ── Activate: called after successful Paystack callback ────────────────────
+  const planKey = body.plan || 'pro'
+
+  if (!PLAN_DEFINITIONS[planKey]) {
+    return { statusCode: 400, body: JSON.stringify({ error: `Invalid plan: ${planKey}` }) }
+  }
+
+  // ── Activate after successful payment ──────────────────────────────────────
   if (body.reference) {
     const { reference } = body
 
-    // Verify the transaction with Paystack
     let paystackData
     try {
       const verifyRes = await fetch(
@@ -84,18 +106,23 @@ export async function handler(event) {
     }
 
     if (!paystackData.status || paystackData.data?.status !== 'success') {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'Payment verification failed' })
-      }
+      return { statusCode: 400, body: JSON.stringify({ error: 'Payment verification failed' }) }
     }
 
-    // Update profile: mark subscription active
+    const subCode  = paystackData.data?.subscription?.subscription_code || null
+    const custCode = paystackData.data?.customer?.customer_code || null
+    const nextDate = paystackData.data?.subscription?.next_payment_date
+      ? new Date(paystackData.data.subscription.next_payment_date).toISOString()
+      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+
     const { error: updateError } = await adminClient
       .from('profiles')
       .update({
+        subscription_plan:   planKey,
         subscription_status: 'active',
-        subscription_tier:   'budget_coach'
+        paystack_sub_code:   subCode,
+        paystack_cust_code:  custCode,
+        next_billing_date:   nextDate,
       })
       .eq('id', user.id)
 
@@ -103,26 +130,27 @@ export async function handler(event) {
       return { statusCode: 500, body: JSON.stringify({ error: updateError.message }) }
     }
 
-    // Record the booking
-    await adminClient.from('bookings').insert({
-      user_id:     user.id,
-      tier:        'budget-coach',
-      amount:      PLAN_AMOUNT,
-      payment_ref: reference,
-      status:      'paid'
-    }).maybeSingle()   // ignore duplicate-reference errors silently
+    // Log the event
+    await adminClient.from('subscription_events').insert({
+      user_id:      user.id,
+      event_type:   'subscribed',
+      plan:         planKey,
+      paystack_ref: reference,
+      amount:       PLAN_DEFINITIONS[planKey].amount,
+      raw_payload:  paystackData.data,
+    }).maybeSingle()
 
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ success: true })
+      body: JSON.stringify({ success: true, plan: planKey })
     }
   }
 
-  // ── Get plan code for the frontend ─────────────────────────────────────────
+  // ── Get plan code for frontend checkout ───────────────────────────────────
   let planCode
   try {
-    planCode = await getOrCreatePlan()
+    planCode = await getOrCreatePlan(planKey)
   } catch (err) {
     return { statusCode: 500, body: JSON.stringify({ error: err.message }) }
   }
@@ -130,6 +158,11 @@ export async function handler(event) {
   return {
     statusCode: 200,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ planCode, email: user.email })
+    body: JSON.stringify({
+      planCode,
+      email: user.email,
+      plan:  planKey,
+      amount: PLAN_DEFINITIONS[planKey].amount,
+    })
   }
 }

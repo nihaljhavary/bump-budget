@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
+import { useTier, isDateAllowed, PLAN_PRICES } from '../context/TierContext'
 import { fetchTransactions, addTransaction, deleteTransaction } from '../services/transactions'
 import { parseTransaction, analyseSpending } from '../services/ai'
 import ImportTransactions from './ImportTransactions'
+import LockedFeature, { LockedRow } from './LockedFeature'
 import './Dashboard.css'
 
 const BUDGETS = {
@@ -34,6 +36,7 @@ const monthLabel = () => new Date().toLocaleDateString('en-ZA', { month: 'long',
 
 export default function Dashboard({ onNavigate }) {
   const { user, profile } = useAuth()
+  const tier = useTier()
   const [tab, setTab] = useState('overview')
   const [transactions, setTransactions] = useState([])
   const [excludeSalary, setExcludeSalary] = useState(true)
@@ -101,8 +104,15 @@ export default function Dashboard({ onNavigate }) {
     setConsultActionId(null)
   }
 
-  const spendTxns = transactions.filter(t => t.category !== 'Income')
-  const income = transactions.filter(t => t.category === 'Income').reduce((s, t) => s + t.amount, 0)
+  // Only use transactions within the tier's allowed date window for metrics & AI
+  const allowedTransactions = useMemo(
+    () => transactions.filter(t => isDateAllowed(t.date, tier)),
+    [transactions, tier]
+  )
+  const hasLockedTransactions = transactions.some(t => !isDateAllowed(t.date, tier))
+
+  const spendTxns = allowedTransactions.filter(t => t.category !== 'Income')
+  const income = allowedTransactions.filter(t => t.category === 'Income').reduce((s, t) => s + t.amount, 0)
   const totalSpend = spendTxns.reduce((s, t) => s + t.amount, 0)
   const net = income - totalSpend
 
@@ -170,7 +180,7 @@ export default function Dashboard({ onNavigate }) {
     setAiLoading(true)
     setAiText('')
     try {
-      const result = await analyseSpending(transactions, [], income)
+      const result = await analyseSpending(allowedTransactions, [], income)
       setAiText(result.analysis)
     } catch {
       setAiText('Analysis failed -- check your connection and try again.')
@@ -197,7 +207,10 @@ export default function Dashboard({ onNavigate }) {
         <div className="nav-logo">bump<span className="logo-dot" aria-hidden="true" /></div>
         <div className="nav-right">
           <span className="nav-month">{monthLabel()}</span>
-          {profile?.role === 'admin' && (
+          {!tier.isAdmin && profile?.subscription_plan && profile.subscription_plan !== 'free' && (
+            <span className="nav-plan-badge">{profile.subscription_plan}</span>
+          )}
+          {(profile?.role === 'admin' || profile?.is_admin || tier.isAdmin) && (
             <button
               className="nav-admin-btn"
               onClick={() => onNavigate('admin')}
@@ -363,10 +376,19 @@ export default function Dashboard({ onNavigate }) {
             {aiLoading ? 'Analysing...' : aiText ? 'Re-analyse' : 'Analyse my spending'}
           </button>
 
-          {/* Book a Consultation CTA */}
-          <button className="book-consult-btn" onClick={() => onNavigate('book-consult')}>
-            Book a financial consultation
-          </button>
+          {/* Book a Consultation CTA — Pro only */}
+          <LockedFeature locked={!tier.canConsult} feature="consult" label="Upgrade to Pro — R199/mo">
+            <button className="book-consult-btn" onClick={() => onNavigate('book-consult')}>
+              Book a financial consultation
+            </button>
+          </LockedFeature>
+
+          {/* Tier upgrade nudge for free users */}
+          {!tier.isAdmin && tier.plan === 'free' && (
+            <div className="tier-nudge">
+              🚀 <strong>Free plan:</strong> showing last 30 days. <a href="#upgrade" className="tier-nudge-link">Upgrade from R49/mo</a> for full history, AI insights & more.
+            </div>
+          )}
 
         </div>
       )}
@@ -437,21 +459,36 @@ export default function Dashboard({ onNavigate }) {
               <p>Tap <strong>Add spend</strong> to get started.</p>
             </div>
           ) : (
-            transactions.map(t => (
-              <div className="txn-item fade-up" key={t.id}>
-                <div className="txn-icon" style={{ background: (CAT_COLORS[t.category] || '#888') + '22' }}>
-                  {CAT_ICONS[t.category] || '\u{1F4E6}'}
+            <>
+              {transactions.map(t => {
+                const locked = !isDateAllowed(t.date, tier)
+                return (
+                  <LockedRow key={t.id} locked={locked}>
+                    <div className="txn-item fade-up">
+                      <div className="txn-icon" style={{ background: (CAT_COLORS[t.category] || '#888') + '22' }}>
+                        {CAT_ICONS[t.category] || '\u{1F4E6}'}
+                      </div>
+                      <div className="txn-detail">
+                        <div className="txn-name">{t.name}</div>
+                        <div className="txn-meta">{t.category} - {new Date(t.date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}</div>
+                      </div>
+                      <div className={`txn-amt ${t.category === 'Income' ? 'inc' : ''}`}>
+                        {t.category === 'Income' ? '+' : ''}{fmt(t.amount)}
+                      </div>
+                      {!locked && (
+                        <button className="txn-del" onClick={() => handleDelete(t.id)} title="Delete">x</button>
+                      )}
+                    </div>
+                  </LockedRow>
+                )
+              })}
+              {hasLockedTransactions && (
+                <div className="txn-locked-banner">
+                  🔒 Older transactions are hidden on your current plan.{' '}
+                  <strong>Upgrade from {PLAN_PRICES['starter']}</strong> to unlock your full history.
                 </div>
-                <div className="txn-detail">
-                  <div className="txn-name">{t.name}</div>
-                  <div className="txn-meta">{t.category} - {new Date(t.date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}</div>
-                </div>
-                <div className={`txn-amt ${t.category === 'Income' ? 'inc' : ''}`}>
-                  {t.category === 'Income' ? '+' : ''}{fmt(t.amount)}
-                </div>
-                <button className="txn-del" onClick={() => handleDelete(t.id)} title="Delete">x</button>
-              </div>
-            ))
+              )}
+            </>
           )}
         </div>
       )}

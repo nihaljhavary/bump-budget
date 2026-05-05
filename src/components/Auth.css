@@ -179,3 +179,67 @@
   color: var(--muted);
   text-align: center;
 }
+
+/* T&C styles */
+.auth-card-terms {
+  max-width: 520px;
+}
+
+.terms-box {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-size: 0.75rem;
+  color: #374151;
+  line-height: 1.6;
+  max-height: 220px;
+  overflow-y: auto;
+  text-align: left;
+  white-space: pre-line;
+  margin-bottom: 14px;
+}
+
+.terms-box-small {
+  max-height: 160px;
+  margin-top: 10px;
+}
+
+.terms-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.8rem;
+  color: #374151;
+  line-height: 1.5;
+  text-align: left;
+  margin-bottom: 14px;
+  cursor: pointer;
+}
+
+.terms-check-row input[type="checkbox"] {
+  margin-top: 2px;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--coral, #e85d4a);
+}
+
+.terms-inline-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--coral, #e85d4a);
+  font-size: inherit;
+  font-weight: 500;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.auth-terms-note {
+  font-size: 0.72rem;
+  color: #9ca3af;
+  text-align: center;
+  margin-top: 10px;
+  line-height: 1.5;
+}
