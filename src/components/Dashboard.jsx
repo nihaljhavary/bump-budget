@@ -494,60 +494,6 @@ function ConsultRequestCard({ request, loading, onRespond }) {
       </label>
       <div className="consult-request-actions">
         <button
-          className="consult-approve-btn"
-          onClick={() => onRespond(request.id, 'approved', podcastConsent)}
-          disabled={loading}
-        >
-          {loading ? '...' : 'Approve access'}
-        </button>
-        <button
-          className="consult-deny-btn"
-          onClick={() => onRespond(request.id, 'denied')}
-          disabled={loading}
-        >
-          Deny
-        </button>
-      </div>
-    </div>
-  )
-}
-      {tab === 'import' && (
-        <ImportTransactions
-          onImportComplete={() => {
-            loadTransactions()
-            setTab('overview')
-          }}
-        />
-      )}
-    </div>
-  )
-}
-
-// ConsultRequestCard sub-component
-function ConsultRequestCard({ request, loading, onRespond }) {
-  const [podcastConsent, setPodcastConsent] = useState(false)
-
-  return (
-    <div className="consult-request-card">
-      <div className="consult-request-head">
-        <span className="consult-request-icon">&#128276;</span>
-        <div>
-          <div className="consult-request-title">Your consultant is requesting budget access</div>
-          <div className="consult-request-sub">
-            This lets them view your transactions before your session.
-          </div>
-        </div>
-      </div>
-      <label className="consult-consent-row">
-        <input
-          type="checkbox"
-          checked={podcastConsent}
-          onChange={e => setPodcastConsent(e.target.checked)}
-        />
-        <span>I am happy for anonymised insights from my session to be used on a podcast.</span>
-      </label>
-      <div className="consult-request-actions">
-        <button
           className="consult-btn-approve"
           disabled={loading}
           onClick={() => onRespond(request.id, 'approved', podcastConsent)}
@@ -563,13 +509,5 @@ function ConsultRequestCard({ request, loading, onRespond }) {
         </button>
       </div>
     </div>
-  )
-}
-
-        </button>
-      </div>
-    </div>
-  )
-}
   )
 }
