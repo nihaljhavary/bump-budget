@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { useTier, isDateAllowed, PLAN_PRICES } from '../context/TierContext'
-import { fetchTransactions, addTransaction, deleteTransaction } from '../services/transactions'
+import { fetchTransactions, fetchTransactionsByMonth, addTransaction, deleteTransaction } from '../services/transactions'
 import { parseTransaction, analyseSpending } from '../services/ai'
 import ImportTransactions from './ImportTransactions'
 import LockedFeature, { LockedRow } from './LockedFeature'
@@ -40,6 +40,10 @@ export default function Dashboard({ onNavigate }) {
   const [tab, setTab] = useState('overview')
   const [transactions, setTransactions] = useState([])
   const [excludeSalary, setExcludeSalary] = useState(true)
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  })
   const [aiText, setAiText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [chatMessages, setChatMessages] = useState([
@@ -57,7 +61,7 @@ export default function Dashboard({ onNavigate }) {
   useEffect(() => {
     loadTransactions()
     loadConsultRequests()
-  }, [])
+  }, [selectedMonth])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -65,11 +69,22 @@ export default function Dashboard({ onNavigate }) {
 
   async function loadTransactions() {
     try {
-      const data = await fetchTransactions(user.id)
+      const data = await fetchTransactionsByMonth(user.id, selectedMonth)
       setTransactions(data)
     } catch (err) {
       console.error('Failed to load transactions:', err)
     }
+  }
+
+  function changeMonth(delta) {
+    const [y, m] = selectedMonth.split('-').map(Number)
+    const d = new Date(y, m - 1 + delta, 1)
+    setSelectedMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+
+  const monthDisplayLabel = () => {
+    const [y, m] = selectedMonth.split('-').map(Number)
+    return new Date(y, m - 1, 1).toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })
   }
 
   async function loadConsultRequests() {
@@ -206,7 +221,11 @@ export default function Dashboard({ onNavigate }) {
       <nav className="nav">
         <div className="nav-logo">bump<span className="logo-dot" aria-hidden="true" /></div>
         <div className="nav-right">
-          <span className="nav-month">{monthLabel()}</span>
+          <div className="nav-month-picker">
+            <button className="month-arrow" onClick={() => changeMonth(-1)}>‹</button>
+            <span className="nav-month">{monthDisplayLabel()}</span>
+            <button className="month-arrow" onClick={() => changeMonth(1)}>›</button>
+          </div>
           {!tier.isAdmin && profile?.subscription_plan && profile.subscription_plan !== 'free' && (
             <span className="nav-plan-badge">{profile.subscription_plan}</span>
           )}
