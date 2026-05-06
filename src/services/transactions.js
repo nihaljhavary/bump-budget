@@ -53,6 +53,20 @@ export async function fetchRecentMonths(userId, months = 6) {
   return data
 }
 
+// Fetch transactions for an arbitrary date range
+export async function fetchTransactionsByRange(userId, fromDate, toDate) {
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('*')
+    .eq('user_id', userId)
+    .gte('date', fromDate)
+    .lte('date', toDate)
+    .order('date', { ascending: true })
+
+  if (error) throw error
+  return data
+}
+
 // Add a new transaction
 export async function addTransaction(userId, { name, amount, category, date }) {
   const { data, error } = await supabase

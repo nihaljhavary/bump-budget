@@ -5,6 +5,7 @@ import { useTier, isDateAllowed, PLAN_PRICES } from '../context/TierContext'
 import { fetchTransactions, fetchTransactionsByMonth, addTransaction, deleteTransaction } from '../services/transactions'
 import { parseTransaction, analyseSpending } from '../services/ai'
 import ImportTransactions from './ImportTransactions'
+import Analytics from './Analytics'
 import LockedFeature, { LockedRow } from './LockedFeature'
 import './Dashboard.css'
 
@@ -246,7 +247,7 @@ export default function Dashboard({ onNavigate }) {
 
       {/* TABS */}
       <div className="tabs">
-        {['overview', 'add spend', 'import', 'transactions'].map(t => (
+        {['overview', 'analytics', 'add spend', 'import', 'transactions'].map(t => (
           <button
             key={t}
             className={`tab ${tab === t ? 'active' : ''}`}
@@ -411,6 +412,9 @@ export default function Dashboard({ onNavigate }) {
 
         </div>
       )}
+
+      {/* ANALYTICS */}
+      {tab === 'analytics' && <Analytics />}
 
       {/* ADD SPEND */}
       {tab === 'add spend' && (
