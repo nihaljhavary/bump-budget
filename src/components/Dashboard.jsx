@@ -6,6 +6,7 @@ import { fetchTransactions, fetchTransactionsByMonth, addTransaction, deleteTran
 import { parseTransaction, analyseSpending } from '../services/ai'
 import ImportTransactions from './ImportTransactions'
 import Analytics from './Analytics'
+import Recommendations from './Recommendations'
 import LockedFeature, { LockedRow } from './LockedFeature'
 import './Dashboard.css'
 
@@ -247,7 +248,7 @@ export default function Dashboard({ onNavigate }) {
 
       {/* TABS */}
       <div className="tabs">
-        {['overview', 'analytics', 'add spend', 'import', 'transactions'].map(t => (
+        {['overview', 'analytics', 'budget', 'add spend', 'import', 'transactions'].map(t => (
           <button
             key={t}
             className={`tab ${tab === t ? 'active' : ''}`}
@@ -415,6 +416,9 @@ export default function Dashboard({ onNavigate }) {
 
       {/* ANALYTICS */}
       {tab === 'analytics' && <Analytics />}
+
+      {/* BUDGET RECOMMENDATIONS */}
+      {tab === 'budget' && <Recommendations />}
 
       {/* ADD SPEND */}
       {tab === 'add spend' && (

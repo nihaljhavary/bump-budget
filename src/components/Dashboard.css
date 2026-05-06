@@ -853,3 +853,109 @@
   color: #6b7280;
   text-align: center;
 }
+
+
+/* ═══════════════════════════════════════════════════════════
+   RESPONSIVE — Desktop (≥ 768px)
+   Breaks out of narrow phone-column into a proper web layout
+   ═══════════════════════════════════════════════════════════ */
+@media (min-width: 768px) {
+  .app-shell {
+    max-width: 100%;
+    flex-direction: row;
+    min-height: 100vh;
+  }
+
+  /* ── Sidebar nav ── */
+  .nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 220px;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    padding: 28px 20px;
+    border-bottom: none;
+    border-right: 1px solid var(--border);
+    gap: 0;
+    overflow-y: auto;
+  }
+
+  .nav-logo {
+    font-size: 1.35rem;
+    margin-bottom: 6px;
+  }
+
+  .nav-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 12px;
+    width: 100%;
+  }
+
+  .nav-month-picker {
+    justify-content: flex-start;
+  }
+
+  .nav-admin-btn {
+    width: 100%;
+    text-align: left;
+  }
+
+  /* ── Horizontal tabs → vertical sidebar tabs ── */
+  .tabs {
+    position: fixed;
+    top: 110px;
+    left: 0;
+    width: 220px;
+    flex-direction: column;
+    background: transparent;
+    border-bottom: none;
+    border-right: none;
+    padding: 0 12px;
+    gap: 2px;
+  }
+
+  .tab {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: none;
+    border-radius: 10px;
+    font-size: 0.88rem;
+    font-weight: 600;
+  }
+
+  .tab.active {
+    background: var(--coral-light);
+    border-bottom-color: transparent;
+  }
+
+  /* ── Main content pushed right of sidebar ── */
+  .tab-body,
+  .analytics-shell {
+    margin-left: 220px;
+    max-width: 860px;
+    padding: 28px 32px 100px;
+  }
+
+  /* ── Wider cards ── */
+  .summary-cards {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  /* ── Chat shell ── */
+  .chat-shell {
+    margin-left: 220px;
+  }
+}
+
+@media (min-width: 1100px) {
+  .tab-body,
+  .analytics-shell {
+    max-width: 1060px;
+  }
+}

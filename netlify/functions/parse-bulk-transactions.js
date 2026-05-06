@@ -11,6 +11,177 @@ const CATEGORIES = [
   'Fees & Charges', 'Utilities', 'Travel', 'Gifts', 'Other'
 ]
 
+// ── SA Merchant pre-categorisation rules ─────────────────────────────────────
+// Each rule: { patterns: [...lowercase strings], category: 'Category' }
+// Checked in ORDER — first match wins. Put more specific before general.
+const SA_RULES = [
+  // ── Income ──
+  { patterns: ['salary', 'wages', 'payroll', 'dynamic interest cashback', 'interest cashback', 'cashback reward', 'refund'], category: 'Income' },
+
+  // ── Fuel ── (before groceries/transport to catch "total" before other matches)
+  { patterns: ['engen', 'bp ', '/bp/', 'shell ', 'sasol', 'total ', 'caltex', 'astron', 'petroport', 'fuel station', 'petrol station'], category: 'Fuel' },
+
+  // ── Eating out ──
+  { patterns: [
+    'kauai', 'nandos', "nando's", 'kfc', 'mugg and bean', 'mugg & bean',
+    'vida e caffe', 'vida caffe', 'yatai', 'mozambik', 'spur ', 'ocean basket',
+    'steers', 'debonairs', 'wimpy', 'mcdonalds', "mcdonald's", 'burger king',
+    'hungry lion', 'panarottis', "roman's pizza", 'roman pizza', 'fishaways',
+    'barcelos', 'dineplan', 'uber eats', 'ubereats', 'flw*uber eats',
+    'uber *eats', 'mrd food', 'mr d food', 'delivast', 'bolt food',
+    'yoco*cafe', 'yoco*coffee', 'yoco*restaurant', 'yoco*bar', 'yoco*grill',
+    'yoco*bistro', 'yoco*eatery', 'yoco*food', 'yoco*kitchen',
+    'the creamery', 'the brasserie', 'pizzeria', 'sushi', 'tashas', "tasha's",
+    'vida ', 'paul bakery', 'bakery', 'bagel', 'deli ', 'delizioso',
+    'juicy lucy', 'chesa nyama', 'makro deli', 'roastery', 'coffee shop',
+    'signature restaurant', 'the grillhouse', 'le coin', 'chef', 'braai',
+    'wiesenhof', 'simply asia', 'thai wok', 'kung fu kitchen', 'doppio zero',
+    'paul restaurant', 'mythos', 'primi piatti', 'the palms', 'pigalle',
+    'salt restaurant', 'carne', 'cattle baron', 'hussar grill',
+    'galito\'s', 'galitos', 'chicken licken', 'uncle chicken', 'popeyes'
+  ], category: 'Eating out' },
+
+  // ── Groceries ──
+  { patterns: [
+    'woolworths food', 'ww food', 'checkers ', 'checkerssuperstore',
+    'pick n pay', 'picknpay', 'pnp ', 'spar ', 'shoprite', 'food lover',
+    'food lovers', 'freshstop', 'superspar', 'usave', 'ok foods',
+    'cambridge food', 'fruit & veg city', 'fruit and veg city',
+    'montagu', 'kwikspar', 'tops ', 'liquorland', 'discount liquors'
+  ], category: 'Groceries' },
+
+  // ── Transport ──
+  { patterns: [
+    'uber trip', 'uber - trip', 'flw*uber trip', 'bolt ride', 'indriver',
+    'taxify', 'gautrain', 'myciti', 'interpark', 'admyt', 'str parking',
+    'wilson parking', 'ace parking', 'quick park', 'disability parking',
+    'e-natis', 'aarto', 'traffic fine', 'licensing fee', 'motor vehicle reg'
+  ], category: 'Transport' },
+
+  // ── Subscriptions ──
+  { patterns: [
+    'netflix', 'spotify', 'dstv', 'showmax', 'google one', 'google play',
+    'apple one', 'apple tv+', 'disney+', 'disney plus', 'amazon prime',
+    'youtube premium', 'playstation network', 'psn*', 'microsoft 365',
+    'office 365', 'dropbox', 'wix.com', 'wix ', 'canva', 'talk360',
+    'adobe', 'openai', 'chatgpt', 'planet fitness', 'virgin active',
+    'la fitness', 'anytime fitness', 'gymnastics', 'gym ', 'fitness club',
+    'bark.com', 'bark ', 'absolute pets', 'newlands blue cross',
+    'domain', 'hosting', 'cloud storage', 'antivirus', 'nordvpn', 'expressvpn'
+  ], category: 'Subscriptions' },
+
+  // ── Insurance ──
+  { patterns: [
+    'disclife', 'discovery life', 'discovery insure', 'vitality money premium',
+    'vitality premium', 'momentum life', 'sanlam', 'old mutual insur',
+    'outsurance', 'miway', 'hollard', 'santam', 'guardrisk', 'firstrand life',
+    'liberty life', 'assupol', 'clientele', 'african life', 'king price',
+    'pps insur', 'professional provident', 'nedgroup life', 'auto general',
+    'budget insurance', 'vodacom insur', 'fnb insur'
+  ], category: 'Insurance' },
+
+  // ── Health ──
+  { patterns: [
+    'clicks', 'dis-chem', 'dischem', 'medirite', 'alpha pharm', 'pharmacy',
+    'dr ', 'medical centre', 'medical aid', 'dentist', 'dental',
+    'optometrist', 'physiotherap', 'psycholog', 'therapist', 'hospital',
+    'mediclinic', 'netcare', 'life healthcare', 'intercare', 'medicross',
+    'health4me', 'bonitas', 'fedhealth', 'momentum health', 'gems ',
+    'newlands blue cross', 'vet clinic', 'veterinar', 'animal hospital',
+    'animal welfare'
+  ], category: 'Health' },
+
+  // ── Entertainment ──
+  { patterns: [
+    'howler', 'computicket', 'ticketmaster', 'webtickets', 'nu metro',
+    'ster-kinekor', 'sterkinekor', 'cinema', 'imax', 'teatro',
+    'grand west casino', 'emperors palace', 'sunbet', 'hollywoodbets',
+    'betway', 'sportingbet', 'superbalist', 'truworthsgames'
+  ], category: 'Entertainment' },
+
+  // ── Travel ──
+  { patterns: [
+    'airbnb', 'booking.com', 'expedia', 'hotels.com', 'kulula', 'flysafair',
+    'safair', 'mango air', 'ba comair', 'british airways', 'ethiopian air',
+    'emirates', 'lufthansa', 'qatar airways', 'airlink', 'federal air',
+    'global travel', 'airport tax', 'departure tax', 'fastjet', 'rennies',
+    'flight centre', 'club travel', 'holiday', 'resort '
+  ], category: 'Travel' },
+
+  // ── Fees & Charges ──
+  { patterns: [
+    'monthly account fee', 'account fee', 'bank charge', 'interest charged',
+    'intl payment fee', 'international payment fee', 'transaction fee',
+    'administration fee', 'admin fee', 'late payment fee', 'overlimit fee',
+    'atm surcharge', 'cashsend fee', 'instant money fee', 'penalty fee',
+    'overdraft fee', 'return fee', 'service charge', 'annual fee',
+    'card fee', 'replacement card fee', 'sms notification fee'
+  ], category: 'Fees & Charges' },
+
+  // ── ATM / Cash ──
+  { patterns: ['atm withdrawal', 'cash withdrawal', 'cash deposit', 'cash advance', 'cashsend', 'instant money'] },
+
+  // ── Housing ──
+  { patterns: [
+    'rent ', 'bond repayment', 'bond payment', 'sectional title levy',
+    'body corporate', 'hoa levy', 'homeowner', 'property management',
+    're/max', 'pam golding', 'seeff', 'leapfrog'
+  ], category: 'Housing' },
+
+  // ── Utilities ──
+  { patterns: [
+    'eskom', 'city power', 'prepaid electricity', 'prepaid elec',
+    'municipal ', 'city of johannesburg', 'city of cape town', 'city of ekurhuleni',
+    'rates and taxes', 'telkom ', 'vodacom top', 'mtn ', 'cell c ',
+    'rain ', 'fibre', 'openserve', 'vumatel', 'metrofibre', 'frogfoot',
+    'linkup ', 'afrihost', 'webafrica', 'rsaweb', 'axxess', 'herotel'
+  ], category: 'Utilities' },
+
+  // ── Education ──
+  { patterns: [
+    'school fee', 'school fees', 'tuition', 'university fee', 'college fee',
+    'varsity ', 'udemy', 'coursera', 'skillshare', 'linkedin learning',
+    'van schaik', 'adams books', 'exclusive books', 'abet ', 'tvet '
+  ], category: 'Education' },
+
+  // ── Gifts ──
+  { patterns: [
+    'fresh flowers', 'paygate*fresh flowers', 'payfast*fresh flowers',
+    'islamic relief', 'paygate*islamic', 'gifts ', 'gift card',
+    'woolworths gift', 'takealot gift'
+  ], category: 'Gifts' },
+
+  // ── Clothing ──
+  { patterns: [
+    'mr price ', 'mrp ', 'h&m', 'zara ', 'cotton on', 'edgars', 'truworths',
+    'jet ', 'ackermans', 'pep ', 'sportscene', 'totalsports', 'nike store',
+    'adidas store', 'exact ', 'dunns ', 'identity ', 'queenspark', 'foschini',
+    'cape union mart', 'sportsmans warehouse', 'golfers club', 'american swiss',
+    'jackal & hide', 'fabiani', 'relay jeans'
+  ], category: 'Clothing' },
+
+  // ── Savings ──
+  { patterns: [
+    'easy equities', 'etf invest', 'tax free savings', 'tfsa', '10x ',
+    'sygnia', 'coronation', 'ninety one', 'prudential invest', 'satrix',
+    'provident fund', 'pension fund', 'retirement annuity', ' ra contribution',
+    'unit trust', 'nedgroup invest', 'old mutual invest', 'allan gray'
+  ], category: 'Savings' }
+]
+
+// Pre-categorise using SA_RULES before sending to Claude
+function saPreCategory(description) {
+  const lower = description.toLowerCase()
+  for (const rule of SA_RULES) {
+    for (const pattern of rule.patterns) {
+      if (lower.includes(pattern)) return rule.category
+    }
+  }
+  // Yoco wildcard — anything remaining from Yoco is likely a small business / Other
+  if (lower.startsWith('yoco*')) return 'Other'
+  return null
+}
+
 // Apply user-defined categorisation rules to a transaction
 function applyRules(rules, description) {
   if (!rules || rules.length === 0) return null
@@ -99,7 +270,6 @@ export async function handler(event) {
     .eq('id', user.id)
     .single()
 
-  // Admins get unlimited; pro/growth get 500; starter/free get 50
   const plan = profile?.subscription_plan || 'free'
   const isAdmin = profile?.is_admin || false
   const limit = isAdmin ? Infinity : (plan === 'pro' || plan === 'growth') ? 500 : 50
@@ -114,7 +284,6 @@ export async function handler(event) {
 
   const callCount = usage?.call_count ?? 0
 
-  // Bulk import counts as 1 call (not one per transaction)
   if (limit !== Infinity && callCount >= limit) {
     return {
       statusCode: 429,
@@ -131,20 +300,27 @@ export async function handler(event) {
     .select('merchant_pattern, category')
     .eq('user_id', user.id)
 
-  // ── 5. Apply rules first, then Claude for the rest ────────────────────────
-  const withRules = transactions.map((t, idx) => ({
-    idx,
-    ...t,
-    category: applyRules(rules, t.description) || null
-  }))
+  // ── 5. Apply rules: user rules first, then SA pre-rules, then Claude ──────
+  const withRules = transactions.map((t, idx) => {
+    // User-defined rules take highest priority
+    const userCat = applyRules(rules, t.description)
+    // SA merchant pre-categorisation second
+    const saCat = userCat ? null : saPreCategory(t.description)
+    return {
+      idx,
+      ...t,
+      category: userCat || saCat || null
+    }
+  })
 
   const needsClaude = withRules.filter(t => !t.category)
   const hasCategory = withRules.filter(t => t.category)
 
+  console.log(`Pre-categorised: ${hasCategory.length}, needs Claude: ${needsClaude.length}`)
+
   let claudeCategorised = []
 
   if (needsClaude.length > 0) {
-    // Process in parallel chunks of 150 to stay within Claude's context
     const chunks = chunk(needsClaude, 150)
 
     const buildPrompt = (chunkItems) => `You are categorising South African bank transactions for a personal budget app.
@@ -155,24 +331,25 @@ Available categories (use EXACTLY one of these):
 ${CATEGORIES.join(', ')}
 
 Rules:
-- Income/salary/wages → "Income"
-- Checkers/Woolworths/Pick n Pay/Spar/Shoprite → "Groceries"
-- Uber Eats/Mr Delivery/KFC/McDonald's/Debonairs/restaurants → "Eating out"
-- Engen/BP/Shell/Sasol (fuel purchase) → "Fuel"
-- Uber/inDriver/Bolt ride/taxi → "Transport"
-- Netflix/Spotify/DSTV/streaming → "Subscriptions"
-- Discovery/Momentum/Sanlam/life insurance → "Insurance"
-- Rent/bond/sectional title → "Housing"
+- Salary/wages/payroll/credits from employer → "Income"
+- Checkers/Woolworths Food/Pick n Pay/Spar/Shoprite → "Groceries"
+- Uber Eats/Mr D/Dineplan/KFC/McDonald's/restaurants/cafés → "Eating out"
+- Engen/BP/Shell/Sasol/Total fuel → "Fuel"
+- Uber trips/Bolt ride/Gautrain/parking → "Transport"
+- Netflix/Spotify/DSTV/Showmax/PlayStation/streaming/gym → "Subscriptions"
+- Discovery Life/Vitality/Sanlam/Outsurance/insurance premiums → "Insurance"
+- Rent/bond/body corporate levy → "Housing"
 - ATM/cash withdrawal → "ATM / Cash"
-- Bank fees/service charges/monthly fees → "Fees & Charges"
-- Electricity/water/municipal → "Utilities"
-- Clicks/Dis-Chem/pharmacy/doctor → "Health"
-- Mr Price/Woolworths fashion/H&M/Zara → "Clothing"
-- Takealot/Amazon → "Other" (unless clearly something else)
-- School fees/university → "Education"
-- FNB/Nedbank/ABSA/Standard Bank savings/investment → "Savings"
-- Flights/Airbnb/hotel → "Travel"
-- Debit amounts are expenses, credit amounts are income
+- Monthly account fee/interest charged/bank charges → "Fees & Charges"
+- Eskom/prepaid electricity/municipal/fibre/Telkom/MTN airtime → "Utilities"
+- Clicks/Dis-Chem/pharmacy/doctor/medical/hospital → "Health"
+- Mr Price/H&M/Zara/Woolworths fashion/Edgars/clothing stores → "Clothing"
+- Udemy/school fees/university/tuition → "Education"
+- Easy Equities/unit trust/retirement annuity → "Savings"
+- Airbnb/hotel/flights/Kulula/FlySafair → "Travel"
+- Gift cards/flowers/charity donations → "Gifts"
+- Howler/Computicket/cinema/casino → "Entertainment"
+- Yoco* payments are small businesses — infer from context if possible, else "Other"
 
 Respond with ONLY a raw JSON array — no markdown, no explanation:
 [{"idx": number, "category": "CategoryName"}, ...]
@@ -209,7 +386,6 @@ ${JSON.stringify(chunkItems.map(t => ({ idx: t.idx, description: t.description, 
       }
     }
 
-    // Run all chunks in parallel
     const results = await Promise.all(chunks.map(processChunk))
     claudeCategorised = results.flat()
   }
@@ -242,6 +418,6 @@ ${JSON.stringify(chunkItems.map(t => ({ idx: t.idx, description: t.description, 
   return {
     statusCode: 200,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ transactions: result, rules_applied: hasCategory.length })
+    body: JSON.stringify({ results: result })
   }
 }

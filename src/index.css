@@ -59,7 +59,18 @@ input, textarea { font-family: inherit; }
   vertical-align: 0.15em;
   flex-shrink: 0;
 }
-left: 2px;
-  vertical-align: 0.15em;
-  flex-shrink: 0;
+
+/* ── fix stray duplicate ── */
+
+/* ── Responsive base ── */
+@media (min-width: 768px) {
+  body {
+    font-size: 15.5px;
+  }
+
+  /* Scrollbar styling on desktop */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--dusty-rose); }
 }

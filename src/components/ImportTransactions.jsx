@@ -112,6 +112,21 @@ function parseRows(rows, bankId) {
       creditCol= findCol(headers, 'credit')
       amtCol   = findCol(headers, 'amount')
       break
+    case 'discovery':
+      // Discovery Bank exports: Value Date, Value Time, Type, Description, Beneficiary or Cardholder, Amount
+      dateCol  = findCol(headers, 'value date', 'date')
+      descCol  = findCol(headers, 'description', 'beneficiary or cardholder', 'beneficiary')
+      amtCol   = findCol(headers, 'amount')
+      debitCol = findCol(headers, 'debit')
+      creditCol= findCol(headers, 'credit')
+      break
+    case 'tyme':
+      dateCol  = findCol(headers, 'date', 'transaction date')
+      descCol  = findCol(headers, 'description', 'transaction description', 'reference')
+      amtCol   = findCol(headers, 'amount')
+      debitCol = findCol(headers, 'debit')
+      creditCol= findCol(headers, 'credit')
+      break
     default:
       // Auto-detect
       dateCol  = findCol(headers, 'date', 'transaction date', 'txn date')

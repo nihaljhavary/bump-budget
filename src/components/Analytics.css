@@ -385,3 +385,23 @@
   margin-top: 3px;
   font-weight: 600;
 }
+
+/* ── Desktop responsive ── */
+@media (min-width: 768px) {
+  .analytics-shell {
+    max-width: 100%;
+    padding: 28px 32px 100px;
+  }
+
+  .donut-container {
+    gap: 28px;
+  }
+
+  .donut-svg {
+    width: 180px;
+  }
+
+  .summary-strip {
+    max-width: 600px;
+  }
+}
