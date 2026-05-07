@@ -7,9 +7,6 @@ import AdminDashboard from './components/AdminDashboard'
 import BookConsult from './components/BookConsult'
 import LandingPage from './components/LandingPage'
 import Onboarding from './components/Onboarding'
-import FAQ from './components/FAQ'
-import ErrorBoundary from './components/ErrorBoundary'
-import SupportChat from './components/SupportChat'
 import { AuthProvider } from './context/AuthContext'
 import { TierProvider } from './context/TierContext'
 
@@ -53,21 +50,17 @@ function AuthRoute() {
 
 export default function App() {
   return (
-    <ErrorBoundary>
-      <AuthProvider>
-        <TierProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route path="/"     element={<LandingPage />} />
-              <Route path="/auth" element={<AuthRoute />} />
-              <Route path="/app"  element={<ProtectedApp />} />
-              <Route path="/faq"  element={<FAQ />} />
-              <Route path="*"     element={<Navigate to="/" replace />} />
-            </Routes>
-            <SupportChat />
-          </BrowserRouter>
-        </TierProvider>
-      </AuthProvider>
-    </ErrorBoundary>
+    <AuthProvider>
+      <TierProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/"    element={<LandingPage />} />
+            <Route path="/auth" element={<AuthRoute />} />
+            <Route path="/app"  element={<ProtectedApp />} />
+            <Route path="*"     element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </TierProvider>
+    </AuthProvider>
   )
 }

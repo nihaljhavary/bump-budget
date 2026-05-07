@@ -5,19 +5,19 @@ import './Auth.css'
 
 const TERMS_VERSION = '1.0'
 
-const TERMS_TEXT = `By creating an account or signing in to bump. ("the App"), you agree to the following:
+const TERMS_TEXT = `By creating an account or signing in to bump. you agree to the following:
 
-1. POPIA COMPLIANCE — bump. processes your personal and financial data in accordance with the Protection of Personal Information Act 4 of 2013 (POPIA). Your data is used solely to provide budgeting insights and is never sold to third parties.
+1. POPIA COMPLIANCE - bump. processes your personal and financial data in accordance with POPIA. Your data is used solely to provide budgeting insights and is never sold to third parties.
 
-2. DATA SECURITY — While bump. implements reasonable security measures, no system is 100% secure. You accept that any transmission of data is at your own risk. bump. (Pty) Ltd shall not be held liable for any unauthorised access resulting from circumstances beyond our reasonable control.
+2. DATA SECURITY - While bump. implements reasonable security measures, no system is 100% secure. You accept that any transmission of data is at your own risk.
 
-3. FINANCIAL INFORMATION DISCLAIMER — The AI-generated insights and analysis provided by bump. are for informational and educational purposes only. They do not constitute financial advice. bump. is not a registered financial services provider (FSP) in terms of the Financial Advisory and Intermediary Services Act (FAIS). Always consult a qualified financial adviser before making financial decisions.
+3. FINANCIAL INFORMATION DISCLAIMER - The AI-generated insights provided by bump. are for informational purposes only. They do not constitute financial advice. bump. is not a registered FSP. Always consult a qualified financial adviser before making financial decisions.
 
-4. CONSULTANT SESSIONS — The financial consultation service connects you with an independent consultant. bump. facilitates the booking only and is not responsible for the advice given during sessions. The consultant and client relationship is independent of bump.
+4. CONSULTANT SESSIONS - The consultation service connects you with an independent consultant. bump. facilitates the booking only and is not responsible for advice given.
 
-5. NO LIABILITY — To the fullest extent permitted by applicable South African law, bump. shall not be liable for any direct, indirect, incidental, or consequential damages arising from your use of the App or reliance on any information provided.
+5. NO LIABILITY - To the fullest extent permitted by South African law, bump. shall not be liable for any direct, indirect, or consequential damages.
 
-6. ACCEPTANCE — By ticking the checkbox and proceeding, you confirm that you have read, understood, and agree to these terms. This acceptance is recorded with a timestamp and your account details for compliance purposes.`
+6. ACCEPTANCE - By ticking the checkbox and proceeding, you confirm you have read and agree to these terms.`
 
 export default function Auth({ termsOnly = false }) {
   const { user, refreshProfile } = useAuth()
@@ -61,10 +61,7 @@ export default function Auth({ termsOnly = false }) {
           {error && <div className="auth-error">{error}</div>}
           <label className="terms-check-row">
             <input type="checkbox" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)} />
-            <span>I have read and accept the{' '}
-              <button className="terms-inline-link" onClick={() => setShowTerms(s => !s)}>Terms &amp; Conditions</button>
-              , including the POPIA data processing notice and the financial disclaimer.
-            </span>
+            <span>I have read and accept the Terms &amp; Conditions, including the POPIA data processing notice and the financial disclaimer.</span>
           </label>
           <button className="btn-primary" onClick={acceptTerms} disabled={savingTerms || !termsAccepted}>
             {savingTerms ? 'Saving...' : 'Accept & Continue'}
@@ -82,7 +79,7 @@ export default function Auth({ termsOnly = false }) {
           <div className="auth-sent">
             <div className="auth-sent-icon">✉️</div>
             <h2>Check your inbox</h2>
-            <p>We sent a magic link to <strong>{email}</strong>.<br />Click it to sign in — no password needed.</p>
+            <p>We sent a magic link to <strong>{email}</strong>. Click it to sign in.</p>
             <button className="btn-ghost" onClick={() => setSent(false)}>Use a different email</button>
           </div>
         </div>
@@ -90,7 +87,6 @@ export default function Auth({ termsOnly = false }) {
     )
   }
 
-  // Bug 1 fix: use window.location.origin so magic links redirect to correct URL (dev or prod)
   async function sendMagicLink() {
     if (!email) { setError('Enter your email first'); return }
     setLoading(true); setError('')
@@ -122,7 +118,7 @@ export default function Auth({ termsOnly = false }) {
   }
 
   function switchMode(m) { setMode(m); setError('') }
-  function switchTab(t)  { setAuthTab(t); setError('') }
+  function switchTab(t) { setAuthTab(t); setError('') }
 
   return (
     <div className="auth-shell">
@@ -147,7 +143,7 @@ export default function Auth({ termsOnly = false }) {
                 onKeyDown={e => e.key === 'Enter' && sendMagicLink()} autoComplete="email" />
             </div>
             <button className="btn-primary" onClick={sendMagicLink} disabled={loading}>
-              {loading ? 'Sending...' : 'Send magic link'}
+              {loading ? 'Sending...' : '✨ Send magic link'}
             </button>
             <div className="auth-divider">or</div>
             <button className="btn-ghost" onClick={() => switchMode('password')}>Use password instead</button>
@@ -183,7 +179,6 @@ export default function Auth({ termsOnly = false }) {
           <button className="terms-inline-link" onClick={() => setShowTerms(s => !s)}>Terms &amp; Conditions</button>{' '}
           and POPIA data processing notice.
         </p>
-
         {showTerms && <div className="terms-box terms-box-small">{TERMS_TEXT}</div>}
       </div>
     </div>

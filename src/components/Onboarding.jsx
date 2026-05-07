@@ -5,14 +5,7 @@ import './Onboarding.css'
 
 const BANKS = ['FNB', 'Nedbank', 'ABSA', 'Capitec', 'Standard Bank', 'Discovery Bank', 'TymeBank']
 const VITALITY_OPTIONS = [0, 10, 20, 25, 35, 48, 75]
-const STEPS = ['declaration', 'welcome', 'income', 'bank', 'done']
-
-const USAGE_OPTIONS = [
-  { value: 'personal',    label: 'Just me (personal finances)',         icon: '\u{1F64B}' },
-  { value: 'household',   label: 'Me + my household',                   icon: '\u{1F3E1}' },
-  { value: 'side_hustle', label: 'My side hustle / freelance work',     icon: '\u{1F4BC}' },
-  { value: 'sole_prop',   label: 'My small business (sole proprietor)', icon: '\u{1F3EA}' },
-]
+const STEPS = ['welcome', 'declaration', 'income', 'bank', 'done']
 
 export default function Onboarding({ onComplete }) {
   const { user, refreshProfile } = useAuth()
@@ -20,8 +13,8 @@ export default function Onboarding({ onComplete }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState({
-    usage_type: '',
     full_name: '',
+    usage_type: 'personal',
     gross_income: '',
     net_income: '',
     monthly_debit_orders: '',
@@ -35,13 +28,13 @@ export default function Onboarding({ onComplete }) {
 
   function nextStep() {
     setError('')
-    if (step === 0 && !form.usage_type) {
-      setError('Please select how you plan to use bump.'); return
+    if (step === 1 && !form.usage_type) {
+      setError('Please select how you will use bump.'); return
     }
     if (step === 2 && (!form.gross_income || !form.net_income)) {
       setError('Please fill in your income details.'); return
     }
-    if (step === 3 && !form.bank) {
+    if (step === 2 && !form.bank) {
       setError('Please select your bank.'); return
     }
     setStep(s => s + 1)
@@ -51,8 +44,8 @@ export default function Onboarding({ onComplete }) {
     setSaving(true); setError('')
     try {
       const toC = v => v ? Math.round(parseFloat(v) * 100) : null
-      const { error: err } = await supabase.from('profiles').update({
-        usage_type: form.usage_type || null,
+      const { error: err } = await supabase.from('profiles').upsert({
+        usage_type: form.usage_type || 'personal',
         full_name: form.full_name || null,
         gross_income: toC(form.gross_income),
         net_income: toC(form.net_income),
@@ -62,7 +55,7 @@ export default function Onboarding({ onComplete }) {
         has_discovery_vitality: form.has_discovery_vitality,
         vitality_cashback_pct: form.has_discovery_vitality ? form.vitality_cashback_pct : 0,
         onboarding_complete: true,
-      }).eq('id', user.id)
+      }, { onConflict: 'id' })
       if (err) throw err
       await refreshProfile()
       onComplete()
@@ -84,36 +77,6 @@ export default function Onboarding({ onComplete }) {
           ))}
         </div>
 
-        {stepName === 'declaration' && (
-          <div className="onboarding-step">
-            <div className="ob-logo">bump.</div>
-            <h1 className="ob-title">Who is bump. for?</h1>
-            <p className="ob-sub">bump. is built for personal and household finances. Select what fits you best.</p>
-            <div className="ob-usage-grid">
-              {USAGE_OPTIONS.map(opt => (
-                <button
-                  key={opt.value}
-                  className={`ob-usage-card ${form.usage_type === opt.value ? 'selected' : ''}`}
-                  onClick={() => update('usage_type', opt.value)}
-                >
-                  <span className="ob-usage-icon">{opt.icon}</span>
-                  <span className="ob-usage-label">{opt.label}</span>
-                </button>
-              ))}
-            </div>
-            {form.usage_type === 'sole_prop' && (
-              <div className="ob-usage-warning">
-                bump. is designed for personal and sole proprietor finances. For full company accounting, consider tools like Xero or QuickBooks — but you are welcome to continue for personal tracking.
-              </div>
-            )}
-            {error && <div className="ob-error">{error}</div>}
-            <div className="ob-not-for">
-              <strong>bump. is not designed for:</strong> medium or large businesses, payroll management, or company accounting.
-            </div>
-            <button className="ob-btn-primary" onClick={nextStep}>Continue &rarr;</button>
-          </div>
-        )}
-
         {stepName === 'welcome' && (
           <div className="onboarding-step">
             <div className="ob-logo">bump.</div>
@@ -125,6 +88,34 @@ export default function Onboarding({ onComplete }) {
                 onChange={e => update('full_name', e.target.value)} autoFocus />
             </div>
             <button className="ob-btn-primary" onClick={nextStep}>{"Let's go →"}</button>
+          </div>
+        )}
+
+        {stepName === 'declaration' && (
+          <div className="onboarding-step">
+            <div className="ob-step-lbl">Usage type</div>
+            <h2 className="ob-title">How will you<br />use bump.?</h2>
+            <p className="ob-sub">bump. is built for personal finances. This helps us tailor your experience.</p>
+            <div className="ob-fields">
+              {[
+                { value: 'personal', label: 'Personal', desc: 'Tracking my own income and spending' },
+                { value: 'household', label: 'Household', desc: 'Managing a shared household budget' },
+                { value: 'side_hustle', label: 'Side hustle', desc: 'A small side project alongside my main income' },
+                { value: 'sole_prop', label: 'Sole proprietor', desc: 'Self-employed with personal and business mixed' },
+              ].map(opt => (
+                <div
+                  key={opt.value}
+                  className={`ob-usage-option ${form.usage_type === opt.value ? 'selected' : ''}`}
+                  onClick={() => update('usage_type', opt.value)}
+                >
+                  <div className="ob-usage-label">{opt.label}</div>
+                  <div className="ob-usage-desc">{opt.desc}</div>
+                </div>
+              ))}
+            </div>
+            <p className="ob-hint">bump. is for personal finance only. For full business accounting, tools like Xero or QuickBooks are a better fit.</p>
+            {error && <div className="ob-error">{error}</div>}
+            <button className="ob-btn-primary" onClick={nextStep}>Continue</button>
           </div>
         )}
 
@@ -153,8 +144,8 @@ export default function Onboarding({ onComplete }) {
             </div>
             {error && <div className="ob-error">{error}</div>}
             <div className="ob-btn-row">
-              <button className="ob-btn-ghost" onClick={() => setStep(s => s - 1)}>&larr; Back</button>
-              <button className="ob-btn-primary" onClick={nextStep}>Continue &rarr;</button>
+              <button className="ob-btn-ghost" onClick={() => setStep(s => s - 1)}>← Back</button>
+              <button className="ob-btn-primary" onClick={nextStep}>Continue →</button>
             </div>
           </div>
         )}
@@ -190,8 +181,7 @@ export default function Onboarding({ onComplete }) {
                   <div className="ob-hint">Check your Vitality status in the Discovery app</div>
                   <div className="ob-cashback-grid">
                     {VITALITY_OPTIONS.map(pct => (
-                      <button key={pct}
-                        className={`ob-cashback-pill ${form.vitality_cashback_pct === pct ? 'selected' : ''}`}
+                      <button key={pct} className={`ob-cashback-pill ${form.vitality_cashback_pct === pct ? 'selected' : ''}`}
                         onClick={() => update('vitality_cashback_pct', pct)}>{pct}%</button>
                     ))}
                   </div>
@@ -200,15 +190,15 @@ export default function Onboarding({ onComplete }) {
             </div>
             {error && <div className="ob-error">{error}</div>}
             <div className="ob-btn-row">
-              <button className="ob-btn-ghost" onClick={() => setStep(s => s - 1)}>&larr; Back</button>
-              <button className="ob-btn-primary" onClick={nextStep}>Continue &rarr;</button>
+              <button className="ob-btn-ghost" onClick={() => setStep(s => s - 1)}>← Back</button>
+              <button className="ob-btn-primary" onClick={nextStep}>Continue →</button>
             </div>
           </div>
         )}
 
         {stepName === 'done' && (
           <div className="onboarding-step ob-done">
-            <div className="ob-done-icon">&#x2736;</div>
+            <div className="ob-done-icon">✦</div>
             <h2 className="ob-title">{"You're all set."}</h2>
             <p className="ob-sub ob-done-sub">{"Let's look at your money."}</p>
             {form.full_name && <p className="ob-done-name">Welcome, {form.full_name}.</p>}
