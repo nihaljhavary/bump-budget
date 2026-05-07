@@ -1,31 +1,37 @@
 import { useState } from 'react'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Auth from './components/Auth'
 import Dashboard from './components/Dashboard'
 import AdminDashboard from './components/AdminDashboard'
 import BookConsult from './components/BookConsult'
+import LandingPage from './components/LandingPage'
+import Onboarding from './components/Onboarding'
+import FAQ from './components/FAQ'
+import ErrorBoundary from './components/ErrorBoundary'
+import SupportChat from './components/SupportChat'
 import { AuthProvider } from './context/AuthContext'
 import { TierProvider } from './context/TierContext'
 
-function AppInner() {
+const Loader = () => (
+  <div style={{
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    height: '100vh', fontFamily: 'DM Sans, sans-serif', color: '#888',
+    background: '#110A08',
+  }}>Loading</div>
+)
+
+function ProtectedApp() {
   const { user, profile, loading } = useAuth()
   const [page, setPage] = useState('dashboard')
 
-  if (loading) {
-    return (
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: '100vh', fontFamily: 'Inter, sans-serif', color: '#888'
-      }}>
-        Loading...
-      </div>
-    )
-  }
-
-  if (!user) return <Auth />
-
-  // Block access until T&Cs accepted — show Auth in terms-pending mode
+  if (loading) return <Loader />
+  if (!user) return <Navigate to="/" replace />
   if (!profile?.terms_accepted_at) return <Auth termsOnly />
+
+  if (profile && !profile.onboarding_complete) {
+    return <Onboarding onComplete={() => {}} />
+  }
 
   if (page === 'admin' && (profile?.role === 'admin' || profile?.is_admin)) {
     return <AdminDashboard onBack={() => setPage('dashboard')} />
@@ -38,12 +44,30 @@ function AppInner() {
   return <Dashboard onNavigate={setPage} />
 }
 
+function AuthRoute() {
+  const { user, profile, loading } = useAuth()
+  if (loading) return <Loader />
+  if (user && profile?.terms_accepted_at) return <Navigate to="/app" replace />
+  return <Auth />
+}
+
 export default function App() {
   return (
-    <AuthProvider>
-      <TierProvider>
-        <AppInner />
-      </TierProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <TierProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/"     element={<LandingPage />} />
+              <Route path="/auth" element={<AuthRoute />} />
+              <Route path="/app"  element={<ProtectedApp />} />
+              <Route path="/faq"  element={<FAQ />} />
+              <Route path="*"     element={<Navigate to="/" replace />} />
+            </Routes>
+            <SupportChat />
+          </BrowserRouter>
+        </TierProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   )
 }

@@ -62,8 +62,8 @@
 }
 
 .avatar {
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: var(--coral);
   color: #fff;
@@ -73,12 +73,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  position: relative;
 }
 
 /* ── Nav admin button ── */
 .nav-admin-btn {
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: var(--bg);
   border: 1px solid var(--border);
@@ -88,6 +91,7 @@
   align-items: center;
   justify-content: center;
   transition: all 0.15s;
+  flex-shrink: 0;
 }
 .nav-admin-btn:hover {
   border-color: var(--coral);
@@ -100,12 +104,18 @@
   display: flex;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  padding: 0 16px;
+  padding: 0 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;       /* Firefox */
+  -ms-overflow-style: none;    /* IE/Edge */
 }
 
+.tabs::-webkit-scrollbar { display: none; }
+
 .tab {
-  flex: 1;
-  padding: 10px 0;
+  flex: 0 0 auto;
+  padding: 10px 12px;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -114,6 +124,8 @@
   color: var(--muted);
   text-transform: capitalize;
   transition: all 0.15s;
+  white-space: nowrap;
+  min-height: 44px;   /* touch target */
 }
 
 .tab.active {
@@ -934,28 +946,4 @@
     border-bottom-color: transparent;
   }
 
-  /* ── Main content pushed right of sidebar ── */
-  .tab-body,
-  .analytics-shell {
-    margin-left: 220px;
-    max-width: 860px;
-    padding: 28px 32px 100px;
-  }
-
-  /* ── Wider cards ── */
-  .summary-cards {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  /* ── Chat shell ── */
-  .chat-shell {
-    margin-left: 220px;
-  }
-}
-
-@media (min-width: 1100px) {
-  .tab-body,
-  .analytics-shell {
-    max-width: 1060px;
-  }
-}
+  /* ── 

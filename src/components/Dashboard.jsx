@@ -7,6 +7,8 @@ import { parseTransaction, analyseSpending } from '../services/ai'
 import ImportTransactions from './ImportTransactions'
 import Analytics from './Analytics'
 import Recommendations from './Recommendations'
+import Projections from './Projections'
+import GroceryComparison from './GroceryComparison'
 import LockedFeature, { LockedRow } from './LockedFeature'
 import './Dashboard.css'
 
@@ -33,11 +35,15 @@ const CAT_ICONS = {
   Utilities: '\u{1F4A1}', Travel: '\u{2708}\u{FE0F}', Gifts: '\u{1F381}', Other: '\u{1F4E6}'
 }
 
+const BANKS = ['FNB', 'Nedbank', 'ABSA', 'Capitec', 'Standard Bank', 'Discovery Bank', 'TymeBank']
+const VITALITY_OPTIONS = [0, 10, 20, 25, 35, 48, 75]
+
 const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
-const monthLabel = () => new Date().toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })
+// Bug 3 fix: DD MMM YYYY format, append T12:00:00 to avoid UTC-midnight timezone shifts
+const fmtDate = dateStr => new Date(dateStr + 'T12:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 
 export default function Dashboard({ onNavigate }) {
-  const { user, profile } = useAuth()
+  const { user, profile, refreshProfile } = useAuth()
   const tier = useTier()
   const [tab, setTab] = useState('overview')
   const [transactions, setTransactions] = useState([])
@@ -56,9 +62,23 @@ export default function Dashboard({ onNavigate }) {
   const chatEndRef = useRef(null)
   const textareaRef = useRef(null)
 
-  // Consultation state
   const [consultRequests, setConsultRequests] = useState([])
   const [consultActionId, setConsultActionId] = useState(null)
+
+  // Bug 6 fix: profile dropdown + modal state
+  const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [showProfileModal, setShowProfileModal] = useState(false)
+  const profileMenuRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target)) {
+        setShowProfileMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   useEffect(() => {
     loadTransactions()
@@ -110,10 +130,7 @@ export default function Dashboard({ onNavigate }) {
         update.granted_at = new Date().toISOString()
         update.podcast_consent = podcastConsent
       }
-      await supabase
-        .from('consultant_access')
-        .update(update)
-        .eq('id', requestId)
+      await supabase.from('consultant_access').update(update).eq('id', requestId)
       await loadConsultRequests()
     } catch (err) {
       console.error('Consult response failed:', err)
@@ -121,7 +138,6 @@ export default function Dashboard({ onNavigate }) {
     setConsultActionId(null)
   }
 
-  // Only use transactions within the tier's allowed date window for metrics & AI
   const allowedTransactions = useMemo(
     () => transactions.filter(t => isDateAllowed(t.date, tier)),
     [transactions, tier]
@@ -142,11 +158,9 @@ export default function Dashboard({ onNavigate }) {
     if (!msg || chatLoading) return
     setChatInput('')
     textareaRef.current.style.height = 'auto'
-
     const userMsgId = Date.now()
     setChatMessages(prev => [...prev, { id: userMsgId, type: 'user', text: msg }])
     setChatLoading(true)
-
     try {
       const result = await parseTransaction(msg)
       if (result.parsed) {
@@ -164,9 +178,7 @@ export default function Dashboard({ onNavigate }) {
 
   async function confirmTxn(txn, msgId) {
     try {
-      const saved = await addTransaction(user.id, {
-        name: txn.name, amount: txn.amount, category: txn.category
-      })
+      const saved = await addTransaction(user.id, { name: txn.name, amount: txn.amount, category: txn.category })
       setTransactions(prev => [saved, ...prev])
       setChatMessages(prev => prev.map(m =>
         m.id === msgId
@@ -180,9 +192,7 @@ export default function Dashboard({ onNavigate }) {
     }
   }
 
-  function dismissTxn(msgId) {
-    setChatMessages(prev => prev.filter(m => m.id !== msgId))
-  }
+  function dismissTxn(msgId) { setChatMessages(prev => prev.filter(m => m.id !== msgId)) }
 
   async function handleDelete(id) {
     try {
@@ -224,37 +234,60 @@ export default function Dashboard({ onNavigate }) {
         <div className="nav-logo">bump<span className="logo-dot" aria-hidden="true" /></div>
         <div className="nav-right">
           <div className="nav-month-picker">
-            <button className="month-arrow" onClick={() => changeMonth(-1)}>‹</button>
+            <button className="month-arrow" onClick={() => changeMonth(-1)}>&lsaquo;</button>
             <span className="nav-month">{monthDisplayLabel()}</span>
-            <button className="month-arrow" onClick={() => changeMonth(1)}>›</button>
+            <button className="month-arrow" onClick={() => changeMonth(1)}>&rsaquo;</button>
           </div>
           {!tier.isAdmin && profile?.subscription_plan && profile.subscription_plan !== 'free' && (
             <span className="nav-plan-badge">{profile.subscription_plan}</span>
           )}
           {(profile?.role === 'admin' || profile?.is_admin || tier.isAdmin) && (
-            <button
-              className="nav-admin-btn"
-              onClick={() => onNavigate('admin')}
-              title="Admin Dashboard"
-            >
+            <button className="nav-admin-btn" onClick={() => onNavigate('admin')} title="Admin Dashboard">
               &#9881;
             </button>
           )}
-          <button className="avatar" onClick={() => supabase.auth.signOut()} title="Sign out">
-            {user.email?.[0]?.toUpperCase() || 'U'}
-          </button>
+          {/* Bug 6 fix: profile dropdown menu instead of direct sign-out */}
+          <div className="avatar-wrap" ref={profileMenuRef}>
+            <button
+              className="avatar"
+              onClick={() => setShowProfileMenu(v => !v)}
+              title="Profile menu"
+            >
+              {user.email?.[0]?.toUpperCase() || 'U'}
+            </button>
+            {showProfileMenu && (
+              <div className="profile-dropdown">
+                <button
+                  className="profile-dropdown-item"
+                  onClick={() => { setShowProfileMenu(false); setShowProfileModal(true) }}
+                >
+                  &#x1F464; My Profile
+                </button>
+                <button className="profile-dropdown-item" onClick={() => setShowProfileMenu(false)}>
+                  &#x2699;&#xFE0F; Settings
+                </button>
+                <div className="profile-dropdown-divider" />
+                <button
+                  className="profile-dropdown-item danger"
+                  onClick={() => { setShowProfileMenu(false); supabase.auth.signOut() }}
+                >
+                  Sign out
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </nav>
 
       {/* TABS */}
       <div className="tabs">
-        {['overview', 'analytics', 'budget', 'add spend', 'import', 'transactions'].map(t => (
+        {['overview', 'analytics', 'projections', 'groceries', 'budget', 'add spend', 'import', 'transactions'].map(t => (
           <button
             key={t}
             className={`tab ${tab === t ? 'active' : ''}`}
             onClick={() => setTab(t)}
           >
-            {t === 'import' ? '↑ import' : t}
+            {t === 'import' ? '↑ import' : t === 'groceries' ? '🛒 groceries' : t === 'projections' ? '📈 projections' : t}
           </button>
         ))}
       </div>
@@ -262,31 +295,20 @@ export default function Dashboard({ onNavigate }) {
       {/* OVERVIEW */}
       {tab === 'overview' && (
         <div className="tab-body">
-
-          {/* Consultant access banner */}
           {approvedRequest && (
             <div className="consult-banner">
               <span className="consult-banner-dot" />
               <span>Your consultant has view access to your budget.</span>
             </div>
           )}
-
-          {/* Pending consultation requests */}
           {pendingRequests.length > 0 && (
             <div className="consult-requests-section">
               <div className="section-head">Consultation Requests</div>
               {pendingRequests.map(req => (
-                <ConsultRequestCard
-                  key={req.id}
-                  request={req}
-                  loading={consultActionId === req.id}
-                  onRespond={handleConsultResponse}
-                />
+                <ConsultRequestCard key={req.id} request={req} loading={consultActionId === req.id} onRespond={handleConsultResponse} />
               ))}
             </div>
           )}
-
-          {/* Salary toggle */}
           <div className="salary-row">
             <div>
               <div className="salary-title">Salary exclusion</div>
@@ -297,8 +319,6 @@ export default function Dashboard({ onNavigate }) {
               <button className={!excludeSalary ? 'active' : ''} onClick={() => setExcludeSalary(false)}>Off</button>
             </div>
           </div>
-
-          {/* Metrics */}
           <div className="metrics">
             <div className="metric">
               <div className="metric-label">Total spend</div>
@@ -321,8 +341,6 @@ export default function Dashboard({ onNavigate }) {
               <div className="metric-sub">logged this month</div>
             </div>
           </div>
-
-          {/* Categories */}
           {Object.keys(catTotals).length > 0 && (
             <>
               <div className="section-head">Spend by category</div>
@@ -344,13 +362,7 @@ export default function Dashboard({ onNavigate }) {
                         <span>budget {fmt(budget)}</span>
                       </div>
                       <div className="bar-bg">
-                        <div
-                          className="bar-fill"
-                          style={{
-                            width: `${Math.min(Math.round(amt / maxCat * 100), 100)}%`,
-                            background: CAT_COLORS[cat] || '#888'
-                          }}
-                        />
+                        <div className="bar-fill" style={{ width: `${Math.min(Math.round(amt / maxCat * 100), 100)}%`, background: CAT_COLORS[cat] || '#888' }} />
                       </div>
                     </div>
                   )
@@ -358,24 +370,19 @@ export default function Dashboard({ onNavigate }) {
               </div>
             </>
           )}
-
-          {/* Import CTA */}
           <button className="import-cta-btn" onClick={() => setTab('import')}>
-            <span className="import-cta-icon">↑</span>
+            <span className="import-cta-icon">&uarr;</span>
             <div>
               <div className="import-cta-title">Import bank statement</div>
-              <div className="import-cta-sub">Upload CSV or Excel — bump. categorises everything</div>
+              <div className="import-cta-sub">Upload CSV or Excel &mdash; bump. categorises everything</div>
             </div>
           </button>
-
           {transactions.length === 0 && (
             <div className="empty-state">
               <p>No transactions yet.</p>
               <p>Import a statement above or tap <strong>Add spend</strong> to log manually.</p>
             </div>
           )}
-
-          {/* AI Analysis */}
           <div className="ai-panel">
             <div className="ai-head">
               <div className="ai-dot" />
@@ -396,26 +403,35 @@ export default function Dashboard({ onNavigate }) {
           <button className="analyse-btn" onClick={runAnalysis} disabled={aiLoading || transactions.length === 0}>
             {aiLoading ? 'bump. is working on it...' : aiText ? 'Re-analyse' : 'Analyse my spending'}
           </button>
-
-          {/* Book a Consultation CTA — Pro only */}
           <LockedFeature locked={!tier.canConsult} feature="consult" label="Upgrade to Pro — R199/mo">
             <button className="book-consult-btn" onClick={() => onNavigate('book-consult')}>
               Book a financial consultation
             </button>
           </LockedFeature>
-
-          {/* Tier upgrade nudge for free users */}
           {!tier.isAdmin && tier.plan === 'free' && (
             <div className="tier-nudge">
-              🚀 <strong>Free plan:</strong> showing last 30 days. <a href="#upgrade" className="tier-nudge-link">Upgrade from R49/mo</a> for full history, bump. insights & more.
+              &#x1F680; <strong>Free plan:</strong> showing last 30 days. <a href="#upgrade" className="tier-nudge-link">Upgrade from R49/mo</a> for full history, bump. insights &amp; more.
             </div>
           )}
-
         </div>
       )}
 
       {/* ANALYTICS */}
       {tab === 'analytics' && <Analytics />}
+
+      {/* PROJECTIONS */}
+      {tab === 'projections' && (
+        <div className="tab-body">
+          <Projections />
+        </div>
+      )}
+
+      {/* GROCERY COMPARISON */}
+      {tab === 'groceries' && (
+        <div className="tab-body">
+          <GroceryComparison />
+        </div>
+      )}
 
       {/* BUDGET RECOMMENDATIONS */}
       {tab === 'budget' && <Recommendations />}
@@ -426,13 +442,9 @@ export default function Dashboard({ onNavigate }) {
           <div className="chat-body">
             {chatMessages.map(msg => (
               <div key={msg.id} className="fade-up">
-                {msg.type === 'user' && (
-                  <div className="chat-bubble user">{msg.text}</div>
-                )}
+                {msg.type === 'user' && <div className="chat-bubble user">{msg.text}</div>}
                 {(msg.type === 'bot' || msg.type === 'confirmed') && (
-                  <div className={`chat-bubble bot ${msg.type === 'confirmed' ? 'confirmed' : ''}`}>
-                    {msg.text}
-                  </div>
+                  <div className={`chat-bubble bot ${msg.type === 'confirmed' ? 'confirmed' : ''}`}>{msg.text}</div>
                 )}
                 {msg.type === 'confirm' && (
                   <div className="chat-bubble bot">
@@ -497,7 +509,8 @@ export default function Dashboard({ onNavigate }) {
                       </div>
                       <div className="txn-detail">
                         <div className="txn-name">{t.name}</div>
-                        <div className="txn-meta">{t.category} - {new Date(t.date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}</div>
+                        {/* Bug 3 fix: DD MMM YYYY date format */}
+                        <div className="txn-meta">{t.category} &middot; {fmtDate(t.date)}</div>
                       </div>
                       <div className={`txn-amt ${t.category === 'Income' ? 'inc' : ''}`}>
                         {t.category === 'Income' ? '+' : ''}{fmt(t.amount)}
@@ -511,7 +524,7 @@ export default function Dashboard({ onNavigate }) {
               })}
               {hasLockedTransactions && (
                 <div className="txn-locked-banner">
-                  🔒 Older transactions are hidden on your current plan.{' '}
+                  &#x1F512; Older transactions are hidden on your current plan.{' '}
                   <strong>Upgrade from {PLAN_PRICES['starter']}</strong> to unlock your full history.
                 </div>
               )}
@@ -523,54 +536,173 @@ export default function Dashboard({ onNavigate }) {
       {/* IMPORT */}
       {tab === 'import' && (
         <ImportTransactions
-          onImportComplete={() => {
-            loadTransactions()
-            setTab('overview')
-          }}
+          onImportComplete={() => { loadTransactions(); setTab('overview') }}
+        />
+      )}
+
+      {/* Bug 6 fix: Profile modal */}
+      {showProfileModal && (
+        <ProfileModal
+          user={user}
+          onClose={() => setShowProfileModal(false)}
+          onSaved={async () => { await refreshProfile?.(); setShowProfileModal(false) }}
         />
       )}
     </div>
   )
 }
 
-// ConsultRequestCard sub-component
+// ── ConsultRequestCard ──────────────────────────────────────────────────────
 function ConsultRequestCard({ request, loading, onRespond }) {
   const [podcastConsent, setPodcastConsent] = useState(false)
-
   return (
     <div className="consult-request-card">
       <div className="consult-request-head">
         <span className="consult-request-icon">&#128276;</span>
         <div>
           <div className="consult-request-title">Your consultant is requesting budget access</div>
-          <div className="consult-request-sub">
-            This lets them view your transactions before your session.
-          </div>
+          <div className="consult-request-sub">This lets them view your transactions before your session.</div>
         </div>
       </div>
       <label className="consult-consent-row">
-        <input
-          type="checkbox"
-          checked={podcastConsent}
-          onChange={e => setPodcastConsent(e.target.checked)}
-        />
+        <input type="checkbox" checked={podcastConsent} onChange={e => setPodcastConsent(e.target.checked)} />
         <span>I am happy for anonymised insights from my session to be used on a podcast.</span>
       </label>
       <div className="consult-request-actions">
-        <button
-          className="consult-btn-approve"
-          disabled={loading}
-          onClick={() => onRespond(request.id, 'approved', podcastConsent)}
-        >
+        <button className="consult-btn-approve" disabled={loading} onClick={() => onRespond(request.id, 'approved', podcastConsent)}>
           {loading ? '...' : 'Approve access'}
         </button>
-        <button
-          className="consult-btn-deny"
-          disabled={loading}
-          onClick={() => onRespond(request.id, 'denied')}
-        >
+        <button className="consult-btn-deny" disabled={loading} onClick={() => onRespond(request.id, 'denied')}>
           Deny
         </button>
+      </div>
+    </div>
+  )
+}
+
+// ── ProfileModal (Bug 6) ────────────────────────────────────────────────────
+function ProfileModal({ user, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    full_name: '', gross_income: '', net_income: '',
+    monthly_debit_orders: '', savings_goal: '',
+    bank: '', vitality_cashback_pct: 0
+  })
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('full_name, gross_income, net_income, monthly_debit_orders, savings_goal, bank, vitality_cashback_pct')
+          .eq('id', user.id)
+          .single()
+        if (data) {
+          const toR = v => (v ? String(Math.round(v / 100)) : '')
+          setForm({
+            full_name: data.full_name || '',
+            gross_income: toR(data.gross_income),
+            net_income: toR(data.net_income),
+            monthly_debit_orders: toR(data.monthly_debit_orders),
+            savings_goal: toR(data.savings_goal),
+            bank: data.bank || '',
+            vitality_cashback_pct: data.vitality_cashback_pct || 0
+          })
+        }
+      } catch {}
+      setLoading(false)
+    }
+    load()
+  }, [user.id])
+
+  function update(field, value) { setForm(prev => ({ ...prev, [field]: value })) }
+
+  async function handleSave() {
+    setSaving(true); setError(''); setSuccess('')
+    try {
+      const toC = v => (v !== '' && v !== null && !isNaN(v) ? Math.round(parseFloat(v) * 100) : null)
+      const { error: err } = await supabase.from('profiles').update({
+        full_name: form.full_name || null,
+        gross_income: toC(form.gross_income),
+        net_income: toC(form.net_income),
+        monthly_debit_orders: toC(form.monthly_debit_orders),
+        savings_goal: toC(form.savings_goal),
+        bank: form.bank || null,
+        vitality_cashback_pct: form.vitality_cashback_pct || 0
+      }).eq('id', user.id)
+      if (err) throw err
+      setSuccess('Profile updated!')
+      setTimeout(() => onSaved(), 800)
+    } catch (err) {
+      setError(err.message || 'Could not save. Please try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="profile-modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="profile-modal">
+        <div className="profile-modal-head">
+          <span className="profile-modal-title">My Profile</span>
+          <button className="profile-modal-close" onClick={onClose}>&#x2715;</button>
+        </div>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '24px', color: 'var(--muted)' }}>Loading&hellip;</div>
+        ) : (
+          <>
+            {error && <div className="profile-modal-error">{error}</div>}
+            {success && <div className="profile-modal-success">&#x2713; {success}</div>}
+            <div className="profile-modal-field">
+              <label className="profile-modal-label">Full name</label>
+              <input className="profile-modal-input" type="text" placeholder="Your name"
+                value={form.full_name} onChange={e => update('full_name', e.target.value)} />
+            </div>
+            {[
+              { label: 'Gross monthly income', field: 'gross_income' },
+              { label: 'Net (take-home) income', field: 'net_income' },
+              { label: 'Fixed monthly debit orders', field: 'monthly_debit_orders' },
+              { label: 'Monthly savings goal', field: 'savings_goal' }
+            ].map(({ label, field }) => (
+              <div className="profile-modal-field" key={field}>
+                <label className="profile-modal-label">{label}</label>
+                <div className="profile-modal-input-wrap">
+                  <span className="profile-modal-prefix">R</span>
+                  <input type="number" placeholder="0"
+                    value={form[field]} onChange={e => update(field, e.target.value)} />
+                </div>
+              </div>
+            ))}
+            <div className="profile-modal-field">
+              <label className="profile-modal-label">Bank</label>
+              <div className="profile-modal-bank-grid">
+                {BANKS.map(b => (
+                  <button key={b} className={`profile-modal-bank-pill ${form.bank === b ? 'selected' : ''}`}
+                    onClick={() => update('bank', b)}>{b}</button>
+                ))}
+              </div>
+            </div>
+            <div className="profile-modal-field">
+              <label className="profile-modal-label">Vitality cashback %</label>
+              <div className="profile-modal-bank-grid">
+                {VITALITY_OPTIONS.map(pct => (
+                  <button key={pct}
+                    className={`profile-modal-bank-pill ${form.vitality_cashback_pct === pct ? 'selected' : ''}`}
+                    onClick={() => update('vitality_cashback_pct', pct)}>{pct}%</button>
+                ))}
+              </div>
+            </div>
+            <div className="profile-modal-actions">
+              <button className="profile-modal-cancel" onClick={onClose}>Cancel</button>
+              <button className="profile-modal-save" onClick={handleSave} disabled={saving}>
+                {saving ? 'Saving…' : 'Save changes'}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )

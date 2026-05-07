@@ -24,8 +24,8 @@ export default function Auth({ termsOnly = false }) {
 
   const [email, setEmail]         = useState('')
   const [password, setPassword]   = useState('')
-  const [mode, setMode]           = useState('magic')   // 'magic' | 'password'
-  const [authTab, setAuthTab]     = useState('signin')  // 'signin' | 'signup'
+  const [mode, setMode]           = useState('magic')
+  const [authTab, setAuthTab]     = useState('signin')
   const [loading, setLoading]     = useState(false)
   const [sent, setSent]           = useState(false)
   const [error, setError]         = useState('')
@@ -33,7 +33,6 @@ export default function Auth({ termsOnly = false }) {
   const [showTerms, setShowTerms] = useState(false)
   const [savingTerms, setSavingTerms] = useState(false)
 
-  // ── T&C acceptance screen ────────────────────────────────────────────────
   async function acceptTerms() {
     if (!termsAccepted) { setError('You must accept the terms to continue'); return }
     setSavingTerms(true); setError('')
@@ -58,31 +57,16 @@ export default function Auth({ termsOnly = false }) {
           <div className="auth-logo">bump<span className="logo-dot" /></div>
           <h2 className="auth-title">Before you continue</h2>
           <p className="auth-sub">Please read and accept our terms to use bump.</p>
-
           <div className="terms-box">{TERMS_TEXT}</div>
-
           {error && <div className="auth-error">{error}</div>}
-
           <label className="terms-check-row">
-            <input
-              type="checkbox"
-              checked={termsAccepted}
-              onChange={e => setTermsAccepted(e.target.checked)}
-            />
-            <span>
-              I have read and accept the{' '}
-              <button className="terms-inline-link" onClick={() => setShowTerms(s => !s)}>
-                Terms & Conditions
-              </button>
+            <input type="checkbox" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)} />
+            <span>I have read and accept the{' '}
+              <button className="terms-inline-link" onClick={() => setShowTerms(s => !s)}>Terms &amp; Conditions</button>
               , including the POPIA data processing notice and the financial disclaimer.
             </span>
           </label>
-
-          <button
-            className="btn-primary"
-            onClick={acceptTerms}
-            disabled={savingTerms || !termsAccepted}
-          >
+          <button className="btn-primary" onClick={acceptTerms} disabled={savingTerms || !termsAccepted}>
             {savingTerms ? 'Saving...' : 'Accept & Continue'}
           </button>
         </div>
@@ -90,7 +74,6 @@ export default function Auth({ termsOnly = false }) {
     )
   }
 
-  // ── Magic link sent screen ───────────────────────────────────────────────
   if (sent) {
     return (
       <div className="auth-shell">
@@ -99,24 +82,22 @@ export default function Auth({ termsOnly = false }) {
           <div className="auth-sent">
             <div className="auth-sent-icon">✉️</div>
             <h2>Check your inbox</h2>
-            <p>
-              We sent a magic link to <strong>{email}</strong>.<br />
-              Click it to sign in — no password needed.
-            </p>
-            <button className="btn-ghost" onClick={() => setSent(false)}>
-              Use a different email
-            </button>
+            <p>We sent a magic link to <strong>{email}</strong>.<br />Click it to sign in — no password needed.</p>
+            <button className="btn-ghost" onClick={() => setSent(false)}>Use a different email</button>
           </div>
         </div>
       </div>
     )
   }
 
-  // ── Auth functions ───────────────────────────────────────────────────────
+  // Bug 1 fix: use window.location.origin so magic links redirect to correct URL (dev or prod)
   async function sendMagicLink() {
     if (!email) { setError('Enter your email first'); return }
     setLoading(true); setError('')
-    const { error: err } = await supabase.auth.signInWithOtp({ email })
+    const { error: err } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.origin + '/app' }
+    })
     if (err) setError(err.message)
     else setSent(true)
     setLoading(false)
@@ -140,17 +121,9 @@ export default function Auth({ termsOnly = false }) {
     setLoading(false)
   }
 
-  function switchMode(m) {
-    setMode(m)
-    setError('')
-  }
+  function switchMode(m) { setMode(m); setError('') }
+  function switchTab(t)  { setAuthTab(t); setError('') }
 
-  function switchTab(t) {
-    setAuthTab(t)
-    setError('')
-  }
-
-  // ── Main auth screen ─────────────────────────────────────────────────────
   return (
     <div className="auth-shell">
       <div className="auth-card">
@@ -158,104 +131,60 @@ export default function Auth({ termsOnly = false }) {
         <h2 className="auth-title">Understand your money</h2>
         <p className="auth-sub">South Africa's smartest personal finance app</p>
 
-        {/* Sign in / Sign up toggle */}
         <div className="auth-mode-toggle">
-          <button
-            className={`auth-mode-btn ${authTab === 'signin' ? 'active' : ''}`}
-            onClick={() => switchTab('signin')}
-          >
-            Sign in
-          </button>
-          <button
-            className={`auth-mode-btn ${authTab === 'signup' ? 'active' : ''}`}
-            onClick={() => switchTab('signup')}
-          >
-            Create account
-          </button>
+          <button className={`auth-mode-btn ${authTab === 'signin' ? 'active' : ''}`} onClick={() => switchTab('signin')}>Sign in</button>
+          <button className={`auth-mode-btn ${authTab === 'signup' ? 'active' : ''}`} onClick={() => switchTab('signup')}>Create account</button>
         </div>
 
         {error && <div className="auth-error">{error}</div>}
 
-        {/* Magic link flow */}
         {mode === 'magic' && (
           <>
             <div className="auth-field">
               <label className="auth-field-label">Email</label>
-              <input
-                className="auth-input"
-                type="email"
-                placeholder="your@email.com"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && sendMagicLink()}
-                autoComplete="email"
-              />
+              <input className="auth-input" type="email" placeholder="your@email.com"
+                value={email} onChange={e => setEmail(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && sendMagicLink()} autoComplete="email" />
             </div>
             <button className="btn-primary" onClick={sendMagicLink} disabled={loading}>
-              {loading ? 'Sending...' : '✨ Send magic link'}
+              {loading ? 'Sending...' : 'Send magic link'}
             </button>
             <div className="auth-divider">or</div>
-            <button className="btn-ghost" onClick={() => switchMode('password')}>
-              Use password instead
-            </button>
+            <button className="btn-ghost" onClick={() => switchMode('password')}>Use password instead</button>
           </>
         )}
 
-        {/* Password flow */}
         {mode === 'password' && (
           <>
             <div className="auth-field">
               <label className="auth-field-label">Email</label>
-              <input
-                className="auth-input"
-                type="email"
-                placeholder="your@email.com"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                autoComplete="email"
-              />
+              <input className="auth-input" type="email" placeholder="your@email.com"
+                value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" />
             </div>
             <div className="auth-field">
               <label className="auth-field-label">Password</label>
-              <input
-                className="auth-input"
-                type="password"
+              <input className="auth-input" type="password"
                 placeholder={authTab === 'signup' ? 'Choose a password (6+ chars)' : 'Your password'}
-                value={password}
-                onChange={e => setPassword(e.target.value)}
+                value={password} onChange={e => setPassword(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && (authTab === 'signin' ? signIn() : signUp())}
-                autoComplete={authTab === 'signin' ? 'current-password' : 'new-password'}
-              />
+                autoComplete={authTab === 'signin' ? 'current-password' : 'new-password'} />
             </div>
-
-            {authTab === 'signin' ? (
-              <button className="btn-primary" onClick={signIn} disabled={loading}>
-                {loading ? 'Signing in...' : 'Sign in'}
-              </button>
-            ) : (
-              <button className="btn-primary" onClick={signUp} disabled={loading}>
-                {loading ? 'Creating account...' : 'Create account'}
-              </button>
-            )}
-
+            {authTab === 'signin'
+              ? <button className="btn-primary" onClick={signIn} disabled={loading}>{loading ? 'Signing in...' : 'Sign in'}</button>
+              : <button className="btn-primary" onClick={signUp} disabled={loading}>{loading ? 'Creating account...' : 'Create account'}</button>
+            }
             <div className="auth-divider">or</div>
-            <button className="btn-ghost" onClick={() => switchMode('magic')}>
-              Use magic link instead
-            </button>
+            <button className="btn-ghost" onClick={() => switchMode('magic')}>Use magic link instead</button>
           </>
         )}
 
         <p className="auth-terms-note">
           By signing in you agree to our{' '}
-          <button className="terms-inline-link" onClick={() => setShowTerms(s => !s)}>
-            Terms & Conditions
-          </button>{' '}
+          <button className="terms-inline-link" onClick={() => setShowTerms(s => !s)}>Terms &amp; Conditions</button>{' '}
           and POPIA data processing notice.
         </p>
 
-        {showTerms && (
-          <div className="terms-box terms-box-small">{TERMS_TEXT}</div>
-        )}
+        {showTerms && <div className="terms-box terms-box-small">{TERMS_TEXT}</div>}
       </div>
     </div>
   )
