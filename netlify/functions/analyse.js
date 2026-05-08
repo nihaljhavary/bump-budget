@@ -4,7 +4,7 @@ const FORMAT_RULES = `Format rules (always follow): Never use em dashes (—). N
 
 const SYSTEM_PROMPT = `You are a financial assistant for bump. (BumpBudget). Your ONLY purpose is to help users understand and manage their personal finances — categorising transactions, analysing spending patterns, and giving budget insights. You must refuse any request that is not directly related to the user's financial data or budget management. Do not engage with general questions, creative tasks, coding help, or anything outside personal finance.
 
-\${FORMAT_RULES}`
+${FORMAT_RULES}`
 
 const ALLOWED_FIELDS = new Set(['transactions', 'question'])
 
@@ -18,7 +18,7 @@ export async function handler(event) {
     return { statusCode: 405, body: 'Method not allowed' }
   }
 
-  // ── 1. Parse + validate body ───────────────────────────────────────────────
+  // ── 1. Parse + validate body ───────────────────────────────────────────────────────────────────────────
   let body
   try {
     body = JSON.parse(event.body || '{}')
@@ -49,7 +49,7 @@ export async function handler(event) {
     }
   }
 
-  // ── 2. Auth / rate limiting ────────────────────────────────────────────────
+  // ── 2. Auth ──────────────────────────────────────────────────────────────────────────────────
   const authHeader = event.headers['authorization'] || event.headers['Authorization'] || ''
   if (!authHeader.startsWith('Bearer ')) {
     return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized' }) }
@@ -70,35 +70,41 @@ export async function handler(event) {
     return { statusCode: 401, body: JSON.stringify({ error: 'Invalid or expired session' }) }
   }
 
-  // Get subscription tier
-  const { data: profile } = await adminClient
+  // ── 3. Plan check + rate limiting (free users only) ───────────────────────────────────────
+  const { data: profileData } = await adminClient
     .from('profiles')
-    .select('subscription_tier')
+    .select('subscription_plan, is_admin')
     .eq('id', user.id)
     .single()
 
-  const callLimit = profile?.subscription_tier === 'budget_coach' ? 500 : 50
+  const plan = profileData?.subscription_plan || 'free'
+  const isAdmin = profileData?.is_admin === true
   const month = new Date().toISOString().slice(0, 7)
+  let callCount = 0
 
-  const { data: usage } = await adminClient
-    .from('claude_usage')
-    .select('call_count')
-    .eq('user_id', user.id)
-    .eq('month', month)
-    .maybeSingle()
+  // Free users are rate-limited via the claude_usage table (created in schema v3).
+  // Paid plans (starter, growth, pro) and admins have no call limit.
+  if (!isAdmin && plan === 'free') {
+    const { data: usage } = await adminClient
+      .from('claude_usage')
+      .select('call_count')
+      .eq('user_id', user.id)
+      .eq('month', month)
+      .maybeSingle()
 
-  const callCount = usage?.call_count ?? 0
-  if (callCount >= callLimit) {
-    return {
-      statusCode: 429,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        error: `Monthly limit of ${callLimit} AI calls reached.${callLimit < 500 ? ' Upgrade to Budget Coach for 500 calls/month.' : ''}`
-      })
+    callCount = usage?.call_count ?? 0
+    if (callCount >= 20) {
+      return {
+        statusCode: 429,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          error: 'Monthly AI analysis limit reached. Upgrade to a paid plan for unlimited analysis.'
+        })
+      }
     }
   }
 
-  // ── 3. Build analysis context from transactions ────────────────────────────
+  // ── 4. Build analysis context from transactions ──────────────────────────────────────────
   const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
 
   const income = transactions
@@ -144,7 +150,7 @@ Deliver:
 
 Speak directly. Use rands not percentages where possible. Be like a smart friend who knows finance, not a corporate report.${userQuestion}`
 
-  // ── 4. Call Claude ─────────────────────────────────────────────────────────
+  // ── 5. Call Claude ──────────────────────────────────────────────────────────────────────────────────
   let analysis
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -171,13 +177,15 @@ Speak directly. Use rands not percentages where possible. Be like a smart friend
     }
   }
 
-  // ── 5. Increment usage counter ─────────────────────────────────────────────
-  await adminClient
-    .from('claude_usage')
-    .upsert(
-      { user_id: user.id, month, call_count: callCount + 1 },
-      { onConflict: 'user_id,month' }
-    )
+  // ── 6. Increment usage counter for free users ──────────────────────────────────────────────────
+  if (!isAdmin && plan === 'free') {
+    await adminClient
+      .from('claude_usage')
+      .upsert(
+        { user_id: user.id, month, call_count: callCount + 1 },
+        { onConflict: 'user_id,month' }
+      )
+  }
 
   return {
     statusCode: 200,
