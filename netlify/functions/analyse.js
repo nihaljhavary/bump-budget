@@ -18,7 +18,7 @@ export async function handler(event) {
     return { statusCode: 405, body: 'Method not allowed' }
   }
 
-  // ── 1. Parse + validate body ───────────────────────────────────────────────
+  // ── 1. Parse + validate body ───────────────────────────────────────────────────────────────────────────
   let body
   try {
     body = JSON.parse(event.body || '{}')
@@ -49,7 +49,7 @@ export async function handler(event) {
     }
   }
 
-  // ── 2. Auth ────────────────────────────────────────────────────────────────
+  // ── 2. Auth ──────────────────────────────────────────────────────────────────────────────────
   const authHeader = event.headers['authorization'] || event.headers['Authorization'] || ''
   if (!authHeader.startsWith('Bearer ')) {
     return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized' }) }
@@ -70,7 +70,7 @@ export async function handler(event) {
     return { statusCode: 401, body: JSON.stringify({ error: 'Invalid or expired session' }) }
   }
 
-  // ── 3. Plan check + rate limiting (free users only) ───────────────────────
+  // ── 3. Plan check + rate limiting (free users only) ───────────────────────────────────────
   const { data: profileData } = await adminClient
     .from('profiles')
     .select('subscription_plan, is_admin')
@@ -79,21 +79,21 @@ export async function handler(event) {
 
   const plan = profileData?.subscription_plan || 'free'
   const isAdmin = profileData?.is_admin === true
+  const month = new Date().toISOString().slice(0, 7)
+  let callCount = 0
 
-  // Free users: 10 analyses/month tracked via budget_chat_usage (same table as budget-chat)
-  // Entries from this function use question_preview: '[analysis]'
+  // Free users are rate-limited via the claude_usage table (created in schema v3).
+  // Paid plans (starter, growth, pro) and admins have no call limit.
   if (!isAdmin && plan === 'free') {
-    const monthStart = new Date()
-    monthStart.setDate(1)
-    monthStart.setHours(0, 0, 0, 0)
-
-    const { count } = await adminClient
-      .from('budget_chat_usage')
-      .select('*', { count: 'exact', head: true })
+    const { data: usage } = await adminClient
+      .from('claude_usage')
+      .select('call_count')
       .eq('user_id', user.id)
-      .gte('created_at', monthStart.toISOString())
+      .eq('month', month)
+      .maybeSingle()
 
-    if ((count || 0) >= 10) {
+    callCount = usage?.call_count ?? 0
+    if (callCount >= 20) {
       return {
         statusCode: 429,
         headers: { 'Content-Type': 'application/json' },
@@ -104,7 +104,7 @@ export async function handler(event) {
     }
   }
 
-  // ── 4. Build analysis context from transactions ────────────────────────────
+  // ── 4. Build analysis context from transactions ──────────────────────────────────────────
   const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
 
   const income = transactions
@@ -150,7 +150,7 @@ Deliver:
 
 Speak directly. Use rands not percentages where possible. Be like a smart friend who knows finance, not a corporate report.${userQuestion}`
 
-  // ── 5. Call Claude ─────────────────────────────────────────────────────────
+  // ── 5. Call Claude ──────────────────────────────────────────────────────────────────────────────────
   let analysis
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -177,15 +177,14 @@ Speak directly. Use rands not percentages where possible. Be like a smart friend
     }
   }
 
-  // ── 6. Log usage for free users ────────────────────────────────────────────
+  // ── 6. Increment usage counter for free users ──────────────────────────────────────────────────
   if (!isAdmin && plan === 'free') {
-    try {
-      await adminClient
-        .from('budget_chat_usage')
-        .insert({ user_id: user.id, question_preview: '[analysis]' })
-    } catch (e) {
-      console.error('Usage log error:', e)
-    }
+    await adminClient
+      .from('claude_usage')
+      .upsert(
+        { user_id: user.id, month, call_count: callCount + 1 },
+        { onConflict: 'user_id,month' }
+      )
   }
 
   return {
