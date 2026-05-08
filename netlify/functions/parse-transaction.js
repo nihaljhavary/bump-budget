@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { saPreCategory, CATEGORIES } from './sa-categorise.js'
 
 const SYSTEM_PROMPT = `You are a financial assistant for bump. (BumpBudget). Your ONLY purpose is to help users understand and manage their personal finances — categorising transactions, analysing spending patterns, and giving budget insights. You must refuse any request that is not directly related to the user's financial data or budget management. Do not engage with general questions, creative tasks, coding help, or anything outside personal finance.`
 
@@ -91,7 +92,28 @@ export async function handler(event) {
     }
   }
 
-  // ── 3. Call Claude ─────────────────────────────────────────────────────────
+  // ── 3. Pre-categorise using SA_RULES (no AI call needed for known merchants) ──
+  const rulesCategory = saPreCategory(description.trim())
+  if (rulesCategory) {
+    // Clean up the name: remove common bank statement noise
+    const cleanName = description.trim()
+      .replace(/^(FLW\*|PAYGATE\*|PAYFAST\*|YOCO\*)/i, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        parsed: true,
+        name: cleanName,
+        amount: amount ? parseFloat(amount) : undefined,
+        category: rulesCategory,
+        source: 'rules'
+      })
+    }
+  }
+
+  // ── 4. Call Claude (fallback for unknown merchants) ────────────────────────
   const prompt = `You are a budget assistant for a South African user. Extract transaction info from this message.
 
 Respond with ONLY a raw JSON object — no markdown, no explanation, no backticks.
@@ -105,7 +127,8 @@ If it is NOT a transaction:
 Rules:
 - Amount must be a plain number (no R, no commas)
 - Income/salary always maps to category "Income"
-- Be smart about SA merchants: Checkers/Woolworths/Pick n Pay = Groceries, Uber Eats/Mr Delivery = Eating out, Vida/Starbucks = Eating out, Engen/BP/Shell = Transport
+- Use the most specific category available. Valid categories: Income, Housing, Groceries, Eating out, Transport, Entertainment, Health, Clothing, Subscriptions, Education, Insurance, Savings, Fuel, ATM / Cash, Fees & Charges, Utilities, Travel, Gifts, Other
+- Only use "Other" if no other category fits reasonably well
 ${amount !== undefined ? `- User-provided amount hint: ${amount}` : ''}
 ${date ? `- User-provided date: ${date}` : ''}
 

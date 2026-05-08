@@ -209,7 +209,12 @@ export default function Dashboard({ onNavigate }) {
     setAiLoading(true)
     setAiText('')
     try {
-      const result = await analyseSpending(allowedTransactions, [], income)
+      const profileCtx = {
+        savings_goal: (profile?.savings_goal || 0) / 100,
+        monthly_debit_orders: (profile?.monthly_debit_orders || 0) / 100,
+        usage_type: profile?.usage_type || 'personal',
+      }
+      const result = await analyseSpending(allowedTransactions, [], income, profileCtx)
       setAiText(result.analysis)
     } catch {
       setAiText('Analysis failed -- check your connection and try again.')
@@ -278,11 +283,26 @@ export default function Dashboard({ onNavigate }) {
         </div>
       </nav>
 
-      {/* Tier simulation banner */}
-      {tier.simulating && (
+      {/* Tier simulation banner — always visible for admins */}
+      {(tier.isAdmin || tier.simulating) && (
         <div className="sim-banner">
-          Simulating <strong>{tier.simulating}</strong> tier —{' '}
-          <button className="sim-banner-exit" onClick={() => tier.setSimulatedPlan(null)}>Exit simulation</button>
+          <span className="sim-banner-label">
+            {tier.simulating ? `🔧 Simulating ${tier.simulating}` : '🔧 Admin mode'}
+          </span>
+          <select
+            className="sim-select-inline"
+            value={tier.simulatedPlan || ''}
+            onChange={e => tier.setSimulatedPlan(e.target.value || null)}
+          >
+            <option value="">No simulation (admin)</option>
+            <option value="free">Simulate: Free</option>
+            <option value="starter">Simulate: Starter</option>
+            <option value="growth">Simulate: Growth</option>
+            <option value="pro">Simulate: Pro</option>
+          </select>
+          {tier.simulating && (
+            <button className="sim-banner-exit" onClick={() => tier.setSimulatedPlan(null)}>Exit</button>
+          )}
         </div>
       )}
 

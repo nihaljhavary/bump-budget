@@ -181,7 +181,7 @@ function DonutChart({ catSpend }) {
 }
 
 // ── AI Trend Analysis ───────────────────────────────────────────────────────
-function AITrendAnalysis({ txns, period }) {
+function AITrendAnalysis({ txns, period, profileContext }) {
   const { user, profile } = useAuth()
   const [analysis, setAnalysis] = useState('')
   const [loading, setLoading] = useState(false)
@@ -198,6 +198,7 @@ function AITrendAnalysis({ txns, period }) {
         body: JSON.stringify({
           transactions: txns.slice(0,200),
           declaredIncome: (profile?.net_income || 0) / 100,
+          profileContext: profileContext || null,
         })
       })
       const data = await resp.json()
@@ -533,7 +534,7 @@ export default function Analytics() {
           </div>
 
           {/* AI Trend Analysis */}
-          <AITrendAnalysis txns={txns} period={period}/>
+          <AITrendAnalysis txns={txns} period={period} profileContext={{ savings_goal: (profile?.savings_goal||0)/100, monthly_debit_orders: (profile?.monthly_debit_orders||0)/100, usage_type: profile?.usage_type||'personal' }}/>
 
           {/* Budget Q&A */}
           <BudgetChat txns={txns} budgets={budgets}/>

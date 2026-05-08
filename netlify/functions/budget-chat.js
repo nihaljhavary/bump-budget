@@ -1,12 +1,16 @@
 import { createClient } from '@supabase/supabase-js'
 
+const FORMAT_RULES = `Never use em dashes (—). Never use the tilde symbol (~). Never use markdown bold (**text**). Write in plain prose.`
+
 const SYSTEM_PROMPT = `You are bump.'s personal finance coach — a warm, direct, South African money advisor. You have been given a user's recent transaction data, their income, and their fixed expenses. Answer questions about their spending clearly and honestly. Give specific Rand amounts. Be concise (2-4 sentences max per answer). Always be constructive and actionable.
 
 South African context:
-- Currency is ZAR (Rand), amounts are stored as integer cents (divide by 100 for Rands)
+- Currency is ZAR (Rand). Transaction amounts are in Rands. Profile fields (income, debit orders, savings goal) are stored as integer cents and already converted to Rands in context.
 - Common categories: Groceries, Eating out, Transport, Housing, Entertainment, Health, Fuel, Subscriptions, Utilities
 - Retailers: Woolworths, Checkers, Pick n Pay, Shoprite, Spar, Dis-Chem, Clicks
-- Banks: FNB, ABSA, Nedbank, Capitec, Standard Bank, Discovery Bank, TymeBank`
+- Banks: FNB, ABSA, Nedbank, Capitec, Standard Bank, Discovery Bank, TymeBank
+
+${FORMAT_RULES}`
 
 export async function handler(event) {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method not allowed' }
@@ -76,7 +80,7 @@ export async function handler(event) {
   const catSummary = Object.entries(catTotals)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10)
-    .map(([cat, amt]) => `${cat}: R${Math.round(amt/100).toLocaleString('en-ZA')} over 90 days (avg R${Math.round(amt/100/3).toLocaleString('en-ZA')}/mo)`)
+    .map(([cat, amt]) => `${cat}: R${Math.round(amt).toLocaleString('en-ZA')} over 90 days (avg R${Math.round(amt/3).toLocaleString('en-ZA')}/mo)`)
     .join('\n')
 
   const contextBlock = `
@@ -88,9 +92,9 @@ Bank: ${profile?.bank || 'unknown'}
 Discovery Vitality cashback: ${profile?.vitality_cashback_pct > 0 ? profile.vitality_cashback_pct+'%' : 'none'}
 
 SPENDING LAST 90 DAYS:
-Total spend: R${Math.round(totalSpend/100).toLocaleString('en-ZA')}
-Total income: R${Math.round(totalIncome/100).toLocaleString('en-ZA')}
-Net: R${Math.round((totalIncome-totalSpend)/100).toLocaleString('en-ZA')}
+Total spend: R${Math.round(totalSpend).toLocaleString('en-ZA')}
+Total income: R${Math.round(totalIncome).toLocaleString('en-ZA')}
+Net: R${Math.round(totalIncome-totalSpend).toLocaleString('en-ZA')}
 
 Category breakdown:
 ${catSummary}

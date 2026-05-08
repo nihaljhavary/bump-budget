@@ -6,7 +6,7 @@ const SYSTEM_PROMPT = `You are a financial assistant for bump. (BumpBudget). You
 
 ${FORMAT_RULES}`
 
-const ALLOWED_FIELDS = new Set(['transactions', 'question', 'declaredIncome'])
+const ALLOWED_FIELDS = new Set(['transactions', 'question', 'declaredIncome', 'profileContext'])
 
 const DEFAULT_BUDGETS = {
   Housing: 9500, Groceries: 3000, 'Eating out': 2000, Transport: 2500,
@@ -34,7 +34,7 @@ export async function handler(event) {
     }
   }
 
-  const { transactions, question, declaredIncome } = body
+  const { transactions, question, declaredIncome, profileContext } = body
 
   if (!Array.isArray(transactions)) {
     return { statusCode: 400, body: JSON.stringify({ error: '`transactions` must be an array' }) }
@@ -133,6 +133,17 @@ export async function handler(event) {
     return `${cat}: spent ${fmt(amt)} vs budget ${fmt(budget)} — ${status}`
   }).join('\n')
 
+  // Build profile context block for prompt
+  const fmtR = n => 'R' + Math.round(n).toLocaleString('en-ZA')
+  const profileLines = []
+  if (profileContext?.savings_goal > 0) profileLines.push(`Savings goal: ${fmtR(profileContext.savings_goal)}/mo`)
+  if (profileContext?.monthly_debit_orders > 0) profileLines.push(`Fixed debit orders: ${fmtR(profileContext.monthly_debit_orders)}/mo (rent, insurance, subscriptions — already committed)`)
+  if (profileContext?.usage_type) {
+    const typeLabel = { personal: 'personal use', household: 'household (multiple earners)', side_hustle: 'has a side hustle', sole_prop: 'sole proprietor/freelancer' }
+    profileLines.push(`Financial profile: ${typeLabel[profileContext.usage_type] || profileContext.usage_type}`)
+  }
+  const profileBlock = profileLines.length > 0 ? `\n\nUser profile:\n${profileLines.join('\n')}` : ''
+
   const userQuestion = question && question.trim()
     ? `\n\nUser's specific question: "${question.trim()}"\nAddress this question directly in your response.`
     : ''
@@ -151,7 +162,7 @@ Deliver:
 2. One positive observation
 3. Net position summary with a savings rate comment
 
-Speak directly. Use rands not percentages where possible. Be like a smart friend who knows finance, not a corporate report.${userQuestion}`
+Speak directly. Use rands not percentages where possible. Be like a smart friend who knows finance, not a corporate report.${profileBlock}${userQuestion}`
 
   // ── 5. Call Claude ─────────────────────────────────────────────────────────
   let analysis
