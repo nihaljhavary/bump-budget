@@ -38,3 +38,5 @@
 .is-ai-hint { font-size: 13px; color: var(--muted); margin: 0; }
 
 .is-loading { display: flex; justify-content: center; padding: 40px; }
+
+.is-income-hint { background: #1A1008; border: 1px solid #3a2a1a; border-radius: 10px; padding: 12px 16px; margin: 8px 0; font-size: 13px; color: #B8A898; line-height: 1.5; }

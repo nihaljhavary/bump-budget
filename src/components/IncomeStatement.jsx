@@ -60,7 +60,7 @@ function DeltaCell({ current, previous }) {
 }
 
 export default function IncomeStatement() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const [period, setPeriod] = useState('12m')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
@@ -193,6 +193,12 @@ export default function IncomeStatement() {
               </tr>
             </tbody>
           </table>
+        </div>
+      )}
+
+      {!loading && stmt.income === 0 && (profile?.net_income || 0) > 0 && (
+        <div className="is-income-hint">
+          No income transactions found for this period. Your declared take-home salary is R{Math.round(profile.net_income / 100).toLocaleString('en-ZA')}/mo — log a transaction categorised as &quot;Income&quot; to include it in this statement.
         </div>
       )}
 

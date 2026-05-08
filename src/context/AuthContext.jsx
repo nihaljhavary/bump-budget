@@ -43,8 +43,17 @@ export function AuthProvider({ children }) {
     if (user) await fetchProfile(user.id)
   }
 
+  async function updateProfile(updates) {
+    if (!user) return { error: new Error('Not authenticated') }
+    const { error } = await supabase
+      .from('profiles')
+      .upsert({ id: user.id, ...updates }, { onConflict: 'id' })
+    if (!error) await fetchProfile(user.id)
+    return { error }
+  }
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading, refreshProfile }}>
+    <AuthContext.Provider value={{ user, profile, loading, refreshProfile, updateProfile }}>
       {children}
     </AuthContext.Provider>
   )

@@ -34,7 +34,7 @@ export default function Onboarding({ onComplete }) {
     if (step === 2 && (!form.gross_income || !form.net_income)) {
       setError('Please fill in your income details.'); return
     }
-    if (step === 2 && !form.bank) {
+    if (step === 3 && !form.bank) {
       setError('Please select your bank.'); return
     }
     setStep(s => s + 1)
@@ -45,6 +45,7 @@ export default function Onboarding({ onComplete }) {
     try {
       const toC = v => v ? Math.round(parseFloat(v) * 100) : null
       const { error: err } = await supabase.from('profiles').upsert({
+        id: user.id,
         usage_type: form.usage_type || 'personal',
         full_name: form.full_name || null,
         gross_income: toC(form.gross_income),
