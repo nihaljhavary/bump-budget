@@ -244,13 +244,24 @@ function AITrendAnalysis({ txns, period }) {
 function BudgetChat({ txns, budgets }) {
   const { user, profile } = useAuth()
   const tier = useTier()
-  const [messages, setMessages] = useState([
-    { role:'bot', text:'Ask me anything about your spending. Try: "Where can I cut?" or "How long until I save R10k?"' }
-  ])
+  const INIT_MSG = { role:'bot', text:'Ask me anything about your spending. Try: "Where can I cut?" or "How long until I save R10k?"' }
+  const [messages, setMessages] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`bump_chat_${user?.id}`)
+      if (saved) { const p = JSON.parse(saved); if (p.length > 0) return p }
+    } catch {}
+    return [INIT_MSG]
+  })
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [usage, setUsage] = useState(null)
   const endRef = useRef(null)
+
+  useEffect(() => {
+    if (user?.id && messages.length > 1) {
+      localStorage.setItem(`bump_chat_${user.id}`, JSON.stringify(messages.slice(-30)))
+    }
+  }, [messages])
 
   useEffect(() => { endRef.current?.scrollIntoView({behavior:'smooth'}) }, [messages])
 
@@ -336,7 +347,7 @@ function BudgetChat({ txns, budgets }) {
 
 // ── Main Component ───────────────────────────────────────────────────────────
 export default function Analytics() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const [period, setPeriod] = useState('3M')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
@@ -444,6 +455,9 @@ export default function Analytics() {
             <div className="summary-item">
               <div className="summary-val green">{fmt(totalIncome)}</div>
               <div className="summary-lbl">income</div>
+              {totalIncome === 0 && (profile?.net_income || 0) > 0 && (
+                <div className="summary-income-note">declared: {fmtR(Math.round(profile.net_income / 100))}/mo</div>
+              )}
             </div>
             <div className="summary-divider"/>
             <div className="summary-item">

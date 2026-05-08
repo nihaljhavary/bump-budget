@@ -541,3 +541,5 @@
 
 .chat-send-btn:hover:not(:disabled) { background: #C0431F; }
 .chat-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.summary-income-note { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
