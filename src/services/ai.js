@@ -23,7 +23,7 @@ export async function parseTransaction(message) {
   return res.json()
 }
 
-export async function analyseSpending(transactions, _budgets, _income) {
+export async function analyseSpending(transactions, _budgets, income) {
   const token = await getToken()
   const res = await fetch('/.netlify/functions/analyse', {
     method: 'POST',
@@ -31,7 +31,7 @@ export async function analyseSpending(transactions, _budgets, _income) {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {})
     },
-    body: JSON.stringify({ transactions, question: '' })
+    body: JSON.stringify({ transactions, question: '', declaredIncome: income || 0 })
   })
   if (res.status === 429) {
     const data = await res.json().catch(() => ({}))

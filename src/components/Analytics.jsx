@@ -182,7 +182,7 @@ function DonutChart({ catSpend }) {
 
 // ── AI Trend Analysis ───────────────────────────────────────────────────────
 function AITrendAnalysis({ txns, period }) {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const [analysis, setAnalysis] = useState('')
   const [loading, setLoading] = useState(false)
   const [loaded, setLoaded] = useState(false)
@@ -196,9 +196,8 @@ function AITrendAnalysis({ txns, period }) {
         method: 'POST',
         headers: { 'Content-Type':'application/json', Authorization:`Bearer ${session.access_token}` },
         body: JSON.stringify({
-          action: 'trend',
           transactions: txns.slice(0,200),
-          period,
+          declaredIncome: (profile?.net_income || 0) / 100,
         })
       })
       const data = await resp.json()

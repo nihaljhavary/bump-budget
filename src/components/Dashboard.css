@@ -917,15 +917,19 @@
   /* ── Horizontal tabs → vertical sidebar tabs ── */
   .tabs {
     position: fixed;
-    top: 110px;
+    top: 180px;
     left: 0;
+    bottom: 0;
     width: 220px;
     flex-direction: column;
-    background: transparent;
+    background: var(--surface);
     border-bottom: none;
-    border-right: none;
-    padding: 0 12px;
+    border-right: 1px solid var(--border);
+    border-top: 1px solid var(--border);
+    padding: 8px 12px;
     gap: 2px;
+    z-index: 11;
+    overflow-y: auto;
   }
 
   .tab {
