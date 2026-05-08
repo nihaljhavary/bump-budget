@@ -48,11 +48,11 @@ Page transitions inside the app are handled via a local `page` state in `Protect
 5. `AuthContext` detects the session via `onAuthStateChange` and fetches the full profile row
 6. `ProtectedApp` checks `terms_accepted_at` and `onboarding_complete` to route the user appropriately
 7. Onboarding collects: usage type (personal/household/side_hustle/sole_prop), gross/net income, debit orders, savings goal, bank, and sets `onboarding_complete = true`
-8. Profile saves always use `.upsert({...}, { onConflict: 'id' })` to avoid "no rows updated" errors
+8. Profile saves always use `.upsert({ id: user.id, ...fields }, { onConflict: 'id' })` — the `id` field must be present or Supabase will attempt an INSERT and fail with a null primary key error
 
-`AuthContext` exposes: `{ user, profile, loading, refreshProfile }`
+`AuthContext` exposes: `{ user, profile, loading, refreshProfile, updateProfile }`
 
-The `updateProfile` function is not in `AuthContext` — it is called directly in components using `supabase.from('profiles').upsert(...)`.
+`updateProfile(updates)` upserts to `profiles` with `{ id: user.id, ...updates }` and refreshes the local profile state. Components should use this rather than calling `supabase.from('profiles')` directly.
 
 ---
 

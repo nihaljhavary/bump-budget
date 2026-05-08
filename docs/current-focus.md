@@ -13,6 +13,11 @@
 - Grocery price comparison across SA retailers
 - AI budget Q&A with rate limiting (10/month free, tracked in `budget_chat_usage`)
 - AI spending analysis with rate limiting (10/month free, tracked in `budget_chat_usage`)
+- Onboarding profile upsert (id field present, correct conflict handling)
+- Bank step validation correctly gated to the bank screen (step 3)
+- `updateProfile` in AuthContext — ProfileModal saves now persist correctly
+- Overview income toggle wired to `profile.net_income` (declared salary vs logged transactions)
+- Income Statement shows hint when no income transactions but profile salary is set
 - Support chatbot
 - FAQ accordion
 - Profile modal (name, income, debit orders, savings goal, bank)
@@ -49,9 +54,6 @@ The `manage-rules.js` Netlify Function exists for budget rules CRUD, but it is u
 **Mobile nav and responsive polish**
 The top navigation bar compresses poorly on small screens. The tab row overflows horizontally. Both are CSS-only fixes that do not require logic changes.
 
-**Onboarding income to overview**
-Users who complete onboarding expect their declared income to appear in the overview metrics. Currently it does not. The overview only shows transactions categorised as "Income". Adding a note or a seeded income transaction on onboarding completion would align expectations.
-
 ---
 
 ## Recommended next improvements
@@ -64,9 +66,7 @@ In rough priority order:
 
 3. **Mobile nav and responsive polish** -- the top navigation bar compresses poorly on small screens. CSS-only fix, no logic changes required.
 
-4. **Onboarding income to overview** -- users who complete onboarding expect their declared income to appear in overview metrics. Currently only transactions categorised as "Income" count.
-
-5. **Admin stats panel** -- add a third tab to `AdminDashboard` showing: total users, users by plan, AI calls this month, bookings this month. Data comes from a new `get_stats` action in `admin-data.js`.
+4. **Admin stats panel** -- add a third tab to `AdminDashboard` showing: total users, users by plan, AI calls this month, bookings this month. Data comes from a new `get_stats` action in `admin-data.js`.
 
 6. **Paystack webhook logging** -- log each incoming webhook event and its outcome to Supabase before processing. Allows replay and debugging.
 
@@ -86,7 +86,7 @@ In rough priority order:
 
 ## Suggested technical debt cleanup
 
-- The `vite.config.js.js` double-extension file still exists alongside the new `vite.config.js`. The `.js.js` file can be deleted once confirmed that Vite is reliably picking up `vite.config.js` across all environments.
+- The `vite.config.js.js` double-extension file still exists alongside `vite.config.js`. Safe to delete `vite.config.js.js` — Vite now reliably loads `vite.config.js`.
 - The multiple `supabase-schema-vN.sql` files (v1 through v6) in the root are migration history but are not organised. Consider moving them into a `supabase/migrations/` folder for clarity.
 - `Dashboard.jsx` at ~745 lines is a strong candidate for splitting. The `ProfileModal` and `ConsultRequestCard` sub-components at the bottom could be extracted into their own files without changing any logic.
 - `AuthContext.jsx` exports `useAuth` but does not export `updateProfile` -- components call `supabase.from('profiles').upsert(...)` directly. Centralising profile updates in `AuthContext` would reduce duplication.
