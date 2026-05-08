@@ -275,14 +275,6 @@ export default function Dashboard({ onNavigate }) {
         </div>
       </nav>
 
-      {/* Tier simulation banner */}
-      {tier.simulating && (
-        <div className="sim-banner">
-          Simulating <strong>{tier.simulating}</strong> tier —{' '}
-          <button className="sim-banner-exit" onClick={() => tier.setSimulatedPlan(null)}>Exit simulation</button>
-        </div>
-      )}
-
       {/* TABS */}
       <div className="tabs">
         {['overview', 'income statement', 'analytics', 'projections', 'groceries', 'budget', 'add spend', 'import', 'transactions'].map(t => (
@@ -459,46 +451,19 @@ export default function Dashboard({ onNavigate }) {
       )}
 
       {/* ANALYTICS */}
-      {tab === 'analytics' && (
-        tier.canAnalytics
-          ? <Analytics />
-          : <div className="tab-body">
-              <LockedFeature locked feature="analytics">
-                <div className="locked-placeholder">
-                  <div className="locked-placeholder-title">Spend analytics</div>
-                  <p className="locked-placeholder-sub">Detailed category breakdowns, trends and spending patterns over your full history.</p>
-                </div>
-              </LockedFeature>
-            </div>
-      )}
+      {tab === 'analytics' && <Analytics />}
 
       {/* PROJECTIONS */}
       {tab === 'projections' && (
         <div className="tab-body">
-          {tier.canProjections
-            ? <Projections />
-            : <LockedFeature locked feature="projections">
-                <div className="locked-placeholder">
-                  <div className="locked-placeholder-title">Financial projections</div>
-                  <p className="locked-placeholder-sub">Model your savings, debt payoff and investment growth over 1, 5 or 10 years.</p>
-                </div>
-              </LockedFeature>
-          }
+          <Projections />
         </div>
       )}
 
       {/* GROCERY COMPARISON */}
       {tab === 'groceries' && (
         <div className="tab-body">
-          {tier.canGroceries
-            ? <GroceryComparison />
-            : <LockedFeature locked feature="groceries">
-                <div className="locked-placeholder">
-                  <div className="locked-placeholder-title">Grocery price comparison</div>
-                  <p className="locked-placeholder-sub">See whether Checkers, Pick n Pay, Woolworths or Shoprite is cheaper for your actual shopping list.</p>
-                </div>
-              </LockedFeature>
-          }
+          <GroceryComparison />
         </div>
       )}
 

@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
-import { useTier } from '../context/TierContext'
 import './AdminDashboard.css'
 
 const CAT_COLORS = {
@@ -36,7 +35,6 @@ async function callAdmin(action, extra = {}) {
 }
 
 export default function AdminDashboard({ onBack }) {
-  const { simulatedPlan, setSimulatedPlan } = useTier()
   const [data, setData]             = useState({ requests: [], bookings: [], profiles: [] })
   const [loading, setLoading]       = useState(true)
   const [actionId, setActionId]     = useState(null)
@@ -92,20 +90,6 @@ export default function AdminDashboard({ onBack }) {
           <span className="admin-tag">admin</span>
         </div>
         <div className="nav-right">
-          <div className="sim-wrap">
-            <label className="sim-label">Simulate tier</label>
-            <select
-              className="sim-select"
-              value={simulatedPlan || ''}
-              onChange={e => setSimulatedPlan(e.target.value || null)}
-            >
-              <option value="">Admin (default)</option>
-              <option value="free">Free</option>
-              <option value="starter">Starter</option>
-              <option value="growth">Growth</option>
-              <option value="pro">Pro</option>
-            </select>
-          </div>
           <button className="btn-ghost-sm" onClick={onBack}>← Dashboard</button>
         </div>
       </nav>

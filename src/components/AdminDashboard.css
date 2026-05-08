@@ -343,9 +343,3 @@
 }
 .typing span:nth-child(2) { animation-delay: 0.2s; }
 .typing span:nth-child(3) { animation-delay: 0.4s; }
-
-/* Tier simulation toggle */
-.sim-wrap { display: flex; align-items: center; gap: 8px; }
-.sim-label { font-size: 11px; color: var(--muted); white-space: nowrap; }
-.sim-select { background: var(--card-bg, #1A1008); border: 1px solid var(--coral, #E8613A); border-radius: 6px; color: var(--text); font-size: 12px; padding: 5px 10px; font-family: 'DM Sans', sans-serif; cursor: pointer; }
-.sim-select:focus { outline: none; }
