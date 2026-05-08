@@ -76,7 +76,7 @@ const QUESTIONS = [
 ]
 
 export default function Recommendations() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const [step, setStep] = useState('intro')   // 'intro' | 'quiz' | 'loading' | 'results'
   const [qIndex, setQIndex] = useState(0)
   const [answers, setAnswers] = useState({})
@@ -85,12 +85,46 @@ export default function Recommendations() {
   const [error, setError] = useState('')
   const [spendingData, setSpendingData] = useState(null)
   const [budgets, setBudgets] = useState({})
+  const [savedDate, setSavedDate] = useState(null)
 
   // Load spending data and budgets
   useEffect(() => {
     if (!user) return
     loadData()
   }, [user])
+
+  // Restore saved results from localStorage (max 7 days old)
+  useEffect(() => {
+    if (!user) return
+    try {
+      const saved = localStorage.getItem(`bump_rec_${user.id}`)
+      if (saved) {
+        const { answers: sa, result: sr, savedAt } = JSON.parse(saved)
+        const ageDays = (Date.now() - savedAt) / (1000 * 60 * 60 * 24)
+        if (sr && ageDays < 7) {
+          setAnswers(sa || {})
+          setResult(sr)
+          setStep('results')
+          setSavedDate(new Date(savedAt))
+        }
+      }
+    } catch {}
+  }, [user])
+
+  // Pre-fill income and savings goal from profile when available
+  useEffect(() => {
+    if (!profile) return
+    setAnswers(prev => {
+      const updated = { ...prev }
+      if (!updated.income && profile.net_income) {
+        updated.income = String(Math.round(profile.net_income / 100))
+      }
+      if (!updated.savingsGoal && profile.savings_goal) {
+        updated.savingsGoal = String(Math.round(profile.savings_goal / 100))
+      }
+      return updated
+    })
+  }, [profile])
 
   async function loadData() {
     try {
@@ -168,6 +202,15 @@ export default function Recommendations() {
       if (!res.ok) throw new Error(d.error || 'Failed to get recommendations')
       setResult(d.result)
       setStep('results')
+      // Persist answers and results
+      try {
+        localStorage.setItem(`bump_rec_${user?.id}`, JSON.stringify({
+          answers: finalAnswers,
+          result: d.result,
+          savedAt: Date.now()
+        }))
+        setSavedDate(new Date())
+      } catch {}
     } catch (e) {
       setError(e.message)
       setStep('quiz')
@@ -204,7 +247,7 @@ export default function Recommendations() {
             </div>
           )}
 
-          <button className="rec-start-btn" onClick={() => { setStep('quiz'); setQIndex(0); setCurrentVal('') }}>
+          <button className="rec-start-btn" onClick={() => { setStep('quiz'); setQIndex(0); setCurrentVal(answers[QUESTIONS[0].id] || '') }}>
             Start analysis →
           </button>
         </div>
@@ -291,6 +334,15 @@ export default function Recommendations() {
 
     return (
       <div className="rec-shell rec-results-shell">
+        {savedDate && (
+          <div className="rec-saved-badge">
+            Last analysed {savedDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}
+            {' — '}
+            <button className="rec-update-btn" onClick={() => { setStep('quiz'); setQIndex(0); setCurrentVal(answers[QUESTIONS[0].id] || '') }}>
+              Update answers
+            </button>
+          </div>
+        )}
         {/* Health score */}
         <div className="rec-score-card">
           <div className="rec-score-ring" style={{ '--score-color': scoreColor }}>
@@ -384,7 +436,14 @@ export default function Recommendations() {
           </div>
         )}
 
-        <button className="rec-redo-btn" onClick={() => { setStep('intro'); setResult(null); setAnswers({}) }}>
+        <button className="rec-redo-btn" onClick={() => {
+          try { localStorage.removeItem(`bump_rec_${user?.id}`) } catch {}
+          setStep('intro'); setResult(null); setAnswers({
+            // Keep profile-derived values when clearing manual answers
+            ...(profile?.net_income ? { income: String(Math.round(profile.net_income / 100)) } : {}),
+            ...(profile?.savings_goal ? { savingsGoal: String(Math.round(profile.savings_goal / 100)) } : {}),
+          }); setSavedDate(null)
+        }}>
           Run analysis again
         </button>
       </div>

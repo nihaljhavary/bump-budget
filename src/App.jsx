@@ -26,7 +26,8 @@ function ProtectedApp() {
   if (!user) return <Navigate to="/" replace />
   if (!profile?.terms_accepted_at) return <Auth termsOnly />
 
-  if (profile && !profile.onboarding_complete) {
+  const isAdmin = profile?.is_admin === true || profile?.role === 'admin'
+  if (profile && !profile.onboarding_complete && !isAdmin) {
     return <Onboarding onComplete={() => {}} />
   }
 

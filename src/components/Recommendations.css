@@ -570,3 +570,25 @@
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* Saved analysis badge */
+.rec-saved-badge {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+  padding: 6px 0 2px;
+  margin-bottom: 4px;
+}
+.rec-update-btn {
+  background: none;
+  border: none;
+  color: var(--coral);
+  font-size: 12px;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+.rec-update-btn:hover {
+  opacity: 0.8;
+}
