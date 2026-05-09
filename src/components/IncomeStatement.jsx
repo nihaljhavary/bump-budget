@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { fetchTransactionsByRange } from '../services/transactions'
-import { buildFinancialSummary, buildAIPayload } from '../utils/financials'
+import { buildFinancialSummary, buildAIPayload, groupByMonth } from '../utils/financials'
+import { analyseSpending } from '../services/ai'
 import './IncomeStatement.css'
 
 const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
@@ -109,17 +110,15 @@ export default function IncomeStatement() {
   async function generateAI() {
     setAiLoading(true)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
       const top3 = allCats.slice(0, 3).map(c => `${c}: ${fmt(stmt.catTotals[c] || 0)}`).join(', ')
-      const question = `Here is my income statement for the period ${from} to ${to}. Total income: ${fmt(stmt.income)}. Total expenses: ${fmt(stmt.totalExpenses)}. Net: ${fmt(stmt.net)}. Top categories: ${top3}.${compStmt ? ` Previous period net was ${fmt(compStmt.net)}, expenses ${fmt(compStmt.totalExpenses)}.` : ''} Give me 3-4 plain-text insights about movements and what to watch. Be specific with rand amounts.`
-      // Use buildAIPayload so AI gets consistent income context and Transfer-filtered transactions
-      const aiPayload = buildAIPayload(txns, profile)
-      const res = await fetch('/.netlify/functions/analyse', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ ...aiPayload, question })
+      const compNote = compStmt ? ` Previous period: income ${fmt(compStmt.income)}, expenses ${fmt(compStmt.totalExpenses)}, net ${fmt(compStmt.net)}.` : ''
+      const question = `Income statement ${from} to ${to}. Income: ${fmt(stmt.income)}, expenses: ${fmt(stmt.totalExpenses)}, net: ${fmt(stmt.net)}. Top categories: ${top3}.${compNote} Interpret the story these numbers tell and what to act on.`
+      const payload = buildAIPayload(txns, profile, 200, {
+        mode: 'income_statement',
+        monthlyData: groupByMonth(txns),
+        question,
       })
-      const data = await res.json()
+      const data = await analyseSpending(payload)
       setAiText(data.analysis || '')
     } catch { setAiText('Could not generate insights. Please try again.') }
     setAiLoading(false)

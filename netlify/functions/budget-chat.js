@@ -2,13 +2,9 @@ import { createClient } from '@supabase/supabase-js'
 
 const FORMAT_RULES = `Never use em dashes (—). Never use the tilde symbol (~). Never use markdown bold (**text**). Write in plain prose.`
 
-const SYSTEM_PROMPT = `You are bump.'s personal finance coach — a warm, direct, South African money advisor. You have been given a user's recent transaction data, their income, and their fixed expenses. Answer questions about their spending clearly and honestly. Give specific Rand amounts. Be concise (2-4 sentences max per answer). Always be constructive and actionable.
+const SYSTEM_PROMPT = `You are bump.'s personal finance coach -- a warm, sharp South African money advisor. You have the user's actual transaction data below. Answer their question directly and specifically. Always cite real rand amounts from their data. Be like a knowledgeable friend: honest, constructive, never robotic. 2-4 sentences per answer unless the question needs more.
 
-South African context:
-- Currency is ZAR (Rand). Transaction amounts are in Rands. Profile fields (income, debit orders, savings goal) are stored as integer cents and already converted to Rands in context.
-- Common categories: Groceries, Eating out, Transport, Housing, Entertainment, Health, Fuel, Subscriptions, Utilities
-- Retailers: Woolworths, Checkers, Pick n Pay, Shoprite, Spar, Dis-Chem, Clicks
-- Banks: FNB, ABSA, Nedbank, Capitec, Standard Bank, Discovery Bank, TymeBank
+South African context: ZAR currency. Common retailers: Woolworths, Checkers, Pick n Pay, Shoprite, Dis-Chem. Banks: FNB, ABSA, Nedbank, Capitec, Standard Bank, Discovery Bank, TymeBank.
 
 ${FORMAT_RULES}`
 
@@ -63,7 +59,7 @@ export async function handler(event) {
     }
   }
 
-  // Build context
+  // Build context from last 90 days
   const now = new Date()
   const last90Days = (transactions || []).filter(t => {
     const d = new Date(t.date)
@@ -72,34 +68,55 @@ export async function handler(event) {
 
   const catTotals = {}
   for (const t of last90Days) {
-    if (t.category !== 'Income') catTotals[t.category] = (catTotals[t.category] || 0) + t.amount
+    // Exclude Income and Transfer -- transfers are not lifestyle spend
+    if (t.category === 'Income' || t.category === 'Transfer') continue
+    catTotals[t.category] = (catTotals[t.category] || 0) + t.amount
   }
   const totalSpend = Object.values(catTotals).reduce((s, v) => s + v, 0)
   const totalIncome = last90Days.filter(t => t.category === 'Income').reduce((s, t) => s + t.amount, 0)
 
+  // Pre-compute monthly averages
+  const monthlyNetIncome = profile?.net_income ? Math.round(profile.net_income / 100) : 0
+  const monthlyDebitOrders = profile?.monthly_debit_orders ? Math.round(profile.monthly_debit_orders / 100) : 0
+  const monthlySavingsGoal = profile?.savings_goal ? Math.round(profile.savings_goal / 100) : 0
+  const avgMonthlySpend = Math.round(totalSpend / 3)
+  const avgMonthlyIncome = totalIncome > 0 ? Math.round(totalIncome / 3) : monthlyNetIncome
+  const avgMonthlyNet = avgMonthlyIncome - avgMonthlySpend
+  const savingsRate = avgMonthlyIncome > 0 ? Math.round((avgMonthlyNet / avgMonthlyIncome) * 100) : 0
+  const savingsShortfall = monthlySavingsGoal > 0 ? monthlySavingsGoal - avgMonthlyNet : 0
+
   const catSummary = Object.entries(catTotals)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10)
-    .map(([cat, amt]) => `${cat}: R${Math.round(amt).toLocaleString('en-ZA')} over 90 days (avg R${Math.round(amt/3).toLocaleString('en-ZA')}/mo)`)
+    .map(([cat, amt]) => {
+      const monthly = Math.round(amt / 3)
+      const budget = monthlyBudgets?.[cat] ? Math.round(monthlyBudgets[cat]) : null
+      if (budget) {
+        const diff = monthly - budget
+        const status = diff > 0 ? `OVER by R${Math.round(diff).toLocaleString('en-ZA')}` : diff > -budget * 0.2 ? 'near limit' : 'on track'
+        return `${cat}: R${monthly.toLocaleString('en-ZA')}/mo avg (budget R${budget.toLocaleString('en-ZA')}) -- ${status}`
+      }
+      return `${cat}: R${monthly.toLocaleString('en-ZA')}/mo avg`
+    })
     .join('\n')
 
   const contextBlock = `
-USER FINANCIAL CONTEXT (last 90 days):
-Net income: ${profile?.net_income ? 'R'+Math.round(profile.net_income/100).toLocaleString('en-ZA')+'/mo' : 'unknown'}
-Fixed debit orders: ${profile?.monthly_debit_orders ? 'R'+Math.round(profile.monthly_debit_orders/100).toLocaleString('en-ZA')+'/mo' : 'unknown'}
-Savings goal: ${profile?.savings_goal ? 'R'+Math.round(profile.savings_goal/100).toLocaleString('en-ZA')+'/mo' : 'not set'}
+USER FINANCIAL CONTEXT (90-day average, transfers excluded):
+Monthly net income: ${monthlyNetIncome > 0 ? 'R' + monthlyNetIncome.toLocaleString('en-ZA') + '/mo (declared)' : avgMonthlyIncome > 0 ? 'R' + avgMonthlyIncome.toLocaleString('en-ZA') + '/mo (from transactions)' : 'unknown'}
+Fixed debit orders: ${monthlyDebitOrders > 0 ? 'R' + monthlyDebitOrders.toLocaleString('en-ZA') + '/mo' : 'unknown'}
+Savings goal: ${monthlySavingsGoal > 0 ? 'R' + monthlySavingsGoal.toLocaleString('en-ZA') + '/mo' : 'not set'}
 Bank: ${profile?.bank || 'unknown'}
-Discovery Vitality cashback: ${profile?.vitality_cashback_pct > 0 ? profile.vitality_cashback_pct+'%' : 'none'}
 
-SPENDING LAST 90 DAYS:
-Total spend: R${Math.round(totalSpend).toLocaleString('en-ZA')}
-Total income: R${Math.round(totalIncome).toLocaleString('en-ZA')}
-Net: R${Math.round(totalIncome-totalSpend).toLocaleString('en-ZA')}
+AVERAGE MONTHLY PERFORMANCE:
+Avg spend: R${avgMonthlySpend.toLocaleString('en-ZA')}/mo
+Avg income: R${avgMonthlyIncome.toLocaleString('en-ZA')}/mo
+Avg net: ${avgMonthlyNet >= 0 ? 'R' + avgMonthlyNet.toLocaleString('en-ZA') + ' surplus' : 'R' + Math.abs(avgMonthlyNet).toLocaleString('en-ZA') + ' DEFICIT'}
+Savings rate: ${savingsRate}%${monthlySavingsGoal > 0 ? (savingsShortfall > 0 ? ` (SHORT of R${monthlySavingsGoal.toLocaleString('en-ZA')} goal by R${savingsShortfall.toLocaleString('en-ZA')})` : ' (meeting savings goal)') : ''}
 
-Category breakdown:
+CATEGORY BREAKDOWN (monthly averages, budget vs actual):
 ${catSummary}
 
-${monthlyBudgets && Object.keys(monthlyBudgets).length > 0 ? `Monthly budgets set:\n${Object.entries(monthlyBudgets).map(([cat, amt]) => `${cat}: R${Math.round(amt/100).toLocaleString('en-ZA')}`).join('\n')}` : 'No budgets set yet.'}`
+${monthlyBudgets && Object.keys(monthlyBudgets).length > 0 ? `Monthly budgets set:\n${Object.entries(monthlyBudgets).map(([cat, amt]) => `${cat}: R${Math.round(amt).toLocaleString('en-ZA')}`).join('\n')}` : 'No budgets set yet.'}`
 
   const messages = [
     ...conversationHistory.slice(-6),

@@ -3,7 +3,7 @@ import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { useTier, isDateAllowed, PLAN_PRICES } from '../context/TierContext'
 import { fetchTransactions, fetchTransactionsByMonth, addTransaction, updateTransaction, deleteTransaction } from '../services/transactions'
-import { filterSpend, sumByCategory, sumSpend, sumTxnIncome, buildAIPayload, profileCentsToRands } from '../utils/financials'
+import { filterSpend, sumByCategory, sumSpend, sumTxnIncome, buildAIPayload, profileCentsToRands, groupByMonth } from '../utils/financials'
 import { parseTransaction, analyseSpending } from '../services/ai'
 import ImportTransactions from './ImportTransactions'
 import Analytics from './Analytics'
@@ -255,12 +255,12 @@ export default function Dashboard({ onNavigate }) {
     setAiLoading(true)
     setAiText('')
     try {
-      const profileCtx = {
-        savings_goal: (profile?.savings_goal || 0) / 100,
-        monthly_debit_orders: (profile?.monthly_debit_orders || 0) / 100,
-        usage_type: profile?.usage_type || 'personal',
-      }
-      const result = await analyseSpending(allowedTransactions, [], income, profileCtx)
+      const payload = buildAIPayload(allowedTransactions, profile, 200, {
+        mode: 'overview',
+        budgets: BUDGETS,
+        monthlyData: groupByMonth(allowedTransactions),
+      })
+      const result = await analyseSpending(payload)
       setAiText(result.analysis)
     } catch {
       setAiText('Analysis failed -- check your connection and try again.')

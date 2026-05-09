@@ -192,15 +192,23 @@ export function buildFinancialSummary(transactions, profile, opts = {}) {
  * - Filters Transfer transactions before sending (they inflate spend metrics)
  * - Always provides declaredIncome for AI context
  * - Provides consistent profileContext
+ * - Optionally includes budgets, recurringContext, monthlyData, mode
  *
  * Use this for all calls to /.netlify/functions/analyse
  *
  * @param {Array}  transactions  - full transaction set
  * @param {Object} profile       - user profile
  * @param {number} [limit=200]   - max transactions to send
- * @returns {{ transactions, declaredIncome, profileContext }}
+ * @param {Object} [opts]        - optional extra fields
+ * @param {Object} [opts.budgets]         - { category: rands } user budgets
+ * @param {string} [opts.recurringContext] - compact string from recurringToContext()
+ * @param {Object} [opts.monthlyData]     - { 'YYYY-MM': { spend, income } }
+ * @param {string} [opts.mode]            - 'overview' | 'analytics' | 'income_statement'
+ * @returns payload object for /.netlify/functions/analyse
  */
-export function buildAIPayload(transactions, profile, limit = 200) {
+export function buildAIPayload(transactions, profile, limit = 200, opts = {}) {
+  const { budgets, recurringContext, monthlyData, mode } = opts
+
   const aiTxns = (transactions || [])
     .filter(t => t.category !== 'Transfer')
     .slice(0, limit)
@@ -213,5 +221,12 @@ export function buildAIPayload(transactions, profile, limit = 200) {
     usage_type:           profile?.usage_type || 'personal',
   }
 
-  return { transactions: aiTxns, declaredIncome, profileContext }
+  const payload = { transactions: aiTxns, declaredIncome, profileContext }
+
+  if (budgets && Object.keys(budgets).length > 0) payload.budgets = budgets
+  if (typeof recurringContext === 'string' && recurringContext.length > 0) payload.recurringContext = recurringContext
+  if (monthlyData && Object.keys(monthlyData).length > 0) payload.monthlyData = monthlyData
+  if (mode) payload.mode = mode
+
+  return payload
 }

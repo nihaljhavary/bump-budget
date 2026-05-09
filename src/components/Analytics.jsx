@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { useTier } from '../context/TierContext'
 import { fetchTransactionsByRange } from '../services/transactions'
 import { groupByMonth, sumByCategory, buildAIPayload } from '../utils/financials'
+import { analyseSpending } from '../services/ai'
 import './Analytics.css'
 
 const CATEGORIES = [
@@ -165,7 +166,7 @@ function DonutChart({ catSpend }) {
 }
 
 // ── AI Trend Analysis ───────────────────────────────────────────────────────
-function AITrendAnalysis({ txns, period, profileContext }) {
+function AITrendAnalysis({ txns, period, budgets }) {
   const { user, profile } = useAuth()
   const [analysis, setAnalysis] = useState('')
   const [loading, setLoading] = useState(false)
@@ -175,16 +176,13 @@ function AITrendAnalysis({ txns, period, profileContext }) {
     if (loaded || loading) return
     setLoading(true)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      // buildAIPayload: filters transfers, provides consistent declared income + profile context
-      const aiPayload = buildAIPayload(txns, profile)
-      const resp = await fetch('/.netlify/functions/analyse', {
-        method: 'POST',
-        headers: { 'Content-Type':'application/json', Authorization:`Bearer ${session.access_token}` },
-        body: JSON.stringify(aiPayload)
+      const payload = buildAIPayload(txns, profile, 200, {
+        mode: 'analytics',
+        budgets: budgets || {},
+        monthlyData: groupByMonth(txns),
       })
-      const data = await resp.json()
-      setAnalysis(data.analysis || data.text || data.message || 'Analysis complete.')
+      const data = await analyseSpending(payload)
+      setAnalysis(data.analysis || 'Analysis complete.')
       setLoaded(true)
     } catch (err) {
       setAnalysis('Could not load analysis right now.')
@@ -516,7 +514,7 @@ export default function Analytics() {
           </div>
 
           {/* AI Trend Analysis */}
-          <AITrendAnalysis txns={txns} period={period} profileContext={{ savings_goal: (profile?.savings_goal||0)/100, monthly_debit_orders: (profile?.monthly_debit_orders||0)/100, usage_type: profile?.usage_type||'personal' }}/>
+          <AITrendAnalysis txns={txns} period={period} budgets={budgets} />
 
           {/* Budget Q&A */}
           <BudgetChat txns={txns} budgets={budgets}/>

@@ -23,15 +23,33 @@ export async function parseTransaction(message) {
   return res.json()
 }
 
-export async function analyseSpending(transactions, _budgets, income, profileContext) {
+/**
+ * Call the analyse function with an AI payload.
+ *
+ * @param {Object} payload - built by buildAIPayload() from financials.js
+ *                           May include: transactions, declaredIncome, profileContext,
+ *                           budgets, recurringContext, monthlyData, mode, question
+ */
+export async function analyseSpending(payload) {
   const token = await getToken()
+  const body = {
+    transactions:     payload.transactions     || [],
+    question:         payload.question         || '',
+    declaredIncome:   payload.declaredIncome   || 0,
+    profileContext:   payload.profileContext   || null,
+  }
+  if (payload.budgets)          body.budgets          = payload.budgets
+  if (payload.recurringContext) body.recurringContext = payload.recurringContext
+  if (payload.monthlyData)      body.monthlyData      = payload.monthlyData
+  if (payload.mode)             body.mode             = payload.mode
+
   const res = await fetch('/.netlify/functions/analyse', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {})
     },
-    body: JSON.stringify({ transactions, question: '', declaredIncome: income || 0, profileContext: profileContext || null })
+    body: JSON.stringify(body)
   })
   if (res.status === 429) {
     const data = await res.json().catch(() => ({}))
