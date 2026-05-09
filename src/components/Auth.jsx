@@ -24,10 +24,11 @@ export default function Auth({ termsOnly = false }) {
 
   const [email, setEmail]         = useState('')
   const [password, setPassword]   = useState('')
-  const [mode, setMode]           = useState('magic')
+  const [mode, setMode]           = useState('magic')   // 'magic' | 'password' | 'forgot'
   const [authTab, setAuthTab]     = useState('signin')
   const [loading, setLoading]     = useState(false)
   const [sent, setSent]           = useState(false)
+  const [sentType, setSentType]   = useState('magic')   // 'magic' | 'reset'
   const [error, setError]         = useState('')
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [showTerms, setShowTerms] = useState(false)
@@ -71,16 +72,24 @@ export default function Auth({ termsOnly = false }) {
     )
   }
 
+  // Sent screen — used for both magic link and password reset emails
   if (sent) {
     return (
       <div className="auth-shell">
         <div className="auth-card">
           <div className="auth-logo">bump<span className="logo-dot" /></div>
           <div className="auth-sent">
-            <div className="auth-sent-icon">✉️</div>
+            <div className="auth-sent-icon">{sentType === 'reset' ? '🔑' : '✉️'}</div>
             <h2>Check your inbox</h2>
-            <p>We sent a magic link to <strong>{email}</strong>. Click it to sign in.</p>
-            <button className="btn-ghost" onClick={() => setSent(false)}>Use a different email</button>
+            <p>
+              {sentType === 'reset'
+                ? <span>We sent a password reset link to <strong>{email}</strong>. Click it to set a new password.</span>
+                : <span>We sent a magic link to <strong>{email}</strong>. Click it to sign in.</span>
+              }
+            </p>
+            <button className="btn-ghost" onClick={() => { setSent(false); setMode(sentType === 'reset' ? 'password' : 'magic') }}>
+              {sentType === 'reset' ? 'Back to sign in' : 'Use a different email'}
+            </button>
           </div>
         </div>
       </div>
@@ -95,7 +104,7 @@ export default function Auth({ termsOnly = false }) {
       options: { emailRedirectTo: window.location.origin + '/app' }
     })
     if (err) setError(err.message)
-    else setSent(true)
+    else { setSentType('magic'); setSent(true) }
     setLoading(false)
   }
 
@@ -111,9 +120,23 @@ export default function Auth({ termsOnly = false }) {
     if (!email || !password) { setError('Fill in your email and password'); return }
     if (password.length < 6) { setError('Password must be at least 6 characters'); return }
     setLoading(true); setError('')
-    const { error: err } = await supabase.auth.signUp({ email, password })
+    const { error: err } = await supabase.auth.signUp({
+      email, password,
+      options: { emailRedirectTo: window.location.origin + '/app' }
+    })
     if (err) setError(err.message)
-    else setSent(true)
+    else { setSentType('magic'); setSent(true) }
+    setLoading(false)
+  }
+
+  async function sendForgotPassword() {
+    if (!email) { setError('Enter your email address first'); return }
+    setLoading(true); setError('')
+    const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/app'
+    })
+    if (err) setError(err.message)
+    else { setSentType('reset'); setSent(true) }
     setLoading(false)
   }
 
@@ -127,10 +150,12 @@ export default function Auth({ termsOnly = false }) {
         <h2 className="auth-title">Understand your money</h2>
         <p className="auth-sub">South Africa's smartest personal finance app</p>
 
-        <div className="auth-mode-toggle">
-          <button className={`auth-mode-btn ${authTab === 'signin' ? 'active' : ''}`} onClick={() => switchTab('signin')}>Sign in</button>
-          <button className={`auth-mode-btn ${authTab === 'signup' ? 'active' : ''}`} onClick={() => switchTab('signup')}>Create account</button>
-        </div>
+        {mode !== 'forgot' && (
+          <div className="auth-mode-toggle">
+            <button className={`auth-mode-btn ${authTab === 'signin' ? 'active' : ''}`} onClick={() => switchTab('signin')}>Sign in</button>
+            <button className={`auth-mode-btn ${authTab === 'signup' ? 'active' : ''}`} onClick={() => switchTab('signup')}>Create account</button>
+          </div>
+        )}
 
         {error && <div className="auth-error">{error}</div>}
 
@@ -169,8 +194,30 @@ export default function Auth({ termsOnly = false }) {
               ? <button className="btn-primary" onClick={signIn} disabled={loading}>{loading ? 'Signing in...' : 'Sign in'}</button>
               : <button className="btn-primary" onClick={signUp} disabled={loading}>{loading ? 'Creating account...' : 'Create account'}</button>
             }
+            {authTab === 'signin' && (
+              <button className="btn-ghost" onClick={() => switchMode('forgot')} style={{ fontSize: 13, opacity: 0.75 }}>
+                Forgot password?
+              </button>
+            )}
             <div className="auth-divider">or</div>
             <button className="btn-ghost" onClick={() => switchMode('magic')}>Use magic link instead</button>
+          </>
+        )}
+
+        {mode === 'forgot' && (
+          <>
+            <p className="auth-sub" style={{ marginBottom: 20 }}>Enter your email and we'll send you a reset link.</p>
+            <div className="auth-field">
+              <label className="auth-field-label">Email</label>
+              <input className="auth-input" type="email" placeholder="your@email.com"
+                value={email} onChange={e => setEmail(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && sendForgotPassword()} autoComplete="email" />
+            </div>
+            <button className="btn-primary" onClick={sendForgotPassword} disabled={loading}>
+              {loading ? 'Sending...' : 'Send reset link'}
+            </button>
+            <div className="auth-divider">or</div>
+            <button className="btn-ghost" onClick={() => switchMode('password')}>Back to sign in</button>
           </>
         )}
 
