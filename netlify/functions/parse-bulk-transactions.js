@@ -27,7 +27,6 @@ function chunk(arr, n) {
 }
 
 export async function handler(event) {
-  console.log('parse-bulk-transactions called', event.httpMethod)
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' }
   }
@@ -67,9 +66,7 @@ export async function handler(event) {
 
   // ── 2. Auth ────────────────────────────────────────────────────────────────
   const authHeader = event.headers['authorization'] || event.headers['Authorization'] || ''
-  console.log('auth header present:', authHeader.startsWith('Bearer '))
   if (!authHeader.startsWith('Bearer ')) {
-    console.log('returning 401 - no bearer token')
     return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized - no session token' }) }
   }
   const token = authHeader.slice(7)
@@ -131,17 +128,20 @@ export async function handler(event) {
     const userCat = applyRules(rules, t.description)
     // SA merchant pre-categorisation second
     const saCat = userCat ? null : saPreCategory(t.description)
+    // is_income hint from frontend parser: if debit/credit columns said this was a credit
+    // and nothing else matched, mark as Income before falling back to Claude
+    const hintCat = (!userCat && !saCat && t.is_income === true) ? 'Income' : null
     return {
       idx,
       ...t,
-      category: userCat || saCat || null
+      category: userCat || saCat || hintCat || null
     }
   })
 
   const needsClaude = withRules.filter(t => !t.category)
   const hasCategory = withRules.filter(t => t.category)
 
-  console.log(`Pre-categorised: ${hasCategory.length}, needs Claude: ${needsClaude.length}`)
+  // console.log(`Pre-categorised: ${hasCategory.length}, needs Claude: ${needsClaude.length}`)
 
   let claudeCategorised = []
 
