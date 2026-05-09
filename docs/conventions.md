@@ -170,3 +170,51 @@ These rules exist because the Linux sandbox and Windows file tools share a mount
    Increment N each session to avoid reusing a stale index file.
 
 6. **Git push always fails from Linux** (no credentials). Tell the user to run `git push origin dev` from Windows Git Bash.
+---
+
+## Transaction categorisation conventions
+
+### Category list and priority
+
+The canonical category list lives in `netlify/functions/sa-categorise.js` (`CATEGORIES` export). This is the single source of truth. `manage-rules.js` must mirror it. Any new category requires updates in both files plus `CAT_COLORS` and `CAT_ICONS` in `Dashboard.jsx`.
+
+Current categories (21): Income, Transfer, Housing, Groceries, Eating out, Transport, Entertainment, Health, Clothing, Subscriptions, Education, Insurance, Savings, Fuel, ATM / Cash, Fees & Charges, Utilities, Travel, Gifts, Home & Garden, Other.
+
+### Spend filtering — use EXCLUDED_FROM_SPEND
+
+`Income` and `Transfer` must be excluded from all spend calculations. Never filter only `!== 'Income'`. Use:
+
+```js
+import { isSpendTransaction } from '../services/transactions'
+const spendTxns = transactions.filter(isSpendTransaction)
+```
+
+Or manually: `t.category !== 'Income' && t.category !== 'Transfer'`
+
+This must be applied consistently in: `Dashboard.jsx` (spendTxns), `Analytics.jsx` (groupByMonth, groupByCategory), `IncomeStatement.jsx` (buildStatement), and any new component that aggregates spend.
+
+### Categorisation pipeline priority order
+
+1. User-defined rules (`categorization_rules` table) — always highest priority
+2. SA rules (`saPreCategory()` from `sa-categorise.js`) — substring match, no API
+3. Claude Haiku — only if layers 1–2 return null
+4. "Other" — last resort only; never assign proactively
+
+User corrections override AI. Never persist an AI-assigned category over a user-corrected one.
+
+### Merchant vs category separation
+
+The `transactions.name` field stores the merchant/description (e.g. "Woolworths Kenilworth"). The `transactions.category` field stores the semantic category (e.g. "Clothing"). Do not conflate them. The `normalizeDescription()` function in `sa-categorise.js` strips bank statement noise (prefix codes, long reference numbers) from merchant names before display.
+
+### Transfer category purpose
+
+`Transfer` is for internal account movements and person-to-person payments (Discovery Pay, PayShap, own-account EFTs, savings account transfers). These are not lifestyle spend. Classifying them as Transfer prevents inflation of spend totals, spend-per-category breakdowns, and AI spend analysis. They are visible in the transaction list but excluded from all spend aggregations.
+
+### Recurring detection conventions
+
+`detectRecurring(transactions)` in `src/services/recurring.js` is a client-side utility. Key behaviour:
+- Requires transactions across ≥2 calendar months
+- Confidence 0–1: 0.5+ is usable, 0.7+ is high confidence
+- Types: `subscription`, `debit_order`, `salary`, `transfer`, `recurring_spend`
+- Does not modify transactions or persist anything — callers decide what to do with results
+- `recurringToContext(items)` formats results for AI prompt injection

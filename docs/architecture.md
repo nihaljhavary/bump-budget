@@ -75,7 +75,7 @@ The context exposes: `plan`, `isAdmin`, `canAnalytics`, `canProjections`, `canGr
 
 ### Admin tier simulation
 
-Admins can simulate any plan from the `AdminDashboard` nav dropdown. The selected plan is stored in `localStorage` under key `bumpSimPlan`. When a simulated plan is active, `Dashboard` shows an orange banner with an "Exit simulation" button. The simulation modifies the entire tier context as if the admin were a user on that plan.
+Admins can simulate any plan from the `AdminDashboard` nav dropdown. The selected plan is stored in `localStorage` under key `bumpSimPlan` and in `TierProvider` React state. When a simulated plan is active, `Dashboard` shows an orange banner with an "Exit simulation" button. The simulation modifies the entire tier context — `canAnalytics`, `canProjections`, `canGroceries`, `canRules`, `canConsult`, `cutoffDate` — as if the admin were a user on that plan. The `setSimulatedPlan` function is exposed via the tier context so both `AdminDashboard` (nav dropdown) and `Dashboard` (banner exit button) can control it.
 
 ### Feature gating
 
@@ -125,11 +125,32 @@ All functions authenticate the caller by extracting the Supabase JWT from the `A
 1. User uploads CSV or Excel file
 2. `ImportTransactions.jsx` reads the file via SheetJS
 3. Rows are sent in batches to `/.netlify/functions/parse-bulk-transactions`
-4. Claude Haiku categorises each row into a standard category
+4. **Layered categorisation pipeline** runs for each transaction (see below)
 5. Parsed transactions are previewed, then bulk-inserted into Supabase
 
+### Layered categorisation pipeline (both import and manual entry)
+
+Every transaction passes through this priority order — each layer only runs if the previous produced no result:
+
+1. **User-defined rules** (`categorization_rules` table) — merchant_pattern substring match, case-insensitive. Highest priority, always override AI.
+2. **SA merchant rules** (`sa-categorise.js` → `saPreCategory()`) — 300+ patterns across 21 categories. Pure string matching, no API call.
+3. **Claude Haiku fallback** — only for transactions unresolved by layers 1–2. Bulk import sends in chunks of 150. Single entry uses a single call.
+4. **"Other"** — absolute last resort only.
+
+This pipeline is shared. `parse-transaction.js` and `parse-bulk-transactions.js` both import from `sa-categorise.js`. No AI call is made for any transaction that matches a rule.
+
+### User recategorisation and rule memory
+
+In the Transactions tab, users can click any category label to open an inline dropdown. On change:
+- The transaction is immediately updated in Supabase (`transactions.category`)
+- A prompt offers "Save rule" (future-only) or "Save + reclassify all" (applies pattern to all loaded transactions)
+- Rules are saved to the `categorization_rules` table via `/.netlify/functions/manage-rules`
+- Next import automatically applies saved rules before consulting SA rules or AI
+
 ### Data model
-Transactions are stored with: `id`, `user_id`, `name`, `amount` (integer cents), `category`, `date` (ISO string), `created_at`. The `transactions` table has RLS — users can only read/write their own rows.
+Transactions are stored with: `id`, `user_id`, `name`, `amount` (rands, not cents — see conventions), `category`, `date` (ISO string), `created_at`. The `transactions` table has RLS — users can only read/write their own rows.
+
+**Spend filtering convention:** everywhere spend totals are calculated, filter with `isSpendTransaction(t)` (or manually: `t.category !== 'Income' && t.category !== 'Transfer'`). The `Transfer` category exists to isolate internal account moves and person-to-person payments from lifestyle spend analytics. Using only `!== 'Income'` is incorrect and will inflate spend figures.
 
 ---
 
@@ -167,13 +188,22 @@ Both contexts are read-only from children's perspective except for `setSimulated
 - `fetchTransactions(userId)` — current month
 - `fetchTransactionsByMonth(userId, 'YYYY-MM')` — specific month
 - `fetchTransactionsByRange(userId, fromDate, toDate)` — arbitrary range
-- `fetchRecentMonths(userId, months)` — last N months for trend data
+- `fetchRecentMonths(userId, months)` — last N months (fetches `date, amount, category, name`)
 - `addTransaction(userId, { name, amount, category, date })`
+- `updateTransaction(id, updates)` — used for inline recategorisation
+- `recategorizeMatchingTransactions(userId, pattern, category)` — bulk reclassify by merchant pattern
 - `deleteTransaction(id)`
+- `EXCLUDED_FROM_SPEND` — `Set(['Income', 'Transfer'])` — use for consistent spend filtering
+- `isSpendTransaction(txn)` — returns `true` if category is not in `EXCLUDED_FROM_SPEND`
 
 `src/services/ai.js` exports:
 - `parseTransaction(message)` — single text parser
-- `analyseSpending(transactions, budgets, income)` — spending analysis
+- `analyseSpending(transactions, budgets, income, profileContext)` — spending analysis
+
+`src/services/recurring.js` exports (client-side, no API):
+- `detectRecurring(transactions)` — returns ranked recurring items with confidence, type, frequency
+- `committedMonthlySpend(recurringItems)` — sum of fixed monthly obligations
+- `recurringToContext(recurringItems)` — formats recurring data as AI prompt context
 
 Both service files get the Supabase JWT token and attach it as `Authorization: Bearer` on every function call.
 
