@@ -37,7 +37,7 @@ function getComparisonDates(period, fromDate, toDate) {
 function buildStatement(txns) {
   const income = txns.filter(t => t.category === 'Income').reduce((s, t) => s + t.amount, 0)
   const catTotals = {}
-  txns.filter(t => t.category !== 'Income').forEach(t => {
+  txns.filter(t => t.category !== 'Income' && t.category !== 'Transfer').forEach(t => {
     catTotals[t.category] = (catTotals[t.category] || 0) + t.amount
   })
   const totalExpenses = Object.values(catTotals).reduce((s, v) => s + v, 0)

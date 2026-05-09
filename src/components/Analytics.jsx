@@ -41,7 +41,7 @@ function groupByMonth(txns) {
     const m = t.date.slice(0,7)
     if (!months[m]) months[m] = {spend:0,income:0}
     if (t.category === 'Income') months[m].income += t.amount
-    else months[m].spend += t.amount
+    else if (t.category !== 'Transfer') months[m].spend += t.amount
   }
   return months
 }
@@ -49,7 +49,7 @@ function groupByMonth(txns) {
 function groupByCategory(txns) {
   const cats = {}
   for (const t of txns) {
-    if (t.category === 'Income') continue
+    if (t.category === 'Income' || t.category === 'Transfer') continue
     cats[t.category] = (cats[t.category] || 0) + t.amount
   }
   return cats

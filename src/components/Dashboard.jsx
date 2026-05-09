@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { useTier, isDateAllowed, PLAN_PRICES } from '../context/TierContext'
-import { fetchTransactions, fetchTransactionsByMonth, addTransaction, deleteTransaction } from '../services/transactions'
+import { fetchTransactions, fetchTransactionsByMonth, addTransaction, updateTransaction, deleteTransaction } from '../services/transactions'
 import { parseTransaction, analyseSpending } from '../services/ai'
 import ImportTransactions from './ImportTransactions'
 import Analytics from './Analytics'
@@ -26,7 +26,7 @@ const CAT_COLORS = {
   Clothing: '#639922', Subscriptions: '#888780', Income: '#1a6b45',
   Education: '#0891B2', Insurance: '#7C3AED', Savings: '#059669',
   Fuel: '#D97706', 'ATM / Cash': '#6B7280', 'Fees & Charges': '#DC2626',
-  Utilities: '#0D9488', Travel: '#2563EB', Gifts: '#EC4899', Other: '#888'
+  Utilities: '#0D9488', Travel: '#2563EB', Gifts: '#EC4899', Transfer: '#94A3B8', 'Home & Garden': '#65A30D', Other: '#888'
 }
 
 const CAT_ICONS = {
@@ -35,7 +35,7 @@ const CAT_ICONS = {
   Clothing: '\u{1F455}', Subscriptions: '\u{1F4F1}', Income: '\u{1F4B0}',
   Education: '\u{1F393}', Insurance: '\u{1F6E1}\u{FE0F}', Savings: '\u{1F4B9}',
   Fuel: '\u{26FD}', 'ATM / Cash': '\u{1F4B5}', 'Fees & Charges': '\u{1F4CB}',
-  Utilities: '\u{1F4A1}', Travel: '\u{2708}\u{FE0F}', Gifts: '\u{1F381}', Other: '\u{1F4E6}'
+  Utilities: '\u{1F4A1}', Travel: '\u{2708}\u{FE0F}', Gifts: '\u{1F381}', Transfer: '\u{1F504}', 'Home & Garden': '\u{1F3E1}', Other: '\u{1F4E6}'
 }
 
 const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
@@ -68,6 +68,11 @@ export default function Dashboard({ onNavigate }) {
   // Consultation state
   const [consultRequests, setConsultRequests] = useState([])
   const [consultActionId, setConsultActionId] = useState(null)
+
+  // Recategorisation state for transaction list
+  const [recatId, setRecatId] = useState(null)        // which txn is being edited
+  const [recatSaving, setRecatSaving] = useState(false)
+  const [recatPrompt, setRecatPrompt] = useState(null) // { id, name, category } - show "save as rule?" dialog
 
   useEffect(() => {
     loadTransactions()
@@ -137,7 +142,7 @@ export default function Dashboard({ onNavigate }) {
   )
   const hasLockedTransactions = transactions.some(t => !isDateAllowed(t.date, tier))
 
-  const spendTxns = allowedTransactions.filter(t => t.category !== 'Income')
+  const spendTxns = allowedTransactions.filter(t => t.category !== 'Income' && t.category !== 'Transfer')
   const txnIncome = allowedTransactions.filter(t => t.category === 'Income').reduce((s, t) => s + t.amount, 0)
   const profileMonthlyIncome = (profile?.net_income || 0) / 100
   // When toggle is on: use declared salary (from profile) if set; fall back to logged transactions
@@ -148,6 +153,46 @@ export default function Dashboard({ onNavigate }) {
   const catTotals = {}
   spendTxns.forEach(t => { catTotals[t.category] = (catTotals[t.category] || 0) + t.amount })
   const maxCat = Math.max(...Object.values(catTotals), 1)
+
+  // Handle inline recategorisation
+  async function handleRecat(txnId, txnName, newCategory) {
+    setRecatSaving(true)
+    try {
+      await updateTransaction(txnId, { category: newCategory })
+      setTransactions(prev => prev.map(t => t.id === txnId ? { ...t, category: newCategory } : t))
+      setRecatId(null)
+      setRecatPrompt({ id: txnId, name: txnName, category: newCategory })
+    } catch (e) {
+      console.error('Recategorise failed', e)
+    }
+    setRecatSaving(false)
+  }
+
+  async function handleSaveRule(merchantPattern, category, applyToHistory) {
+    if (!merchantPattern) return
+    setRecatPrompt(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      await fetch('/.netlify/functions/manage-rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ merchant_pattern: merchantPattern.toLowerCase(), category })
+      })
+      if (applyToHistory) {
+        // Update all matching transactions in current month view
+        const pattern = merchantPattern.toLowerCase()
+        const ids = transactions.filter(t => t.name?.toLowerCase().includes(pattern)).map(t => t.id)
+        if (ids.length > 0) {
+          await Promise.all(ids.map(id => updateTransaction(id, { category })))
+          setTransactions(prev => prev.map(t =>
+            t.name?.toLowerCase().includes(pattern) ? { ...t, category } : t
+          ))
+        }
+      }
+    } catch (e) {
+      console.error('Save rule failed', e)
+    }
+  }
 
   async function handleSendChat() {
     const msg = chatInput.trim()
@@ -588,6 +633,16 @@ export default function Dashboard({ onNavigate }) {
       {/* TRANSACTIONS */}
       {tab === 'transactions' && (
         <div className="tab-body">
+          {recatPrompt && (
+            <div className="recat-prompt fade-up">
+              <span>Save &quot;{recatPrompt.name}&quot; → {recatPrompt.category} as a rule?</span>
+              <div className="recat-prompt-btns">
+                <button className="recat-rule-btn" onClick={() => handleSaveRule(recatPrompt.name, recatPrompt.category, false)}>Save rule</button>
+                <button className="recat-rule-btn recat-rule-history" onClick={() => handleSaveRule(recatPrompt.name, recatPrompt.category, true)}>Save + reclassify all</button>
+                <button className="recat-dismiss-btn" onClick={() => setRecatPrompt(null)}>Dismiss</button>
+              </div>
+            </div>
+          )}
           {transactions.length === 0 ? (
             <div className="empty-state">
               <p>No transactions yet.</p>
@@ -597,6 +652,7 @@ export default function Dashboard({ onNavigate }) {
             <>
               {transactions.map(t => {
                 const locked = !isDateAllowed(t.date, tier)
+                const isEditing = recatId === t.id
                 return (
                   <LockedRow key={t.id} locked={locked}>
                     <div className="txn-item fade-up">
@@ -605,7 +661,29 @@ export default function Dashboard({ onNavigate }) {
                       </div>
                       <div className="txn-detail">
                         <div className="txn-name">{t.name}</div>
-                        <div className="txn-meta">{t.category} · {fmtDate(t.date)}</div>
+                        <div className="txn-meta">
+                          {isEditing ? (
+                            <select
+                              className="recat-select"
+                              defaultValue={t.category}
+                              disabled={recatSaving}
+                              autoFocus
+                              onChange={e => handleRecat(t.id, t.name, e.target.value)}
+                              onBlur={() => setRecatId(null)}
+                            >
+                              {['Income','Transfer','Housing','Groceries','Eating out','Transport','Entertainment','Health','Clothing','Subscriptions','Education','Insurance','Savings','Fuel','ATM / Cash','Fees & Charges','Utilities','Travel','Gifts','Home & Garden','Other'].map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          ) : (
+                            <button
+                              className="txn-cat-btn"
+                              onClick={() => !locked && setRecatId(t.id)}
+                              title="Click to change category"
+                            >
+                              {t.category}
+                            </button>
+                          )}
+                          {' · '}{fmtDate(t.date)}
+                        </div>
                       </div>
                       <div className={`txn-amt ${t.category === 'Income' ? 'inc' : ''}`}>
                         {t.category === 'Income' ? '+' : ''}{fmt(t.amount)}
