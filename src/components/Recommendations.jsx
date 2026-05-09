@@ -133,10 +133,10 @@ export default function Recommendations() {
         supabase.from('budgets').select('category, amount').eq('user_id', user.id)
       ])
 
-      // Average monthly spend per category (excluding income)
+      // Average monthly spend per category (excluding income + transfers)
       const totals = {}
       for (const t of txns) {
-        if (t.category === 'Income') continue
+        if (t.category === 'Income' || t.category === 'Transfer') continue
         totals[t.category] = (totals[t.category] || 0) + t.amount
       }
       // Divide by 3 for monthly average

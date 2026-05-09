@@ -5,10 +5,10 @@ import { useAuth } from '../context/AuthContext'
 import './ImportTransactions.css'
 
 const CATEGORIES = [
-  'Income', 'Transfer', 'Housing', 'Groceries', 'Eating out', 'Transport',
+  'Income', 'Housing', 'Groceries', 'Eating out', 'Transport',
   'Entertainment', 'Health', 'Clothing', 'Subscriptions',
   'Education', 'Insurance', 'Savings', 'Fuel', 'ATM / Cash',
-  'Fees & Charges', 'Utilities', 'Travel', 'Gifts', 'Home & Garden', 'Other'
+  'Fees & Charges', 'Utilities', 'Travel', 'Gifts', 'Other'
 ]
 
 const BANKS = [
@@ -28,8 +28,7 @@ const CAT_COLORS = {
   Clothing: '#639922', Subscriptions: '#888780', Income: '#1a6b45',
   Education: '#0891B2', Insurance: '#7C3AED', Savings: '#059669',
   Fuel: '#D97706', 'ATM / Cash': '#6B7280', 'Fees & Charges': '#DC2626',
-  Utilities: '#0D9488', Travel: '#2563EB', Gifts: '#EC4899',
-  Transfer: '#94A3B8', 'Home & Garden': '#65A30D', Other: '#888'
+  Utilities: '#0D9488', Travel: '#2563EB', Gifts: '#EC4899', Other: '#888'
 }
 
 // ── Bank-specific column parsers ──────────────────────────────────────────────
@@ -251,23 +250,11 @@ export default function ImportTransactions({ onImportComplete }) {
       }
 
       const data = await res.json()
-      // Backend returns { results: [...] } — guard against malformed/empty response
-      const rawResults = Array.isArray(data.results) ? data.results : []
-      if (rawResults.length === 0) {
-        // Fallback: show parsed rows with Other so user can adjust manually
-        setCategorised(txns.map((t, i) => ({ ...t, id: i, category: t.is_income ? 'Income' : 'Other', include: true })))
-        if (!data.results) setError('Categorisation returned an unexpected response — categories set to Other. You can adjust before importing.')
-        return
-      }
-      setCategorised(rawResults.map((t, i) => {
-        // Use the original is_income hint as a safety net: if backend still returned
-        // 'Other' for a transaction the parser identified as a credit, promote to Income
-        const originalTxn = txns[i]
-        const category = (t.category === 'Other' && originalTxn?.is_income === true)
-          ? 'Income'
-          : (t.category || 'Other')
-        return { ...t, id: i, include: true, category }
-      }))
+      setCategorised(data.transactions.map((t, i) => ({
+        ...t,
+        id: i,
+        include: true
+      })))
     } catch (err) {
       setError(err.message)
       // Still show parsed data with "Other" as fallback
@@ -352,7 +339,7 @@ export default function ImportTransactions({ onImportComplete }) {
   }
 
   const selectedCount  = categorised.filter(t => t.include).length
-  const totalAmount    = categorised.filter(t => t.include && t.category !== 'Income' && t.category !== 'Transfer').reduce((s, t) => s + t.amount, 0)
+  const totalAmount    = categorised.filter(t => t.include && t.category !== 'Income').reduce((s, t) => s + t.amount, 0)
   const incomeAmount   = categorised.filter(t => t.include && t.category === 'Income').reduce((s, t) => s + t.amount, 0)
   const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
 

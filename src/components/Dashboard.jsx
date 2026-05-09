@@ -3,6 +3,7 @@ import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { useTier, isDateAllowed, PLAN_PRICES } from '../context/TierContext'
 import { fetchTransactions, fetchTransactionsByMonth, addTransaction, updateTransaction, deleteTransaction } from '../services/transactions'
+import { filterSpend, sumByCategory, sumSpend, sumTxnIncome, buildAIPayload, profileCentsToRands } from '../utils/financials'
 import { parseTransaction, analyseSpending } from '../services/ai'
 import ImportTransactions from './ImportTransactions'
 import Analytics from './Analytics'
@@ -142,16 +143,16 @@ export default function Dashboard({ onNavigate }) {
   )
   const hasLockedTransactions = transactions.some(t => !isDateAllowed(t.date, tier))
 
-  const spendTxns = allowedTransactions.filter(t => t.category !== 'Income' && t.category !== 'Transfer')
-  const txnIncome = allowedTransactions.filter(t => t.category === 'Income').reduce((s, t) => s + t.amount, 0)
-  const profileMonthlyIncome = (profile?.net_income || 0) / 100
-  // When toggle is on: use declared salary (from profile) if set; fall back to logged transactions
+  // Shared financial layer -- all spend/income/net calcs go through financials.js
+  const spendTxns  = filterSpend(allowedTransactions)
+  const txnIncome  = sumTxnIncome(allowedTransactions)
+  const profileMonthlyIncome = profileCentsToRands(profile?.net_income)
+  // Toggle: declared salary from profile (if set), or logged Income transactions
   const income = (excludeSalary && profileMonthlyIncome > 0) ? profileMonthlyIncome : txnIncome
-  const totalSpend = spendTxns.reduce((s, t) => s + t.amount, 0)
+  const totalSpend = sumSpend(allowedTransactions)
   const net = income - totalSpend
 
-  const catTotals = {}
-  spendTxns.forEach(t => { catTotals[t.category] = (catTotals[t.category] || 0) + t.amount })
+  const catTotals = sumByCategory(allowedTransactions)
   const maxCat = Math.max(...Object.values(catTotals), 1)
 
   // Handle inline recategorisation

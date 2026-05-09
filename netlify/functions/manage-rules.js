@@ -3,10 +3,10 @@ import { createClient } from '@supabase/supabase-js'
 const SYSTEM_PROMPT = `You are a financial assistant for bump. (BumpBudget). Your ONLY purpose is to help users understand and manage their personal finances.`
 
 const CATEGORIES = [
-  'Income', 'Transfer', 'Housing', 'Groceries', 'Eating out', 'Transport',
+  'Income', 'Housing', 'Groceries', 'Eating out', 'Transport',
   'Entertainment', 'Health', 'Clothing', 'Subscriptions',
   'Education', 'Insurance', 'Savings', 'Fuel', 'ATM / Cash',
-  'Fees & Charges', 'Utilities', 'Travel', 'Gifts', 'Home & Garden', 'Other'
+  'Fees & Charges', 'Utilities', 'Travel', 'Gifts', 'Other'
 ]
 
 // Parse a natural-language rule like "make all engen transactions = Fuel"

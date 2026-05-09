@@ -25,15 +25,6 @@
 - `LockedFeature` and `LockedRow` components for locked content UI
 - Admin dashboard (access requests, bookings, user budget view)
 - Admin tier simulation (dropdown in admin nav, persisted in localStorage)
-- Admin onboarding bypass (admins with `onboarding_complete = null` are no longer trapped)
-- Recommendations quiz persistence (answers + results cached in localStorage, 7-day TTL)
-- Recommendations quiz pre-fills income and savings goal from profile
-- Layered categorisation pipeline in `sa-categorise.js`: 300+ SA merchant patterns, 21 categories
-- Transfer category: Discovery Pay, PayShap, own-account transfers excluded from spend analytics
-- Home & Garden category: Builders Warehouse, Leroy Merlin, Mica, hardware stores
-- Inline user recategorisation in Transactions tab (click category → dropdown → optional save-as-rule)
-- `manage-rules.js` backend fully wired to frontend recategorisation UI
-- `recurring.js` client-side recurring transaction detection utility (no API)
 - Paystack subscription creation and webhook handler
 - Consultation booking flow
 - FORMAT_RULES enforced across all AI functions
@@ -57,20 +48,11 @@ The budget recommendations tab (`Recommendations.jsx`) and budget rules tab have
 **Paystack webhook robustness**
 `paystack-webhook.js` updates subscription state but has no retry logic, no dead-letter handling, and no logging if an event fails to process. A failed webhook silently leaves billing state out of sync.
 
+**`manage-rules.js` frontend integration**
+The `manage-rules.js` Netlify Function exists for budget rules CRUD, but it is unclear whether the frontend fully uses it or whether rules are partially hardcoded.
+
 **Mobile nav and responsive polish**
 The top navigation bar compresses poorly on small screens. The tab row overflows horizontally. Both are CSS-only fixes that do not require logic changes.
-
-**Analytics category inconsistency**
-`Analytics.jsx` and `Dashboard.jsx` overview both exclude Transfer from spend calculations, but historical transactions that were categorised as "Other" (before Transfer was added) will still appear in spend. Users importing new statements will get correct behaviour; old data may need re-import or manual reclassification.
-
-**Projections still shallow**
-`Projections.jsx` uses a simple DCF model with limited real data integration. It does not use the recurring transaction detection from `recurring.js`, does not separate committed fixed spend from variable spend, and does not model category-level trends. The AI commentary is generic.
-
-**Upload/parser fragility**
-`parse-bulk-transactions.js` relies on Claude Haiku to categorise any transactions not matched by `sa-categorise.js`. The Claude response is parsed as a JSON array with no retry logic — a single malformed response silently defaults the entire chunk to "Other". There is no user-visible indicator of which transactions fell through to AI vs rules.
-
-**Styling inheritance issues**
-Some components import their own CSS but also inherit global styles from `index.css` in ways that can produce double-applied margins or font overrides. No systematic audit has been done.
 
 ---
 

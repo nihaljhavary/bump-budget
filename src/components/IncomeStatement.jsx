@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { fetchTransactionsByRange } from '../services/transactions'
+import { buildFinancialSummary, buildAIPayload } from '../utils/financials'
 import './IncomeStatement.css'
 
 const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
@@ -34,15 +35,14 @@ function getComparisonDates(period, fromDate, toDate) {
   return { from: compFrom.toISOString().slice(0, 10), to: compTo.toISOString().slice(0, 10) }
 }
 
-function buildStatement(txns) {
-  const income = txns.filter(t => t.category === 'Income').reduce((s, t) => s + t.amount, 0)
-  const catTotals = {}
-  txns.filter(t => t.category !== 'Income' && t.category !== 'Transfer').forEach(t => {
-    catTotals[t.category] = (catTotals[t.category] || 0) + t.amount
-  })
-  const totalExpenses = Object.values(catTotals).reduce((s, v) => s + v, 0)
-  const net = income - totalExpenses
-  return { income, catTotals, totalExpenses, net }
+// buildStatement is now a thin wrapper over the shared buildFinancialSummary
+// which ensures consistent Transfer exclusion and income resolution.
+// Income comes from transaction Income-category entries only (no declared override)
+// so the income statement reflects what was actually transacted.
+function buildStatement(txns, profile) {
+  const s = buildFinancialSummary(txns, profile, { preferDeclared: false })
+  // Alias totalSpend -> totalExpenses for local template compatibility
+  return { income: s.income, catTotals: s.catTotals, totalExpenses: s.totalSpend, net: s.net }
 }
 
 function DeltaCell({ current, previous }) {
@@ -90,8 +90,8 @@ export default function IncomeStatement() {
     }).catch(console.error).finally(() => setLoading(false))
   }, [from, to, showComparison, compDates.from, compDates.to])
 
-  const stmt = useMemo(() => buildStatement(txns), [txns])
-  const compStmt = useMemo(() => showComparison ? buildStatement(compTxns) : null, [compTxns, showComparison])
+  const stmt = useMemo(() => buildStatement(txns, profile), [txns, profile])
+  const compStmt = useMemo(() => showComparison ? buildStatement(compTxns, profile) : null, [compTxns, showComparison, profile])
 
   const PERIODS = [
     { id: '1m', label: '1 month' },
@@ -112,10 +112,12 @@ export default function IncomeStatement() {
       const { data: { session } } = await supabase.auth.getSession()
       const top3 = allCats.slice(0, 3).map(c => `${c}: ${fmt(stmt.catTotals[c] || 0)}`).join(', ')
       const question = `Here is my income statement for the period ${from} to ${to}. Total income: ${fmt(stmt.income)}. Total expenses: ${fmt(stmt.totalExpenses)}. Net: ${fmt(stmt.net)}. Top categories: ${top3}.${compStmt ? ` Previous period net was ${fmt(compStmt.net)}, expenses ${fmt(compStmt.totalExpenses)}.` : ''} Give me 3-4 plain-text insights about movements and what to watch. Be specific with rand amounts.`
+      // Use buildAIPayload so AI gets consistent income context and Transfer-filtered transactions
+      const aiPayload = buildAIPayload(txns, profile)
       const res = await fetch('/.netlify/functions/analyse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ transactions: txns, question })
+        body: JSON.stringify({ ...aiPayload, question })
       })
       const data = await res.json()
       setAiText(data.analysis || '')

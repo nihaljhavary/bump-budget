@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { fetchTransactionsByRange } from '../services/transactions'
+import { resolveIncome } from '../utils/financials'
 import './Projections.css'
 
 const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
@@ -131,7 +132,8 @@ export default function Projections() {
     }
     const totalVar = Object.values(varSpend).reduce((s, v) => s + v, 0) / 3
     const topCat = Object.entries(varSpend).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Other'
-    return { avgVariableSpend: totalVar / 100, topVariableCategory: topCat, monthlyIncome: income / 100 }
+    // Transaction amounts are in rands -- no /100 conversion needed
+    return { avgVariableSpend: totalVar, topVariableCategory: topCat, monthlyIncome: income }
   }, [txns])
 
   const netIncome = parseFloat(netIncomeInput) || monthlyIncome || (profile?.net_income ? profile.net_income / 100 : 0)

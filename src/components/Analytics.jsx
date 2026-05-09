@@ -3,6 +3,7 @@ import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { useTier } from '../context/TierContext'
 import { fetchTransactionsByRange } from '../services/transactions'
+import { groupByMonth, sumByCategory, buildAIPayload } from '../utils/financials'
 import './Analytics.css'
 
 const CATEGORIES = [
@@ -21,7 +22,7 @@ const CAT_COLORS = {
   Utilities:'#0D9488',Travel:'#2563EB',Gifts:'#EC4899',Other:'#888'
 }
 
-const fmt = n => 'R' + Math.round(n / 100).toLocaleString('en-ZA')
+// fmt removed: was incorrectly dividing rands by 100. Use fmtR throughout.
 const fmtR = n => 'R' + Math.round(n).toLocaleString('en-ZA')
 const PERIODS = ['1M','3M','1Y','Custom','Max']
 
@@ -35,25 +36,8 @@ function getDateRange(period, customFrom, customTo) {
   return {from:'2020-01-01',to}
 }
 
-function groupByMonth(txns) {
-  const months = {}
-  for (const t of txns) {
-    const m = t.date.slice(0,7)
-    if (!months[m]) months[m] = {spend:0,income:0}
-    if (t.category === 'Income') months[m].income += t.amount
-    else if (t.category !== 'Transfer') months[m].spend += t.amount
-  }
-  return months
-}
-
-function groupByCategory(txns) {
-  const cats = {}
-  for (const t of txns) {
-    if (t.category === 'Income' || t.category === 'Transfer') continue
-    cats[t.category] = (cats[t.category] || 0) + t.amount
-  }
-  return cats
-}
+// groupByMonth and groupByCategory (sumByCategory) are now imported
+// from src/utils/financials.js for consistent Transfer/Income handling across all tabs.
 
 // ── SVG Line Chart ──────────────────────────────────────────────────────────
 function TrendChart({ monthlyData }) {
@@ -77,7 +61,7 @@ function TrendChart({ monthlyData }) {
       {yTicks.map((t,i)=>(
         <g key={i}>
           <line x1={PAD.left} y1={t.y} x2={W-PAD.right} y2={t.y} stroke="var(--border)" strokeWidth="0.8"/>
-          <text x={PAD.left-4} y={t.y+3} textAnchor="end" fontSize="8" fill="var(--muted)">{t.val>=1000?`${(t.val/100000).toFixed(0)}k`:Math.round(t.val/100)}</text>
+          <text x={PAD.left-4} y={t.y+3} textAnchor="end" fontSize="8" fill="var(--muted)">{t.val>=1000?`${Math.round(t.val/1000)}k`:Math.round(t.val)}</text>
         </g>
       ))}
       <path d={areaPath(incomes)} fill="#1D9E75" opacity="0.07"/>
@@ -120,12 +104,12 @@ function ActualVsBudgetChart({ catSpend, budgets, monthCount }) {
             <text x={LABEL_W-6} y={y+BAR_H-2} textAnchor="end" fontSize="9" fill={CAT_COLORS[cat]||'#888'} fontWeight="500">{cat}</text>
             {/* Actual bar */}
             <rect x={LABEL_W} y={y} width={aW} height={BAR_H} rx="3" fill={over?'#D85A30':(CAT_COLORS[cat]||'#888')} opacity="0.85"/>
-            <text x={LABEL_W+aW+3} y={y+BAR_H-2} fontSize="8" fill="var(--muted)">{fmtR(actual/100)}</text>
+            <text x={LABEL_W+aW+3} y={y+BAR_H-2} fontSize="8" fill="var(--muted)">{fmtR(actual)}</text>
             {/* Budget bar */}
             {budget>0 && (
               <>
                 <rect x={LABEL_W} y={y+BAR_H+2} width={bW} height={BAR_H} rx="3" fill={CAT_COLORS[cat]||'#888'} opacity="0.25"/>
-                <text x={LABEL_W+bW+3} y={y+BAR_H*2} fontSize="8" fill="var(--muted)">{fmtR(budget/100)}</text>
+                <text x={LABEL_W+bW+3} y={y+BAR_H*2} fontSize="8" fill="var(--muted)">{fmtR(budget)}</text>
               </>
             )}
           </g>
@@ -165,7 +149,7 @@ function DonutChart({ catSpend }) {
       <svg viewBox="0 0 140 140" className="donut-svg">
         {slices.map(s=><path key={s.cat} d={s.d} fill={CAT_COLORS[s.cat]||'#aaa'}/>)}
         <text x={CX} y={CY-5} textAnchor="middle" fontSize="7" fill="var(--muted)">total spend</text>
-        <text x={CX} y={CY+8} textAnchor="middle" fontSize="10" fontWeight="700" fill="var(--text)">{fmt(total)}</text>
+        <text x={CX} y={CY+8} textAnchor="middle" fontSize="10" fontWeight="700" fill="var(--text)">{fmtR(total)}</text>
       </svg>
       <div className="donut-legend">
         {display.slice(0,6).map(([cat,val])=>(
@@ -192,14 +176,12 @@ function AITrendAnalysis({ txns, period, profileContext }) {
     setLoading(true)
     try {
       const { data: { session } } = await supabase.auth.getSession()
+      // buildAIPayload: filters transfers, provides consistent declared income + profile context
+      const aiPayload = buildAIPayload(txns, profile)
       const resp = await fetch('/.netlify/functions/analyse', {
         method: 'POST',
         headers: { 'Content-Type':'application/json', Authorization:`Bearer ${session.access_token}` },
-        body: JSON.stringify({
-          transactions: txns.slice(0,200),
-          declaredIncome: (profile?.net_income || 0) / 100,
-          profileContext: profileContext || null,
-        })
+        body: JSON.stringify(aiPayload)
       })
       const data = await resp.json()
       setAnalysis(data.analysis || data.text || data.message || 'Analysis complete.')
@@ -382,7 +364,7 @@ export default function Analytics() {
     }
   }
 
-  const catSpend = useMemo(()=>groupByCategory(txns),[txns])
+  const catSpend = useMemo(()=>sumByCategory(txns),[txns])
   const monthlyData = useMemo(()=>groupByMonth(txns),[txns])
   const monthCount = useMemo(()=>Math.max(Object.keys(monthlyData).length,1),[monthlyData])
   const totalSpend = useMemo(()=>Object.values(catSpend).reduce((s,v)=>s+v,0),[catSpend])
@@ -448,12 +430,12 @@ export default function Analytics() {
           {/* Summary strip */}
           <div className="summary-strip">
             <div className="summary-item">
-              <div className="summary-val red">{fmt(totalSpend)}</div>
+              <div className="summary-val red">{fmtR(totalSpend)}</div>
               <div className="summary-lbl">spent</div>
             </div>
             <div className="summary-divider"/>
             <div className="summary-item">
-              <div className="summary-val green">{fmt(totalIncome)}</div>
+              <div className="summary-val green">{fmtR(totalIncome)}</div>
               <div className="summary-lbl">income</div>
               {totalIncome === 0 && (profile?.net_income || 0) > 0 && (
                 <div className="summary-income-note">declared: {fmtR(Math.round(profile.net_income / 100))}/mo</div>
@@ -461,7 +443,7 @@ export default function Analytics() {
             </div>
             <div className="summary-divider"/>
             <div className="summary-item">
-              <div className={`summary-val ${net>=0?'green':'red'}`}>{fmt(Math.abs(net))}</div>
+              <div className={`summary-val ${net>=0?'green':'red'}`}>{fmtR(Math.abs(net))}</div>
               <div className="summary-lbl">{net>=0?'surplus':'deficit'}</div>
             </div>
           </div>
@@ -507,7 +489,7 @@ export default function Analytics() {
                     <div className="budget-row-top">
                       <span className="budget-cat-name" style={{color:CAT_COLORS[cat]||'#888'}}>{cat}</span>
                       <div className="budget-row-right">
-                        <span className={`budget-monthly ${over?'over':''}`}>{fmt(monthly)}/mo</span>
+                        <span className={`budget-monthly ${over?'over':''}`}>{fmtR(monthly)}/mo</span>
                         {isEditing ? (
                           <form className="budget-edit-form" onSubmit={e=>{e.preventDefault();saveBudget(cat,editVal)}}>
                             <span className="budget-edit-r">R</span>
@@ -526,7 +508,7 @@ export default function Analytics() {
                       <div className={`bar-fill ${over?'bar-over':''}`} style={{width:`${pct}%`,background:over?'var(--coral)':(CAT_COLORS[cat]||'#888')}}/>
                       <div className={`bar-fill ${over?'bar-over':''}`} style={{width:`${pct}%`,background:over?'var(--coral)':(CAT_COLORS[cat]||'#888')}}/>
                     </div>
-                    {over&&<div className="budget-over-label">{fmt(monthly-budget)} over budget this month</div>}
+                    {over&&<div className="budget-over-label">{fmtR(monthly-budget)} over budget this month</div>}
                   </div>
                 )
               })}

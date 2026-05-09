@@ -114,15 +114,16 @@ export async function handler(event) {
   const income = txnIncome > 0 ? txnIncome : (declaredIncome || 0)
   const incomeSource = txnIncome > 0 ? 'from transactions' : (declaredIncome > 0 ? 'declared take-home salary' : 'unknown')
 
+  // Transfers excluded: they are internal fund movements, not lifestyle spend
   const totalSpend = transactions
-    .filter(t => t.category !== 'Income')
+    .filter(t => t.category !== 'Income' && t.category !== 'Transfer')
     .reduce((s, t) => s + t.amount, 0)
 
   const net = income - totalSpend
 
   const catTotals = {}
   transactions
-    .filter(t => t.category !== 'Income')
+    .filter(t => t.category !== 'Income' && t.category !== 'Transfer')
     .forEach(t => { catTotals[t.category] = (catTotals[t.category] || 0) + t.amount })
 
   const catLines = Object.entries(catTotals).map(([cat, amt]) => {

@@ -1,13 +1,5 @@
 import { supabase } from '../supabase'
 
-// Categories excluded from spend analytics (not lifestyle spend)
-export const EXCLUDED_FROM_SPEND = new Set(['Income', 'Transfer'])
-
-// Returns true if the transaction should count as spending
-export function isSpendTransaction(txn) {
-  return !EXCLUDED_FROM_SPEND.has(txn?.category)
-}
-
 // Fetch all transactions for the current month for a user
 export async function fetchTransactions(userId) {
   const now = new Date()
@@ -52,7 +44,7 @@ export async function fetchRecentMonths(userId, months = 6) {
 
   const { data, error } = await supabase
     .from('transactions')
-    .select('date, amount, category, name')
+    .select('date, amount, category')
     .eq('user_id', userId)
     .gte('date', fromDate)
     .order('date', { ascending: true })
@@ -91,48 +83,6 @@ export async function addTransaction(userId, { name, amount, category, date }) {
 
   if (error) throw error
   return data
-}
-
-// Update an existing transaction (e.g. recategorise)
-export async function updateTransaction(id, updates) {
-  const { data, error } = await supabase
-    .from('transactions')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single()
-
-  if (error) throw error
-  return data
-}
-
-// Reclassify all of a user's transactions matching a merchant pattern
-// Used when user creates a recategorisation rule and wants to apply it to history
-export async function recategorizeMatchingTransactions(userId, merchantPattern, newCategory) {
-  if (!merchantPattern || !newCategory) return { count: 0 }
-  const lower = merchantPattern.toLowerCase()
-
-  // Fetch all user transactions (we do client-side matching to use includes())
-  const { data: all, error } = await supabase
-    .from('transactions')
-    .select('id, name')
-    .eq('user_id', userId)
-
-  if (error) throw error
-
-  const matching = (all || []).filter(t =>
-    t.name && t.name.toLowerCase().includes(lower)
-  ).map(t => t.id)
-
-  if (matching.length === 0) return { count: 0 }
-
-  const { error: updErr } = await supabase
-    .from('transactions')
-    .update({ category: newCategory })
-    .in('id', matching)
-
-  if (updErr) throw updErr
-  return { count: matching.length }
 }
 
 // Delete a transaction by id
