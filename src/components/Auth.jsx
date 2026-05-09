@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import './Auth.css'
@@ -33,6 +33,11 @@ export default function Auth({ termsOnly = false }) {
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [showTerms, setShowTerms] = useState(false)
   const [savingTerms, setSavingTerms] = useState(false)
+
+  // Synchronous in-flight guard — prevents duplicate submissions between the first
+  // click and React re-rendering the button as disabled. useRef is not tied to the
+  // render cycle, so it blocks re-entry immediately, unlike useState(loading).
+  const submittingRef = useRef(false)
 
   async function acceptTerms() {
     if (!termsAccepted) { setError('You must accept the terms to continue'); return }
@@ -98,46 +103,70 @@ export default function Auth({ termsOnly = false }) {
 
   async function sendMagicLink() {
     if (!email) { setError('Enter your email first'); return }
+    if (submittingRef.current) return
+    submittingRef.current = true
     setLoading(true); setError('')
-    const { error: err } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.origin + '/app' }
-    })
-    if (err) setError(err.message)
-    else { setSentType('magic'); setSent(true) }
-    setLoading(false)
+    try {
+      const { error: err } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: window.location.origin + '/app' }
+      })
+      if (err) setError(err.message)
+      else { setSentType('magic'); setSent(true) }
+    } finally {
+      submittingRef.current = false
+      setLoading(false)
+    }
   }
 
   async function signIn() {
     if (!email || !password) { setError('Fill in your email and password'); return }
+    if (submittingRef.current) return
+    submittingRef.current = true
     setLoading(true); setError('')
-    const { error: err } = await supabase.auth.signInWithPassword({ email, password })
-    if (err) setError(err.message)
-    setLoading(false)
+    try {
+      const { error: err } = await supabase.auth.signInWithPassword({ email, password })
+      if (err) setError(err.message)
+    } finally {
+      submittingRef.current = false
+      setLoading(false)
+    }
   }
 
   async function signUp() {
     if (!email || !password) { setError('Fill in your email and password'); return }
     if (password.length < 6) { setError('Password must be at least 6 characters'); return }
+    if (submittingRef.current) return
+    submittingRef.current = true
     setLoading(true); setError('')
-    const { error: err } = await supabase.auth.signUp({
-      email, password,
-      options: { emailRedirectTo: window.location.origin + '/app' }
-    })
-    if (err) setError(err.message)
-    else { setSentType('magic'); setSent(true) }
-    setLoading(false)
+    try {
+      const { error: err } = await supabase.auth.signUp({
+        email, password,
+        options: { emailRedirectTo: window.location.origin + '/app' }
+      })
+      if (err) setError(err.message)
+      else { setSentType('magic'); setSent(true) }
+    } finally {
+      submittingRef.current = false
+      setLoading(false)
+    }
   }
 
   async function sendForgotPassword() {
     if (!email) { setError('Enter your email address first'); return }
+    if (submittingRef.current) return
+    submittingRef.current = true
     setLoading(true); setError('')
-    const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin + '/app'
-    })
-    if (err) setError(err.message)
-    else { setSentType('reset'); setSent(true) }
-    setLoading(false)
+    try {
+      const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + '/app'
+      })
+      if (err) setError(err.message)
+      else { setSentType('reset'); setSent(true) }
+    } finally {
+      submittingRef.current = false
+      setLoading(false)
+    }
   }
 
   function switchMode(m) { setMode(m); setError('') }
@@ -206,7 +235,7 @@ export default function Auth({ termsOnly = false }) {
 
         {mode === 'forgot' && (
           <>
-            <p className="auth-sub" style={{ marginBottom: 20 }}>Enter your email and we'll send you a reset link.</p>
+            <p className="auth-sub" style={{ marginBottom: 20 }}>Enter your email and we\'ll send you a reset link.</p>
             <div className="auth-field">
               <label className="auth-field-label">Email</label>
               <input className="auth-input" type="email" placeholder="your@email.com"

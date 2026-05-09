@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { supabase } from '../supabase'
 
 const AuthContext = createContext({})
@@ -12,8 +12,8 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     // If the URL contains pending auth exchange params (PKCE code or hash token),
     // keep loading=true until onAuthStateChange delivers the resolved session.
-    // This prevents the race where getSession() returns null before the exchange
-    // completes, causing ProtectedApp to redirect to "/" before auth resolves.
+    // This prevents the race where getSession() returns null before the PKCE
+    // exchange completes, causing ProtectedApp to redirect to "/" too early.
     const url = window.location.href
     const hasAuthParams =
       url.includes('access_token') ||
@@ -21,18 +21,23 @@ export function AuthProvider({ children }) {
       url.includes('&code=') ||
       url.includes('type=recovery')
 
+    // getSession() handles the initial profile load for existing sessions.
+    // onAuthStateChange skips INITIAL_SESSION to avoid a duplicate fetchProfile.
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
       if (session?.user) {
         fetchProfile(session.user.id)
       } else if (!hasAuthParams) {
-        // No session and no pending token exchange — loading complete
         setLoading(false)
       }
-      // If hasAuthParams and session is null: stay loading, wait for onAuthStateChange
+      // hasAuthParams + no session: stay loading, wait for onAuthStateChange SIGNED_IN
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // INITIAL_SESSION is already covered by getSession() above — skip it to avoid
+      // a duplicate fetchProfile call on every page load for authenticated users.
+      if (event === 'INITIAL_SESSION') return
+
       if (event === 'PASSWORD_RECOVERY') {
         setRecoveryMode(true)
         setUser(session?.user ?? null)
@@ -44,7 +49,7 @@ export function AuthProvider({ children }) {
       else { setProfile(null); setLoading(false) }
     })
 
-    // Safety valve: if the auth exchange hangs (expired/invalid link), unblock after 8s
+    // Safety valve: if auth exchange hangs (expired/invalid link), unblock after 8s
     const timeout = hasAuthParams ? setTimeout(() => setLoading(false), 8000) : null
 
     return () => {
