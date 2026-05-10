@@ -3,7 +3,7 @@ import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { useTier } from '../context/TierContext'
 import { fetchTransactionsByRange } from '../services/transactions'
-import { groupByMonth, sumByCategory, buildAIPayload } from '../utils/financials'
+import { groupByMonth, sumByCategory, buildAIPayload, profileCentsToRands } from '../utils/financials'
 import { analyseSpending } from '../services/ai'
 import './Analytics.css'
 
@@ -366,7 +366,15 @@ export default function Analytics() {
   const monthlyData = useMemo(()=>groupByMonth(txns),[txns])
   const monthCount = useMemo(()=>Math.max(Object.keys(monthlyData).length,1),[monthlyData])
   const totalSpend = useMemo(()=>Object.values(catSpend).reduce((s,v)=>s+v,0),[catSpend])
-  const totalIncome = useMemo(()=>txns.filter(t=>t.category==='Income').reduce((s,t)=>s+t.amount,0),[txns])
+  // Resolve income: prefer actual Income transactions; fall back to declared monthly salary x months
+  const txnIncome = useMemo(()=>txns.filter(t=>t.category==='Income').reduce((s,t)=>s+t.amount,0),[txns])
+  const profileMonthlyIncome = profileCentsToRands(profile?.net_income)
+  const totalIncome = useMemo(()=>{
+    if (txnIncome > 0) return txnIncome
+    if (profileMonthlyIncome > 0) return profileMonthlyIncome * monthCount
+    return 0
+  }, [txnIncome, profileMonthlyIncome, monthCount])
+  const incomeSource = txnIncome > 0 ? 'transactions' : (profileMonthlyIncome > 0 ? 'declared' : 'none')
   const net = totalIncome - totalSpend
 
   const suggestedBudgets = useMemo(()=>{
@@ -434,10 +442,7 @@ export default function Analytics() {
             <div className="summary-divider"/>
             <div className="summary-item">
               <div className="summary-val green">{fmtR(totalIncome)}</div>
-              <div className="summary-lbl">income</div>
-              {totalIncome === 0 && (profile?.net_income || 0) > 0 && (
-                <div className="summary-income-note">declared: {fmtR(Math.round(profile.net_income / 100))}/mo</div>
-              )}
+              <div className="summary-lbl">income{incomeSource==='declared'?' (declared)':''}</div>
             </div>
             <div className="summary-divider"/>
             <div className="summary-item">

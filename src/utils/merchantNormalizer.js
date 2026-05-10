@@ -574,6 +574,72 @@ const CANONICAL_MERCHANTS = [
     type: 'once_off', tags: ['discretionary', 'variable_cost'] },
 ]
 
+
+// ── Category inference patterns (long-tail fallback) ─────────────────────────
+// When no canonical merchant is found, infer category from keyword signals.
+// Order matters: more specific patterns first.
+const CATEGORY_INFERENCE = [
+  { keywords: ['atm withdrawal', 'cash withdrawal', 'atm cash', 'atm '],
+    category: 'ATM / Cash', subcategory: 'atm', tags: ['variable_cost'], confidence: 0.85 },
+  { keywords: ['bank charge', 'bank fee', 'monthly fee', 'service fee', 'account fee', 'interest charged', 'admin fee'],
+    category: 'Fees & Charges', subcategory: 'bank_fee', tags: ['essential', 'banking_fee'], confidence: 0.85 },
+  { keywords: ['insurance', 'insure ', 'assurance', 'assur ', 'underwr'],
+    category: 'Insurance', subcategory: 'insurance', tags: ['essential', 'fixed_cost'], confidence: 0.75 },
+  { keywords: ['pharmacy', 'chemist', 'medical centre', 'medical center', 'clinic ', 'hospital', 'medistore'],
+    category: 'Health', subcategory: 'health', tags: ['essential', 'variable_cost'], confidence: 0.72 },
+  { keywords: ['doctor', 'dr.', ' gp ', 'dentist', 'optometrist', 'physiother', 'psycholog'],
+    category: 'Health', subcategory: 'healthcare', tags: ['essential', 'variable_cost'], confidence: 0.70 },
+  { keywords: ['salon', 'hair by ', 'barber', 'nail bar', 'nail studio', ' spa ', 'beauty salon', 'wax studio'],
+    category: 'Health', subcategory: 'beauty', tags: ['lifestyle', 'variable_cost'], confidence: 0.65 },
+  { keywords: ['school', 'college', 'university', 'academy', 'tutoring', 'tuition', 'education', 'nursery school', 'creche'],
+    category: 'Education', subcategory: 'education', tags: ['essential', 'variable_cost'], confidence: 0.70 },
+  { keywords: ['gym ', 'fitness', 'yoga studio', 'pilates', 'crossfit'],
+    category: 'Subscriptions', subcategory: 'gym', tags: ['lifestyle', 'fixed_cost'], confidence: 0.65 },
+  { keywords: ['restaurant', 'eatery', 'bistro ', 'brasserie', 'steakhouse', 'tavern ', 'diner ', 'grill room'],
+    category: 'Eating out', subcategory: 'restaurant', tags: ['discretionary', 'variable_cost', 'social'], confidence: 0.72 },
+  { keywords: ['cafe', 'café', 'coffee shop', 'espresso bar', 'roastery'],
+    category: 'Eating out', subcategory: 'coffee', tags: ['discretionary', 'variable_cost', 'lifestyle'], confidence: 0.70 },
+  { keywords: ['pizza', 'burger ', 'sushi ', 'chinese food', 'thai food', 'indian food', 'peri peri', 'chicken wings', 'shawarma', 'kebab'],
+    category: 'Eating out', subcategory: 'fast_food', tags: ['discretionary', 'variable_cost'], confidence: 0.65 },
+  { keywords: ['petrol station', 'service station', 'filling station', 'fuel station'],
+    category: 'Fuel', subcategory: 'fuel', tags: ['essential', 'variable_cost'], confidence: 0.75 },
+  { keywords: ['parking ', 'parkade', 'park@', 'ncp ', 'wilsons park', 'secure park'],
+    category: 'Transport', subcategory: 'parking', tags: ['discretionary', 'variable_cost'], confidence: 0.72 },
+  { keywords: ['flights', 'airways', 'airlines ', 'aviation', 'airport tax'],
+    category: 'Travel', subcategory: 'flight', tags: ['discretionary', 'variable_cost'], confidence: 0.72 },
+  { keywords: ['hotel ', 'lodge ', 'guesthouse', 'resort ', ' inn ', 'boutique hotel', 'b&b '],
+    category: 'Travel', subcategory: 'accommodation', tags: ['discretionary', 'variable_cost'], confidence: 0.70 },
+  { keywords: ['hardware store', 'plumbing', 'electrical supplies', 'timber', 'tiles store', 'roofing'],
+    category: 'Home & Garden', subcategory: 'hardware', tags: ['discretionary', 'variable_cost'], confidence: 0.65 },
+  { keywords: ['charity', 'donation ', 'npo ', 'ngo ', 'non-profit', 'foundation'],
+    category: 'Gifts', subcategory: 'charity', tags: ['discretionary', 'variable_cost'], confidence: 0.65 },
+]
+
+/**
+ * Infer category from keyword signals for unknown merchants.
+ * Used as fallback when no canonical match is found.
+ *
+ * @param {string} description
+ * @returns {{ category, subcategory, tags, confidence } | null}
+ */
+export function inferCategoryFromKeywords(description) {
+  if (!description) return null
+  const lower = normalizeForMatching(description)
+  for (const rule of CATEGORY_INFERENCE) {
+    for (const kw of rule.keywords) {
+      if (lower.includes(kw)) {
+        return {
+          category:    rule.category,
+          subcategory: rule.subcategory,
+          tags:        rule.tags,
+          confidence:  rule.confidence,
+        }
+      }
+    }
+  }
+  return null
+}
+
 /**
  * Look up a canonical merchant identity from a description.
  * Returns the best matching merchant record or null.
@@ -693,6 +759,24 @@ export function interpretMerchant(txn) {
     }
   }
 
+  // Second tier: infer category from keyword signals (handles long-tail restaurants, hotels, etc.)
+  const inferred = inferCategoryFromKeywords(name)
+  if (inferred) {
+    // Only override stored category if inference is high-confidence or stored is 'Other'/missing
+    const useInferred = !category || category === 'Other' || inferred.confidence >= 0.75
+    if (useInferred) {
+      return {
+        displayName:  normalizeForDisplay(name),
+        canonical:    null,
+        category:     inferred.category,
+        subcategory:  inferred.subcategory,
+        type:         classifyTransactionType(inferred.category, amount),
+        tags:         inferred.tags,
+        confidence:   inferred.confidence,
+      }
+    }
+  }
+
   // Fallback: use stored category, normalize display name
   return {
     displayName:  normalizeForDisplay(name),
@@ -701,6 +785,6 @@ export function interpretMerchant(txn) {
     subcategory:  null,
     type:         classifyTransactionType(category, amount),
     tags:         getMerchantTags(name, category),
-    confidence:   category ? 0.6 : 0.3,
+    confidence:   category && category !== 'Other' ? 0.6 : 0.3,
   }
 }
