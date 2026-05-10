@@ -3,8 +3,8 @@ import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { useTier, isDateAllowed } from '../context/TierContext'
 import { fetchTransactionsByRange } from '../services/transactions'
-import { buildAIPayload, profileCentsToRands } from '../utils/financials'
-import { buildLedgerSummary } from '../utils/ledger'
+import { buildAIPayload } from '../utils/financials'
+import { buildLedgerSummary, countCalendarMonths } from '../utils/ledger'
 import { analyseSpending } from '../services/ai'
 import './Analytics.css'
 
@@ -28,15 +28,21 @@ const CAT_COLORS = {
 const fmtR = n => 'R' + Math.round(n).toLocaleString('en-ZA')
 const PERIODS = ['1M','3M','1Y','Custom','Max']
 
-function getDateRange(period, customFrom, customTo) {
+function getMonthRange(month) {
+  const [y, m] = month.split('-').map(Number)
+  const from = new Date(y, m - 1, 1).toISOString().split('T')[0]
+  const to = new Date(y, m, 0).toISOString().split('T')[0]
+  return { from, to }
+}
+
+function getDateRange(period, customFrom, customTo, selectedMonth) {
   // Ranges use calendar-month start boundaries so they reconcile with
   // the Dashboard month picker and IncomeStatement period logic.
   const now = new Date()
   const to = now.toISOString().split('T')[0]
   if (period === '1M') {
-    // Current calendar month (first of month -> today), matching Dashboard
-    const f = new Date(now.getFullYear(), now.getMonth(), 1)
-    return { from: f.toISOString().split('T')[0], to }
+    // Selected dashboard calendar month, matching Overview exactly.
+    return getMonthRange(selectedMonth)
   }
   if (period === '3M') {
     // Last 3 months including current: first day 2 months ago -> today
@@ -52,8 +58,8 @@ function getDateRange(period, customFrom, customTo) {
   return { from: '2020-01-01', to }
 }
 
-// groupByMonth and groupByCategory (sumByCategory) are now imported
-// from src/utils/financials.js for consistent Transfer/Income handling across all tabs.
+// Financial summaries come from buildLedgerSummary so totals, averages, and
+// non-spend categories reconcile with Overview.
 
 // ── SVG Line Chart ──────────────────────────────────────────────────────────
 function TrendChart({ monthlyData }) {
@@ -186,6 +192,11 @@ function AITrendAnalysis({ txns, period, budgets, parentLedger }) {
   const [analysis, setAnalysis] = useState('')
   const [loading, setLoading] = useState(false)
   const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    setAnalysis('')
+    setLoaded(false)
+  }, [txns, period])
 
   async function runAnalysis() {
     if (loaded || loading) return
@@ -341,7 +352,7 @@ function BudgetChat({ txns, budgets }) {
 }
 
 // ── Main Component ───────────────────────────────────────────────────────────
-export default function Analytics() {
+export default function Analytics({ selectedMonth }) {
   const { user, profile } = useAuth()
   const [period, setPeriod] = useState('3M')
   const [customFrom, setCustomFrom] = useState('')
@@ -354,9 +365,17 @@ export default function Analytics() {
   const [saving, setSaving] = useState(false)
   const [suggestMsg, setSuggestMsg] = useState('')
 
-  const range = useMemo(() => getDateRange(period,customFrom,customTo),[period,customFrom,customTo])
+  const effectiveMonth = selectedMonth || new Date().toISOString().slice(0, 7)
+  const range = useMemo(
+    () => getDateRange(period, customFrom, customTo, effectiveMonth),
+    [period, customFrom, customTo, effectiveMonth]
+  )
+  const rangeMonthCount = useMemo(
+    () => countCalendarMonths(range.from, range.to) || 1,
+    [range.from, range.to]
+  )
 
-  useEffect(() => { loadData() }, [range])
+  useEffect(() => { loadData() }, [range.from, range.to, tier, user?.id])
 
   async function loadData() {
     if (period==='Custom'&&(!customFrom||!customTo)) return
@@ -379,20 +398,17 @@ export default function Analytics() {
     }
   }
 
-  const catSpend = useMemo(()=>sumByCategory(txns),[txns])
-  const monthlyData = useMemo(()=>groupByMonth(txns),[txns])
-  const monthCount = useMemo(()=>Math.max(Object.keys(monthlyData).length,1),[monthlyData])
-  const totalSpend = useMemo(()=>Object.values(catSpend).reduce((s,v)=>s+v,0),[catSpend])
-  // Resolve income: prefer actual Income transactions; fall back to declared monthly salary x months
-  const txnIncome = useMemo(()=>txns.filter(t=>t.category==='Income').reduce((s,t)=>s+t.amount,0),[txns])
-  const profileMonthlyIncome = profileCentsToRands(profile?.net_income)
-  const totalIncome = useMemo(()=>{
-    if (txnIncome > 0) return txnIncome
-    if (profileMonthlyIncome > 0) return profileMonthlyIncome * monthCount
-    return 0
-  }, [txnIncome, profileMonthlyIncome, monthCount])
-  const incomeSource = txnIncome > 0 ? 'transactions' : (profileMonthlyIncome > 0 ? 'declared' : 'none')
-  const net = totalIncome - totalSpend
+  const ledger = useMemo(
+    () => buildLedgerSummary(txns, profile, { preferDeclared: true, monthCount: rangeMonthCount }),
+    [txns, profile, rangeMonthCount]
+  )
+  const catSpend = ledger.catTotals
+  const monthlyData = ledger.monthlyData
+  const monthCount = ledger.monthCount
+  const totalSpend = ledger.totalSpend
+  const totalIncome = ledger.income
+  const incomeSource = ledger.incomeSource
+  const net = ledger.net
 
   const suggestedBudgets = useMemo(()=>{
     const sugg={}
@@ -522,7 +538,7 @@ export default function Analytics() {
                           </form>
                         ) : (
                           <button className="budget-tag" onClick={()=>{setEditingCat(cat);setEditVal(budget||suggestedBudgets[cat]||'')}}>
-                            {budget>0?fmt(budget):'+ budget'}
+                            {budget>0?fmtR(budget):'+ budget'}
                           </button>
                         )}
                       </div>

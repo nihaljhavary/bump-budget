@@ -3,7 +3,8 @@ import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { useTier, isDateAllowed, PLAN_PRICES } from '../context/TierContext'
 import { fetchTransactions, fetchTransactionsByMonth, addTransaction, updateTransaction, deleteTransaction } from '../services/transactions'
-import { filterSpend, sumByCategory, sumSpend, sumTxnIncome, buildAIPayload, profileCentsToRands, groupByMonth } from '../utils/financials'
+import { buildAIPayload } from '../utils/financials'
+import { buildLedgerSummary } from '../utils/ledger'
 import { parseTransaction, analyseSpending } from '../services/ai'
 import ImportTransactions from './ImportTransactions'
 import Analytics from './Analytics'
@@ -162,16 +163,16 @@ export default function Dashboard({ onNavigate }) {
   )
   const hasLockedTransactions = transactions.some(t => !isDateAllowed(t.date, tier))
 
-  // Shared financial layer -- all spend/income/net calcs go through financials.js
-  const spendTxns  = filterSpend(allowedTransactions)
-  const txnIncome  = sumTxnIncome(allowedTransactions)
-  const profileMonthlyIncome = profileCentsToRands(profile?.net_income)
-  // Toggle: declared salary from profile (if set), or logged Income transactions
-  const income = (excludeSalary && profileMonthlyIncome > 0) ? profileMonthlyIncome : txnIncome
-  const totalSpend = sumSpend(allowedTransactions)
-  const net = income - totalSpend
-
-  const catTotals = sumByCategory(allowedTransactions)
+  // Canonical financial summary for the selected month.
+  const ledger = useMemo(
+    () => buildLedgerSummary(allowedTransactions, profile, { preferDeclared: excludeSalary, monthCount: 1 }),
+    [allowedTransactions, profile, excludeSalary]
+  )
+  const spendTxns = ledger.spendTxns
+  const income = ledger.income
+  const totalSpend = ledger.totalSpend
+  const net = ledger.net
+  const catTotals = ledger.catTotals
   const maxCat = Math.max(...Object.values(catTotals), 1)
 
   // Handle inline recategorisation
@@ -277,7 +278,7 @@ export default function Dashboard({ onNavigate }) {
       const payload = buildAIPayload(allowedTransactions, profile, 200, {
         mode: 'overview',
         budgets: userBudgets,
-        monthlyData: groupByMonth(allowedTransactions),
+        monthlyData: ledger.monthlyData,
       })
       const result = await analyseSpending(payload)
       setAiText(result.analysis)
@@ -549,7 +550,7 @@ export default function Dashboard({ onNavigate }) {
       {/* ANALYTICS */}
       {tab === 'analytics' && (
         tier.canAnalytics
-          ? <Analytics />
+          ? <Analytics selectedMonth={selectedMonth} />
           : <div className="tab-body">
               <LockedFeature locked feature="analytics">
                 <div className="locked-placeholder">

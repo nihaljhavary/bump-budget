@@ -12,7 +12,7 @@ export const CATEGORIES = [
 
 // Categories that should NOT count as lifestyle spend in analytics
 // (excluded from spendTxns calculations across Dashboard, Analytics, IncomeStatement)
-export const EXCLUDED_FROM_SPEND = new Set(['Income', 'Transfer'])
+export const EXCLUDED_FROM_SPEND = new Set(['Income', 'Transfer', 'Savings'])
 
 export const SA_RULES = [
   // ── Transfer — HIGHEST PRIORITY (before any spend categories) ──

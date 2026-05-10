@@ -128,6 +128,18 @@ export function currentMonthStart() {
   return calendarMonthStart(0)
 }
 
+/**
+ * Count inclusive calendar months between two ISO dates.
+ * Used for averaging over a selected period, including months with no rows.
+ */
+export function countCalendarMonths(fromDate, toDate) {
+  if (!fromDate || !toDate) return null
+  const [fy, fm] = fromDate.slice(0, 7).split('-').map(Number)
+  const [ty, tm] = toDate.slice(0, 7).split('-').map(Number)
+  if (!fy || !fm || !ty || !tm) return null
+  return Math.max((ty - fy) * 12 + (tm - fm) + 1, 1)
+}
+
 // ── Monthly averages (separate from totals) ────────────────────────────────────
 
 /**
@@ -171,6 +183,7 @@ export function buildMonthlyAverages(monthlyData) {
  * @param {Object}  [opts.tier]           - TierContext object; applies date filter if supplied
  * @param {boolean} [opts.dedup=false]    - deduplicate before calculating
  * @param {boolean} [opts.preferDeclared=true] - use declared salary as income source
+ * @param {number}  [opts.monthCount]     - explicit inclusive calendar month count for averages
  *
  * @typedef {Object} LedgerSummary
  * @property {Array}   all                  - tier-filtered (+ optionally deduped) transactions
@@ -200,7 +213,7 @@ export function buildMonthlyAverages(monthlyData) {
  * @returns {LedgerSummary}
  */
 export function buildLedgerSummary(transactions, profile, opts = {}) {
-  const { tier, dedup = false, preferDeclared = true } = opts
+  const { tier, dedup = false, preferDeclared = true, monthCount: explicitMonthCount } = opts
 
   // ── Step 1: Tier date filter ───────────────────────────────────────────────
   let txns = tier ? applyTierFilter(transactions, tier) : (transactions || [])
@@ -220,7 +233,7 @@ export function buildLedgerSummary(transactions, profile, opts = {}) {
   // ── Step 5: Category and monthly breakdown ─────────────────────────────────
   const catTotals   = sumByCategory(txns)
   const monthlyData = groupByMonth(txns)
-  const monthCount  = Math.max(Object.keys(monthlyData).length, 1)
+  const monthCount  = Math.max(explicitMonthCount || Object.keys(monthlyData).length, 1)
 
   // ── Step 6: Period-aware income resolution ─────────────────────────────────
   // KEY FIX: declared salary is a MONTHLY figure and must be scaled by months.

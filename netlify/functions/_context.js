@@ -66,7 +66,7 @@ export function buildInsightContext(p) {
     ? 'declared take-home salary'
     : incomeSource === 'transactions' ? 'from logged income' : 'unknown source'
   lines.push(`Income: ${fmt(income)} (${incomeLabel})`)
-  lines.push(`Total spend: ${fmt(totalSpend)} (${spendPct}% of income, transfers excluded)`)
+  lines.push(`Total spend: ${fmt(totalSpend)} (${spendPct}% of income, transfers/savings excluded)`)
 
   if (debitOrders > 0) {
     const doRatePct = income > 0 ? Math.round(debitOrders / income * 100) : 0
@@ -95,7 +95,7 @@ export function buildInsightContext(p) {
   const catEntries = Object.entries(catTotals).sort((a, b) => b[1] - a[1])
   if (catEntries.length > 0) {
     lines.push('')
-    lines.push('SPENDING BREAKDOWN (transfers excluded):')
+    lines.push('SPENDING BREAKDOWN (transfers/savings excluded):')
     for (const [cat, amt] of catEntries.slice(0, 10)) {
       // Prefer user-set budgets, fall back to defaults
       const budget = (budgets && budgets[cat] > 0) ? budgets[cat]
@@ -197,7 +197,7 @@ export function buildInsightContext(p) {
 
   // ── Anomaly detection ──────────────────────────────────────────────────────
   if (transactions.length > 3) {
-    const spendTxns = transactions.filter(t => t.category !== 'Income' && t.category !== 'Transfer')
+    const spendTxns = transactions.filter(t => t.category !== 'Income' && t.category !== 'Transfer' && t.category !== 'Savings')
     if (spendTxns.length > 3) {
       const avgAmt = spendTxns.reduce((s, t) => s + t.amount, 0) / spendTxns.length
       const threshold = Math.max(avgAmt * 4, 500)

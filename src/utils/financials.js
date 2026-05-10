@@ -16,7 +16,7 @@
 // Category sets ----------------------------------------------------------------
 
 /** Categories that are NEVER lifestyle spend */
-export const NON_SPEND_CATS = new Set(['Income', 'Transfer'])
+export const NON_SPEND_CATS = new Set(['Income', 'Transfer', 'Savings'])
 
 /** All recognised spend categories */
 export const SPEND_CATEGORIES = [
@@ -78,7 +78,7 @@ export function sumTxnIncome(transactions) {
 
 /**
  * Build category totals from transactions.
- * Excludes Income and Transfer.
+ * Excludes Income, Transfer, and Savings.
  * @returns {Object} { categoryName: totalRands }
  */
 export function sumByCategory(transactions) {
@@ -91,7 +91,7 @@ export function sumByCategory(transactions) {
 
 /**
  * Group transactions by calendar month.
- * Transfers excluded from spend. Income tracked separately.
+ * Transfers and savings excluded from spend. Income tracked separately.
  * @returns {Object} { 'YYYY-MM': { spend: number, income: number } }
  */
 export function groupByMonth(transactions) {
@@ -102,7 +102,7 @@ export function groupByMonth(transactions) {
     if (!months[m]) months[m] = { spend: 0, income: 0 }
     if (t.category === 'Income') {
       months[m].income += t.amount
-    } else if (t.category !== 'Transfer') {
+    } else if (isSpend(t)) {
       months[m].spend += t.amount
     }
   }
@@ -189,7 +189,7 @@ export function buildFinancialSummary(transactions, profile, opts = {}) {
 /**
  * Build the canonical AI analysis payload.
  *
- * - Filters Transfer transactions before sending (they inflate spend metrics)
+ * - Filters non-spend transactions before sending (they inflate spend metrics)
  * - Always provides declaredIncome for AI context
  * - Provides consistent profileContext
  * - Optionally includes budgets, recurringContext, monthlyData, mode
@@ -210,7 +210,7 @@ export function buildAIPayload(transactions, profile, limit = 200, opts = {}) {
   const { budgets, recurringContext, monthlyData, mode } = opts
 
   const aiTxns = (transactions || [])
-    .filter(t => t.category !== 'Transfer')
+    .filter(isSpend)
     .slice(0, limit)
 
   const declaredIncome = profileCentsToRands(profile?.net_income)

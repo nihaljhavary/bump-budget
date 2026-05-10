@@ -21,6 +21,7 @@ const ALLOWED_FIELDS = new Set([
 ])
 
 const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
+const isSpend = t => t.category !== 'Income' && t.category !== 'Transfer' && t.category !== 'Savings'
 
 export async function handler(event) {
   if (event.httpMethod !== 'POST') {
@@ -95,7 +96,7 @@ export async function handler(event) {
 
   const catTotals = {}
   transactions
-    .filter(t => t.category !== 'Income' && t.category !== 'Transfer')
+    .filter(isSpend)
     .forEach(t => { catTotals[t.category] = (catTotals[t.category] || 0) + t.amount })
   const totalSpend = Object.values(catTotals).reduce((s, v) => s + v, 0)
 

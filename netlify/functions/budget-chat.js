@@ -68,8 +68,8 @@ export async function handler(event) {
 
   const catTotals = {}
   for (const t of last90Days) {
-    // Exclude Income and Transfer -- transfers are not lifestyle spend
-    if (t.category === 'Income' || t.category === 'Transfer') continue
+    // Exclude non-spend categories -- transfers and savings are not lifestyle spend
+    if (t.category === 'Income' || t.category === 'Transfer' || t.category === 'Savings') continue
     catTotals[t.category] = (catTotals[t.category] || 0) + t.amount
   }
   const totalSpend = Object.values(catTotals).reduce((s, v) => s + v, 0)

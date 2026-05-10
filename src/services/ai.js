@@ -58,3 +58,32 @@ export async function analyseSpending(payload) {
   if (!res.ok) throw new Error('Analysis request failed')
   return res.json()
 }
+
+/**
+ * Enrich an unknown merchant with AI categorisation.
+ * Falls back to rules-based matching server-side before calling Claude.
+ *
+ * @param {string} description  - raw bank transaction description
+ * @param {number} [amount]     - optional amount hint in rands
+ * @returns {{ displayName, category, confidence, source }}
+ */
+export async function enrichMerchant(description, amount) {
+  const token = await getToken()
+  const body = { description }
+  if (amount !== undefined) body.amount = amount
+
+  const res = await fetch('/.netlify/functions/enrich-merchant', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify(body)
+  })
+  if (res.status === 429) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || 'Monthly AI limit reached.')
+  }
+  if (!res.ok) throw new Error('Enrichment request failed')
+  return res.json()
+}

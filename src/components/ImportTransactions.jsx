@@ -395,7 +395,7 @@ export default function ImportTransactions({ onImportComplete }) {
   }
 
   const selectedCount  = categorised.filter(t => t.include).length
-  const totalAmount    = categorised.filter(t => t.include && t.category !== 'Income' && t.category !== 'Transfer').reduce((s, t) => s + t.amount, 0)
+  const totalAmount    = categorised.filter(t => t.include && t.category !== 'Income' && t.category !== 'Transfer' && t.category !== 'Savings').reduce((s, t) => s + t.amount, 0)
   const incomeAmount   = categorised.filter(t => t.include && t.category === 'Income').reduce((s, t) => s + t.amount, 0)
   const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
 

@@ -115,7 +115,7 @@ export function applyCorrectionsLocally(transactions, rules) {
 export function findUnresolvedMerchants(transactions, minAmount = 50) {
   return (transactions || [])
     .filter(t => {
-      if (t.category === 'Income' || t.category === 'Transfer') return false
+      if (t.category === 'Income' || t.category === 'Transfer' || t.category === 'Savings') return false
       if (t.amount < minAmount) return false
       return t.category === 'Other' || !t.category
     })
