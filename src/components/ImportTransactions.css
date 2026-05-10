@@ -333,6 +333,45 @@
 .rule-msg.ok { background: var(--success-light); color: #166534; }
 .rule-msg.err { background: #ffecec; color: #dc2626; }
 
+/* ── Replace import ── */
+.import-replace-box {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px;
+  margin-bottom: 16px;
+  background: var(--bg-alt);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.import-replace-box:has(input:focus-visible) {
+  border-color: var(--coral);
+  outline: 2px solid var(--coral-light);
+  outline-offset: 2px;
+}
+
+.import-replace-box input {
+  margin-top: 3px;
+  flex-shrink: 0;
+  accent-color: var(--coral);
+}
+
+.import-replace-box strong:first-of-type {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.85rem;
+}
+
+.import-replace-hint {
+  color: var(--muted);
+  font-weight: 400;
+}
+
 /* ── Transaction table ── */
 .txn-table-wrap {
   overflow-x: auto;

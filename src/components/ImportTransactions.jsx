@@ -1,9 +1,9 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useMemo } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { normalizeForDisplay } from '../utils/merchantNormalizer'
-import { txnFingerprint, buildFingerprintSet } from '../utils/ledger'
+import { txnFingerprint, buildFingerprintSet, formatLocalDate } from '../utils/ledger'
 import './ImportTransactions.css'
 
 const CATEGORIES = [
@@ -43,7 +43,7 @@ function normaliseAmount(val) {
 }
 
 function normaliseDate(val) {
-  if (!val) return new Date().toISOString().split('T')[0]
+  if (!val) return formatLocalDate(new Date())
   // Excel serial date
   if (typeof val === 'number') {
     const d = XLSX.SSF.parse_date_code(val)
@@ -60,8 +60,8 @@ function normaliseDate(val) {
   if (ymd) return `${ymd[1]}-${ymd[2]}-${ymd[3]}`
   // Let JS parse the rest
   const d = new Date(s)
-  if (!isNaN(d)) return d.toISOString().split('T')[0]
-  return new Date().toISOString().split('T')[0]
+  if (!isNaN(d)) return formatLocalDate(d)
+  return formatLocalDate(new Date())
 }
 
 function findCol(headers, ...options) {
@@ -73,11 +73,16 @@ function findCol(headers, ...options) {
   return null
 }
 
+function hasTransferHint(description, type = '') {
+  const text = `${type} ${description}`.toLowerCase()
+  return /\b(transfer|internal transfer|own account|own acc|account transfer|inter-?account|discovery pay|payshap|send money)\b/i.test(text)
+}
+
 function parseRows(rows, bankId) {
   if (rows.length === 0) return []
   const headers = Object.keys(rows[0])
 
-  let dateCol, descCol, amtCol, debitCol, creditCol
+  let dateCol, descCol, amtCol, debitCol, creditCol, typeCol
 
   switch (bankId) {
     case 'fnb':
@@ -122,6 +127,7 @@ function parseRows(rows, bankId) {
       amtCol   = findCol(headers, 'amount')
       debitCol = findCol(headers, 'debit')
       creditCol= findCol(headers, 'credit')
+      typeCol  = findCol(headers, 'type')
       break
     case 'tyme':
       dateCol  = findCol(headers, 'date', 'transaction date')
@@ -139,6 +145,8 @@ function parseRows(rows, bankId) {
       creditCol= findCol(headers, 'credit')
   }
 
+  typeCol = typeCol || findCol(headers, 'type', 'transaction type', 'transaction code')
+
   const result = []
   for (const row of rows) {
     const desc = row[descCol] ? String(row[descCol]).trim() : null
@@ -146,6 +154,8 @@ function parseRows(rows, bankId) {
 
     let amount = null
     let isIncome = false
+    const txnType = typeCol ? String(row[typeCol] || '').trim() : ''
+    const isTransfer = hasTransferHint(desc, txnType)
 
     if (amtCol && row[amtCol] !== undefined && row[amtCol] !== '') {
       const raw = parseFloat(String(row[amtCol]).replace(/[^0-9.\-]/g, ''))
@@ -167,6 +177,8 @@ function parseRows(rows, bankId) {
       description: desc,
       amount,
       is_income:   isIncome,
+      is_transfer: isTransfer,
+      type:        txnType || undefined,
     })
   }
 
@@ -195,6 +207,8 @@ export default function ImportTransactions({ onImportComplete }) {
   const [saving, setSaving] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
   const [skippedCount, setSkippedCount] = useState(0)
+  const [replaceInRange, setReplaceInRange] = useState(false)
+  const [removedInRangeCount, setRemovedInRangeCount] = useState(0)
   const fileRef = useRef()
 
   // ── File parsing ─────────────────────────────────────────────────────────
@@ -209,6 +223,7 @@ export default function ImportTransactions({ onImportComplete }) {
         if (rows.length === 0) { setError('No data found in file'); return }
         const txns = parseRows(rows, bank)
         if (txns.length === 0) { setError("Couldn't find transaction columns. Try selecting a different bank or use \"Other / Generic\"."); return }
+        setReplaceInRange(false)
         setParsed(txns)
         setStep('preview')
         categoriseWithClaude(txns)
@@ -258,7 +273,7 @@ export default function ImportTransactions({ onImportComplete }) {
       const rawResults = Array.isArray(data.results) ? data.results : []
       if (rawResults.length === 0) {
         // Fallback: show parsed rows with Other so user can adjust manually
-        setCategorised(txns.map((t, i) => ({ ...t, id: i, category: t.is_income ? 'Income' : 'Other', include: true })))
+        setCategorised(txns.map((t, i) => ({ ...t, id: i, category: t.is_transfer ? 'Transfer' : t.is_income ? 'Income' : 'Other', include: true })))
         if (!data.results) setError('Categorisation returned an unexpected response — categories set to Other. You can adjust before importing.')
         return
       }
@@ -266,9 +281,11 @@ export default function ImportTransactions({ onImportComplete }) {
         // Use the original is_income hint as a safety net: if backend still returned
         // 'Other' for a transaction the parser identified as a credit, promote to Income
         const originalTxn = txns[i]
-        const category = (t.category === 'Other' && originalTxn?.is_income === true)
-          ? 'Income'
-          : (t.category || 'Other')
+        const category = originalTxn?.is_transfer === true
+          ? 'Transfer'
+          : (t.category === 'Other' && originalTxn?.is_income === true)
+            ? 'Income'
+            : (t.category || 'Other')
         // Backend now provides normalized name; fall back to client-side normalizer
         const displayName = t.name || normalizeForDisplay(t.description) || t.description
         return { ...t, name: displayName, id: i, include: true, category }
@@ -276,7 +293,7 @@ export default function ImportTransactions({ onImportComplete }) {
     } catch (err) {
       setError(err.message)
       // Still show parsed data with "Other" as fallback
-      setCategorised(txns.map((t, i) => ({ ...t, id: i, category: 'Other', include: true })))
+      setCategorised(txns.map((t, i) => ({ ...t, id: i, category: t.is_transfer ? 'Transfer' : t.is_income ? 'Income' : 'Other', include: true })))
     } finally {
       setLoading(false)
     }
@@ -324,57 +341,121 @@ export default function ImportTransactions({ onImportComplete }) {
     setSaving(true)
     setError(null)
     setSkippedCount(0)
+    setRemovedInRangeCount(0)
 
     const included = categorised.filter(t => t.include)
     if (included.length === 0) { setSaving(false); return }
 
+    const dates = included.map(t => t.date).filter(Boolean).sort()
+    const minDate = dates[0] || '2020-01-01'
+    const maxDate = dates[dates.length - 1] || formatLocalDate(new Date())
+
     try {
-      // ── Duplicate detection ─────────────────────────────────────────────
-      // Fetch existing transactions in the date window covered by this import
-      // to build a fingerprint set. Any row already in the database is skipped.
-      const dates = included.map(t => t.date).filter(Boolean).sort()
-      const minDate = dates[0] || '2020-01-01'
-      const maxDate = dates[dates.length - 1] || new Date().toISOString().split('T')[0]
-
-      const { data: existing } = await supabase
-        .from('transactions')
-        .select('date, amount, name, raw_merchant')
-        .eq('user_id', user.id)
-        .gte('date', minDate)
-        .lte('date', maxDate)
-
-      // Build fingerprint set from existing rows
-      // Existing rows use 'name' as display name; map to 'description' for fingerprint
-      const existingFingerprints = buildFingerprintSet(
-        (existing || []).map(t => ({ ...t, description: t.raw_merchant || t.name }))
-      )
-
       const batchId = crypto.randomUUID()
       const toSave = []
       let skipped = 0
 
-      for (const t of included) {
-        const fp = txnFingerprint({ ...t, description: t.description || t.name })
-        if (existingFingerprints.has(fp)) {
-          skipped++
-          continue
+      if (replaceInRange) {
+        const seen = new Set()
+        for (const t of included) {
+          const fp = txnFingerprint({
+            date: t.date,
+            amount: t.amount,
+            description: (t.raw_merchant || t.description || t.name || ''),
+          })
+          if (seen.has(fp)) {
+            skipped++
+            continue
+          }
+          seen.add(fp)
+          toSave.push({
+            user_id:         user.id,
+            name:            t.name || normalizeForDisplay(t.description) || t.description,
+            amount:          t.amount,
+            category:        t.category || 'Other',
+            date:            t.date,
+            raw_merchant:    t.raw_merchant || t.description,
+            import_batch_id: batchId,
+            transaction_hash: fp,
+          })
         }
-        toSave.push({
-          user_id:         user.id,
-          name:            t.name || normalizeForDisplay(t.description) || t.description,
-          amount:          t.amount,
-          category:        t.category || 'Other',
-          date:            t.date,
-          raw_merchant:    t.raw_merchant || t.description,
-          import_batch_id: batchId,
-        })
+        if (toSave.length === 0) {
+          setError('Replace was cancelled: no unique rows to import (every selected line is duplicated in this file). Uncheck Replace or fix the file.')
+          setSaving(false)
+          return
+        }
+        const { error: delErr, count: delCount } = await supabase
+          .from('transactions')
+          .delete({ count: 'exact' })
+          .eq('user_id', user.id)
+          .gte('date', minDate)
+          .lte('date', maxDate)
+
+        if (delErr) throw delErr
+        setRemovedInRangeCount(typeof delCount === 'number' ? delCount : 0)
+      } else {
+        let { data: existing, error: existingError } = await supabase
+          .from('transactions')
+          .select('date, amount, name, raw_merchant, transaction_hash')
+          .eq('user_id', user.id)
+          .gte('date', minDate)
+          .lte('date', maxDate)
+
+        if (existingError && String(existingError.message || '').includes('transaction_hash')) {
+          const retry = await supabase
+            .from('transactions')
+            .select('date, amount, name, raw_merchant')
+            .eq('user_id', user.id)
+            .gte('date', minDate)
+            .lte('date', maxDate)
+          existing = retry.data
+          existingError = retry.error
+        }
+
+        if (existingError) throw existingError
+
+        const existingFingerprints = buildFingerprintSet(
+          (existing || []).map(t => ({ ...t, description: t.raw_merchant || t.name }))
+        )
+        const incomingFingerprints = new Set(existingFingerprints)
+
+        for (const t of included) {
+          const fp = txnFingerprint({
+            date: t.date,
+            amount: t.amount,
+            description: (t.raw_merchant || t.description || t.name || ''),
+          })
+          if (incomingFingerprints.has(fp)) {
+            skipped++
+            continue
+          }
+          incomingFingerprints.add(fp)
+          toSave.push({
+            user_id:         user.id,
+            name:            t.name || normalizeForDisplay(t.description) || t.description,
+            amount:          t.amount,
+            category:        t.category || 'Other',
+            date:            t.date,
+            raw_merchant:    t.raw_merchant || t.description,
+            import_batch_id: batchId,
+            transaction_hash: fp,
+          })
+        }
       }
 
       setSkippedCount(skipped)
 
       if (toSave.length > 0) {
         const { error } = await supabase.from('transactions').insert(toSave)
-        if (error) throw error
+        if (error) {
+          if (String(error.message || '').includes('transaction_hash')) {
+            const fallbackRows = toSave.map(({ transaction_hash, ...row }) => row)
+            const { error: retryError } = await supabase.from('transactions').insert(fallbackRows)
+            if (retryError) throw retryError
+          } else {
+            throw error
+          }
+        }
       }
 
       setSavedCount(toSave.length)
@@ -388,11 +469,19 @@ export default function ImportTransactions({ onImportComplete }) {
         )
       }
     } catch (err) {
-      setError('Save failed: ' + err.message)
+      const prefix = replaceInRange
+        ? 'Save failed. If you used replace, rows in this date range may have been removed — re-import the file with Replace on to fill them again. '
+        : ''
+      setError(prefix + err.message)
     } finally {
       setSaving(false)
     }
   }
+
+  const importRangeBounds = useMemo(() => {
+    const d = categorised.filter(t => t.include).map(t => t.date).filter(Boolean).sort()
+    return { from: d[0] || null, to: d[d.length - 1] || null }
+  }, [categorised])
 
   const selectedCount  = categorised.filter(t => t.include).length
   const totalAmount    = categorised.filter(t => t.include && t.category !== 'Income' && t.category !== 'Transfer' && t.category !== 'Savings').reduce((s, t) => s + t.amount, 0)
@@ -589,9 +678,28 @@ export default function ImportTransactions({ onImportComplete }) {
           </div>
         )}
 
+        {!loading && categorised.length > 0 && (
+          <label className="import-replace-box">
+            <input
+              type="checkbox"
+              checked={replaceInRange}
+              onChange={e => setReplaceInRange(e.target.checked)}
+            />
+            <span>
+              <strong>Replace existing in this date range</strong>
+              <span className="import-replace-hint">
+                {' '}Removes every bump. transaction you already have between{' '}
+                <strong>{importRangeBounds.from || '…'}</strong>
+                {' '}and <strong>{importRangeBounds.to || '…'}</strong>
+                , then imports this file. Use when you are re-uploading a corrected statement. Manual entries in that range are removed too.
+              </span>
+            </span>
+          </label>
+        )}
+
         {!loading && (
           <div className="preview-actions">
-            <button className="import-back-btn" onClick={() => { setStep('upload'); setCategorised([]) }}>
+            <button className="import-back-btn" onClick={() => { setStep('upload'); setCategorised([]); setReplaceInRange(false) }}>
               ← Re-upload
             </button>
             <button
@@ -599,7 +707,7 @@ export default function ImportTransactions({ onImportComplete }) {
               disabled={saving || selectedCount === 0}
               onClick={handleSave}
             >
-              {saving ? 'Saving...' : `Import ${selectedCount} transactions`}
+              {saving ? 'Saving...' : `${replaceInRange ? 'Replace & ' : ''}import ${selectedCount} transactions`}
             </button>
           </div>
         )}
@@ -617,7 +725,8 @@ export default function ImportTransactions({ onImportComplete }) {
         <h2>{savedCount} transaction{savedCount !== 1 ? 's' : ''} imported</h2>
         <p>
           Your spending has been categorised and added to your dashboard.
-          {skippedCount > 0 && ` ${skippedCount} duplicate${skippedCount !== 1 ? 's' : ''} were skipped.`}
+          {removedInRangeCount > 0 && ` ${removedInRangeCount} previous row${removedInRangeCount !== 1 ? 's' : ''} in that date range ${removedInRangeCount !== 1 ? 'were' : 'was'} removed.`}
+          {skippedCount > 0 && ` ${skippedCount} duplicate line${skippedCount !== 1 ? 's' : ''} in the file ${skippedCount !== 1 ? 'were' : 'was'} skipped.`}
         </p>
         <div className="done-actions">
           <button className="import-primary-btn" onClick={onImportComplete}>
@@ -629,6 +738,9 @@ export default function ImportTransactions({ onImportComplete }) {
             setParsed([])
             setError(null)
             setSavedCount(0)
+            setReplaceInRange(false)
+            setRemovedInRangeCount(0)
+            setSkippedCount(0)
           }}>
             Import another file
           </button>
