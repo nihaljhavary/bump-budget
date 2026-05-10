@@ -428,15 +428,9 @@ export const SA_RULES = [
     'game store',    // Game SA sells electronics & hardware
   ], category: 'Home & Garden' },
 
-  // ── Online retail / general shopping (before Woolworths catch-all) ──
-  // NOTE: payfast* and paygate* removed from here — after wrapper stripping in
-  // saPreCategory(), these wrappers are already gone, so residual "payfast*" in
-  // a description would be an actual merchant called that. Don't swallow them.
-  { patterns: [
-    'takealot', 'amazon.co.za', 'loot.co.za',
-    'bash.com', 'superbalist',
-    'bidorbuy', 'gumtree',
-  ], category: 'Other' },
+  // ── Online retail — removed hard-coded 'Other' mapping ──
+  // Takealot, Amazon, Loot etc. are passed to Claude for category inference
+  // (Electronics, Books, Home & Garden, Clothing etc.) rather than bulk-assigning Other.
 
   // ── Woolworths general — after food-specific rule above catches food ──
   { patterns: ['woolworths ', 'woolworths', 'woolies ', 'woolies'], category: 'Clothing' },
@@ -475,15 +469,42 @@ export function saPreCategory(description) {
   // so "PAYFAST*NETFLIX" matches 'netflix' → Subscriptions, not 'payfast*' → Other
   const normalized = normalizeDescription(description)
   const lower = normalized.toLowerCase()
-  const rawLower = description.toLowerCase()
   for (const rule of SA_RULES) {
     for (const pattern of rule.patterns) {
       if (lower.includes(pattern)) return rule.category
     }
   }
-  // Yoco wildcard: if wrapper is still present in raw, it's a small business → Other
-  if (rawLower.startsWith('yoco*') || lower.startsWith('yoco*')) return 'Other'
+  // Yoco: the prefix is already stripped by normalizeDescription(), so by this
+  // point `lower` contains the merchant name only. If SA_RULES didn't match,
+  // return null and let Claude categorise from the clean merchant name.
   return null
+}
+
+/**
+ * Aggressively clean a description down to just the merchant name.
+ * Used when sending descriptions to Claude — removes location tags,
+ * phone numbers, and trailing noise so the AI sees "Vida e Caffe" not
+ * "YOCO*VIDA E CAFFE 021 555 1234 CLAREMONT V&A".
+ *
+ * @param {string} description
+ * @returns {string}
+ */
+export function cleanForAI(description) {
+  if (!description) return ''
+  let s = normalizeDescription(description)  // strips payment prefixes + long refs
+  s = s
+    // Strip SA phone numbers (landline + mobile patterns)
+    .replace(/0\d{2}[\s-]?\d{3}[\s-]?\d{4}/g, '')
+    // Strip short numeric tokens (branch codes, store numbers)
+    .replace(/\d{1,5}/g, '')
+    // Strip common trailing location noise
+    .replace(/(jhb|cpt|dbn|pta|centurion|sandton|rosebank|waterfront|mall|centre|plaza|square|park|lifestyle|shopping)/gi, '')
+    // Strip trailing separators left after removals
+    .replace(/[-–|,]+$/, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+  // If cleaning left an empty string, fall back to the normalized form
+  return s || normalizeDescription(description)
 }
 
 /**
@@ -494,5 +515,4 @@ export function saPreCategory(description) {
  * @returns {boolean}
  */
 export function isSpendTransaction(txn) {
-  return !EXCLUDED_FROM_SPEND.has(txn?.category)
-}
+  return !EXCLUDED_FROM_SPEND.has(txn?.c
