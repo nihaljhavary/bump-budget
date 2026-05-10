@@ -65,8 +65,8 @@ function isLedgerDebugEnabled() {
  * @returns {string}
  */
 export function txnFingerprint(txn) {
-  // Use raw description if available (pre-normalisation) for maximum uniqueness
-  const desc = (txn.description || txn.name || '')
+  // Align with ImportTransactions + DB rows: raw_merchant is the canonical statement text
+  const desc = (txn.description || txn.raw_merchant || txn.name || '')
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim()

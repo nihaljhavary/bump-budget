@@ -134,6 +134,7 @@ export default function Projections() {
     const ledger = buildLedgerSummary(txns, profile, {
       preferDeclared: false,
       monthCount: countCalendarMonths(range.from, range.to) || undefined,
+      dedup: true,
       debugLabel: `Projections ${range.from}..${range.to}`,
       from: range.from,
       to: range.to,

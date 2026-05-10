@@ -1,6 +1,23 @@
 import { supabase } from '../supabase'
 import { formatLocalDate, getCalendarMonthRange } from '../utils/ledger'
 
+/** PostgREST returns at most 1000 rows per request by default; page until exhausted. */
+const PAGE_SIZE = 1000
+
+async function fetchTransactionPages(rangeFn) {
+  const all = []
+  let offset = 0
+  for (;;) {
+    const { data, error } = await rangeFn(offset, offset + PAGE_SIZE - 1)
+    if (error) throw error
+    const rows = data ?? []
+    all.push(...rows)
+    if (rows.length < PAGE_SIZE) break
+    offset += PAGE_SIZE
+  }
+  return all
+}
+
 // Categories excluded from spend analytics (not lifestyle spend)
 export const EXCLUDED_FROM_SPEND = new Set(['Income', 'Transfer', 'Savings'])
 
@@ -15,32 +32,32 @@ export async function fetchTransactions(userId) {
   const firstOfMonth = formatLocalDate(new Date(now.getFullYear(), now.getMonth(), 1))
   const lastOfMonth = formatLocalDate(new Date(now.getFullYear(), now.getMonth() + 1, 0))
 
-  const { data, error } = await supabase
-    .from('transactions')
-    .select('*')
-    .eq('user_id', userId)
-    .gte('date', firstOfMonth)
-    .lte('date', lastOfMonth)
-    .order('date', { ascending: false })
-
-  if (error) throw error
-  return data
+  return fetchTransactionPages((from, to) =>
+    supabase
+      .from('transactions')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('date', firstOfMonth)
+      .lte('date', lastOfMonth)
+      .order('date', { ascending: false })
+      .range(from, to)
+  )
 }
 
 // Fetch transactions for a specific month (YYYY-MM)
 export async function fetchTransactionsByMonth(userId, month) {
   const { from: first, to: last } = getCalendarMonthRange(month)
 
-  const { data, error } = await supabase
-    .from('transactions')
-    .select('*')
-    .eq('user_id', userId)
-    .gte('date', first)
-    .lte('date', last)
-    .order('date', { ascending: false })
-
-  if (error) throw error
-  return data
+  return fetchTransactionPages((from, to) =>
+    supabase
+      .from('transactions')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('date', first)
+      .lte('date', last)
+      .order('date', { ascending: false })
+      .range(from, to)
+  )
 }
 
 // Fetch last N months of transactions for trend data
@@ -49,29 +66,29 @@ export async function fetchRecentMonths(userId, months = 6) {
   const from = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1)
   const fromDate = formatLocalDate(from)
 
-  const { data, error } = await supabase
-    .from('transactions')
-    .select('date, amount, category, name')
-    .eq('user_id', userId)
-    .gte('date', fromDate)
-    .order('date', { ascending: true })
-
-  if (error) throw error
-  return data
+  return fetchTransactionPages((from, to) =>
+    supabase
+      .from('transactions')
+      .select('date, amount, category, name')
+      .eq('user_id', userId)
+      .gte('date', fromDate)
+      .order('date', { ascending: true })
+      .range(from, to)
+  )
 }
 
 // Fetch transactions for an arbitrary date range
 export async function fetchTransactionsByRange(userId, fromDate, toDate) {
-  const { data, error } = await supabase
-    .from('transactions')
-    .select('*')
-    .eq('user_id', userId)
-    .gte('date', fromDate)
-    .lte('date', toDate)
-    .order('date', { ascending: true })
-
-  if (error) throw error
-  return data
+  return fetchTransactionPages((from, to) =>
+    supabase
+      .from('transactions')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('date', fromDate)
+      .lte('date', toDate)
+      .order('date', { ascending: true })
+      .range(from, to)
+  )
 }
 
 // Add a new transaction
@@ -112,14 +129,16 @@ export async function recategorizeMatchingTransactions(userId, merchantPattern, 
   const lower = merchantPattern.toLowerCase()
 
   // Fetch all user transactions (we do client-side matching to use includes())
-  const { data: all, error } = await supabase
-    .from('transactions')
-    .select('id, name')
-    .eq('user_id', userId)
+  const all = await fetchTransactionPages((from, to) =>
+    supabase
+      .from('transactions')
+      .select('id, name')
+      .eq('user_id', userId)
+      .order('id', { ascending: true })
+      .range(from, to)
+  )
 
-  if (error) throw error
-
-  const matching = (all || []).filter(t =>
+  const matching = all.filter(t =>
     t.name && t.name.toLowerCase().includes(lower)
   ).map(t => t.id)
 

@@ -135,7 +135,7 @@ export default function Recommendations() {
       ])
 
       // Average monthly spend per category, using the canonical non-spend rules.
-      const ledger = buildLedgerSummary(txns || [], profile, { preferDeclared: false, monthCount: 3 })
+      const ledger = buildLedgerSummary(txns || [], profile, { preferDeclared: false, monthCount: 3, dedup: true })
       const avg = {}
       for (const [cat, total] of Object.entries(ledger.catTotals)) {
         avg[cat] = total / 3

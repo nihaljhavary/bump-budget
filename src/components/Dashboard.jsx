@@ -170,6 +170,7 @@ export default function Dashboard({ onNavigate }) {
       return buildLedgerSummary(allowedTransactions, profile, {
         preferDeclared: excludeSalary,
         monthCount: 1,
+        dedup: true,
         debugLabel: `Overview ${selectedMonth}`,
         from: range.from,
         to: range.to,
@@ -559,7 +560,7 @@ export default function Dashboard({ onNavigate }) {
       {/* ANALYTICS */}
       {tab === 'analytics' && (
         tier.canAnalytics
-          ? <Analytics selectedMonth={selectedMonth} />
+          ? <Analytics selectedMonth={selectedMonth} preferDeclared={excludeSalary} />
           : <div className="tab-body">
               <LockedFeature locked feature="analytics">
                 <div className="locked-placeholder">

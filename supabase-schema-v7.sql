@@ -1,5 +1,12 @@
--- Run this in Supabase SQL editor after v6.
+-- Run this in Supabase SQL editor after deduping duplicates (scripts/dedupe-transactions.sql).
 -- Adds import fingerprints so repeated statement uploads cannot duplicate rows.
+--
+-- Safe to re-run: uses IF NOT EXISTS / IF NOT EXISTS on indexes.
+
+-- Ensure bulk-import columns exist (same as v4) so this file runs on older DBs
+alter table transactions
+  add column if not exists raw_merchant text,
+  add column if not exists import_batch_id text;
 
 alter table transactions
   add column if not exists transaction_hash text;

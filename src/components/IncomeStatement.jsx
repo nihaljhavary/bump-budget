@@ -46,6 +46,7 @@ function buildStatement(txns, profile, meta = {}) {
   const s = buildLedgerSummary(txns, profile, {
     preferDeclared: false,
     monthCount: countCalendarMonths(meta.from, meta.to) || undefined,
+    dedup: true,
     debugLabel: meta.debugLabel,
     from: meta.from,
     to: meta.to,

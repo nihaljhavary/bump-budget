@@ -351,7 +351,7 @@ function BudgetChat({ txns, budgets }) {
 }
 
 // ── Main Component ───────────────────────────────────────────────────────────
-export default function Analytics({ selectedMonth }) {
+export default function Analytics({ selectedMonth, preferDeclared = true }) {
   const { user, profile } = useAuth()
   const tier = useTier()
   const [period, setPeriod] = useState('1M')
@@ -400,13 +400,14 @@ export default function Analytics({ selectedMonth }) {
 
   const ledger = useMemo(
     () => buildLedgerSummary(txns, profile, {
-      preferDeclared: true,
+      preferDeclared,
       monthCount: rangeMonthCount,
+      dedup: true,
       debugLabel: `Analytics ${period} ${range.from}..${range.to}`,
       from: range.from,
       to: range.to,
     }),
-    [txns, profile, rangeMonthCount, period, range.from, range.to]
+    [txns, profile, preferDeclared, rangeMonthCount, period, range.from, range.to]
   )
   const catSpend = ledger.catTotals
   const monthlyData = ledger.monthlyData
