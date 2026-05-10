@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { CATEGORIES, SA_RULES, saPreCategory } from './sa-categorise.js'
+import { CATEGORIES, SA_RULES, saPreCategory, normalizeDescription } from './sa-categorise.js'
 
 const SYSTEM_PROMPT = `You are a financial transaction categorisation engine for bump. (BumpBudget), a South African personal finance app. Your ONLY job is to assign categories to bank transactions. You must never do anything else.`
 
@@ -27,7 +27,6 @@ function chunk(arr, n) {
 }
 
 export async function handler(event) {
-  console.log('parse-bulk-transactions called', event.httpMethod)
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' }
   }
@@ -67,9 +66,7 @@ export async function handler(event) {
 
   // ── 2. Auth ────────────────────────────────────────────────────────────────
   const authHeader = event.headers['authorization'] || event.headers['Authorization'] || ''
-  console.log('auth header present:', authHeader.startsWith('Bearer '))
   if (!authHeader.startsWith('Bearer ')) {
-    console.log('returning 401 - no bearer token')
     return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized - no session token' }) }
   }
   const token = authHeader.slice(7)
@@ -131,17 +128,20 @@ export async function handler(event) {
     const userCat = applyRules(rules, t.description)
     // SA merchant pre-categorisation second
     const saCat = userCat ? null : saPreCategory(t.description)
+    // is_income hint from frontend parser: if debit/credit columns said this was a credit
+    // and nothing else matched, mark as Income before falling back to Claude
+    const hintCat = (!userCat && !saCat && t.is_income === true) ? 'Income' : null
     return {
       idx,
       ...t,
-      category: userCat || saCat || null
+      category: userCat || saCat || hintCat || null
     }
   })
 
   const needsClaude = withRules.filter(t => !t.category)
   const hasCategory = withRules.filter(t => t.category)
 
-  console.log(`Pre-categorised: ${hasCategory.length}, needs Claude: ${needsClaude.length}`)
+  // console.log(`Pre-categorised: ${hasCategory.length}, needs Claude: ${needsClaude.length}`)
 
   let claudeCategorised = []
 
@@ -221,14 +221,21 @@ ${JSON.stringify(chunkItems.map(t => ({ idx: t.idx, description: t.description, 
     categoryMap[item.idx] = item.category
   }
 
-  const result = withRules.map(t => ({
-    date: t.date,
-    description: t.description,
-    amount: t.amount,
-    raw_merchant: t.raw_merchant || t.description,
-    category: t.category || categoryMap[t.idx] || 'Other',
-    rule_applied: !!t.category
-  }))
+  const result = withRules.map(t => {
+    const cat = t.category || categoryMap[t.idx] || 'Other'
+    const normalizedName = normalizeDescription(t.description)
+    // Savings-tagged transactions: if Claude returned 'Other' for an investment
+    // platform that saPreCategory missed (edge case), fall back gracefully
+    return {
+      date:         t.date,
+      name:         normalizedName || t.description,   // clean display name
+      description:  t.description,                     // raw (for audit)
+      amount:       t.amount,
+      raw_merchant: t.raw_merchant || t.description,
+      category:     cat,
+      rule_applied: !!t.category,
+    }
+  })
 
   // ── 7. Increment usage (1 call per bulk import) ───────────────────────────
   if (limit !== Infinity) {

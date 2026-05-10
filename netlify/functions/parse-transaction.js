@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { saPreCategory, CATEGORIES } from './sa-categorise.js'
+import { saPreCategory, normalizeDescription, CATEGORIES } from './sa-categorise.js'
 
 const SYSTEM_PROMPT = `You are a financial assistant for bump. (BumpBudget). Your ONLY purpose is to help users understand and manage their personal finances — categorising transactions, analysing spending patterns, and giving budget insights. You must refuse any request that is not directly related to the user's financial data or budget management. Do not engage with general questions, creative tasks, coding help, or anything outside personal finance.`
 
@@ -95,11 +95,8 @@ export async function handler(event) {
   // ── 3. Pre-categorise using SA_RULES (no AI call needed for known merchants) ──
   const rulesCategory = saPreCategory(description.trim())
   if (rulesCategory) {
-    // Clean up the name: remove common bank statement noise
-    const cleanName = description.trim()
-      .replace(/^(FLW\*|PAYGATE\*|PAYFAST\*|YOCO\*)/i, '')
-      .replace(/\s{2,}/g, ' ')
-      .trim()
+    // Clean up the name using shared normalizer (strips wrappers + long refs)
+    const cleanName = normalizeDescription(description.trim())
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
