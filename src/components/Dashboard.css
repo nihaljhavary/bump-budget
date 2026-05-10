@@ -1007,3 +1007,41 @@
 .locked-placeholder { padding: 32px 0 16px; text-align: center; }
 .locked-placeholder-title { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
 .locked-placeholder-sub { font-size: 13px; color: var(--muted); margin: 0; }
+
+/* ── Recategorisation UI ─────────────────────────────────────────────────── */
+.txn-cat-btn {
+  background: none; border: none; padding: 0; margin: 0;
+  font-size: 12px; color: var(--muted); font-family: 'DM Sans', sans-serif;
+  cursor: pointer; text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+.txn-cat-btn:hover { color: var(--coral); }
+
+.recat-select {
+  background: var(--bg-alt); border: 1px solid var(--border);
+  border-radius: 6px; padding: 2px 6px; font-size: 12px;
+  color: var(--text); font-family: 'DM Sans', sans-serif;
+  cursor: pointer; max-width: 160px;
+}
+.recat-select:focus { outline: none; border-color: var(--coral); }
+
+.recat-prompt {
+  background: rgba(37,99,235,0.06); border: 1px solid rgba(37,99,235,0.2);
+  border-radius: 12px; padding: 12px 14px; margin-bottom: 10px;
+  font-size: 13px; color: var(--text);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.recat-prompt-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.recat-rule-btn {
+  background: var(--coral); border: none; border-radius: 8px;
+  padding: 5px 12px; font-size: 12px; font-weight: 600; color: #fff;
+  cursor: pointer; font-family: 'DM Sans', sans-serif;
+}
+.recat-rule-btn:hover { opacity: 0.9; }
+.recat-rule-history { background: #2563EB; }
+.recat-dismiss-btn {
+  background: none; border: 1px solid var(--border); border-radius: 8px;
+  padding: 5px 12px; font-size: 12px; color: var(--muted);
+  cursor: pointer; font-family: 'DM Sans', sans-serif;
+}
+.recat-dismiss-btn:hover { background: var(--bg-alt); }

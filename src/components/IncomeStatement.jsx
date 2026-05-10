@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { fetchTransactionsByRange } from '../services/transactions'
-import { buildFinancialSummary, buildAIPayload, groupByMonth } from '../utils/financials'
-import { applyTierFilter } from '../utils/ledger'
+import { buildAIPayload, groupByMonth } from '../utils/financials'
+import { buildLedgerSummary, countCalendarMonths, formatLocalDate } from '../utils/ledger'
 import { useTier, isDateAllowed } from '../context/TierContext'
 import { analyseSpending } from '../services/ai'
 import './IncomeStatement.css'
@@ -14,19 +14,19 @@ function getPeriodDates(period) {
   const now = new Date()
   if (period === '1m') {
     const from = new Date(now.getFullYear(), now.getMonth(), 1)
-    return { from: from.toISOString().slice(0, 10), to: now.toISOString().slice(0, 10) }
+    return { from: formatLocalDate(from), to: formatLocalDate(now) }
   }
   if (period === '3m') {
     const from = new Date(now.getFullYear(), now.getMonth() - 2, 1)
-    return { from: from.toISOString().slice(0, 10), to: now.toISOString().slice(0, 10) }
+    return { from: formatLocalDate(from), to: formatLocalDate(now) }
   }
   if (period === '6m') {
     const from = new Date(now.getFullYear(), now.getMonth() - 5, 1)
-    return { from: from.toISOString().slice(0, 10), to: now.toISOString().slice(0, 10) }
+    return { from: formatLocalDate(from), to: formatLocalDate(now) }
   }
   // 12m default
   const from = new Date(now.getFullYear(), now.getMonth() - 11, 1)
-  return { from: from.toISOString().slice(0, 10), to: now.toISOString().slice(0, 10) }
+  return { from: formatLocalDate(from), to: formatLocalDate(now) }
 }
 
 function getComparisonDates(period, fromDate, toDate) {
@@ -35,17 +35,22 @@ function getComparisonDates(period, fromDate, toDate) {
   const diffMs = to - from
   const compTo = new Date(from - 1)
   const compFrom = new Date(compTo - diffMs)
-  return { from: compFrom.toISOString().slice(0, 10), to: compTo.toISOString().slice(0, 10) }
+  return { from: formatLocalDate(compFrom), to: formatLocalDate(compTo) }
 }
 
-// buildStatement is now a thin wrapper over the shared buildFinancialSummary
+// buildStatement is now a thin wrapper over the shared ledger summary
 // which ensures consistent Transfer exclusion and income resolution.
 // Income comes from transaction Income-category entries only (no declared override)
 // so the income statement reflects what was actually transacted.
-function buildStatement(txns, profile) {
-  const s = buildFinancialSummary(txns, profile, { preferDeclared: false })
-  const monthlyData = groupByMonth(txns)
-  const monthCount = Math.max(Object.keys(monthlyData).length, 1)
+function buildStatement(txns, profile, meta = {}) {
+  const s = buildLedgerSummary(txns, profile, {
+    preferDeclared: false,
+    monthCount: countCalendarMonths(meta.from, meta.to) || undefined,
+    debugLabel: meta.debugLabel,
+    from: meta.from,
+    to: meta.to,
+  })
+  const monthCount = s.monthCount
   return { income: s.income, catTotals: s.catTotals, totalExpenses: s.totalSpend, net: s.net, monthCount }
 }
 
@@ -95,8 +100,14 @@ export default function IncomeStatement() {
     }).catch(console.error).finally(() => setLoading(false))
   }, [from, to, showComparison, compDates.from, compDates.to])
 
-  const stmt = useMemo(() => buildStatement(txns, profile), [txns, profile])
-  const compStmt = useMemo(() => showComparison ? buildStatement(compTxns, profile) : null, [compTxns, showComparison, profile])
+  const stmt = useMemo(
+    () => buildStatement(txns, profile, { from, to, debugLabel: `IncomeStatement ${period} ${from}..${to}` }),
+    [txns, profile, from, to, period]
+  )
+  const compStmt = useMemo(
+    () => showComparison ? buildStatement(compTxns, profile, { from: compDates.from, to: compDates.to, debugLabel: `IncomeStatement comparison ${compDates.from}..${compDates.to}` }) : null,
+    [compTxns, showComparison, profile, compDates.from, compDates.to]
+  )
 
   const PERIODS = [
     { id: '1m', label: '1 month' },

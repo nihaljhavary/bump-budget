@@ -27,6 +27,33 @@ import {
   groupByMonth, profileCentsToRands,
 } from './financials'
 
+export function formatLocalDate(date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-')
+}
+
+export function getCalendarMonthRange(month) {
+  const [year, monthNum] = month.split('-').map(Number)
+  const from = formatLocalDate(new Date(year, monthNum - 1, 1))
+  const to = formatLocalDate(new Date(year, monthNum, 0))
+  return { from, to }
+}
+
+function isLedgerDebugEnabled() {
+  try {
+    return typeof window !== 'undefined' && (
+      window.localStorage?.getItem('bumpLedgerDebug') === '1' ||
+      window.sessionStorage?.getItem('bumpLedgerDebug') === '1' ||
+      window.location?.search?.includes('ledgerDebug=1')
+    )
+  } catch {
+    return false
+  }
+}
+
 // ── Deduplication ──────────────────────────────────────────────────────────────
 
 /**
@@ -77,6 +104,7 @@ export function deduplicateTransactions(transactions) {
 export function buildFingerprintSet(existingTransactions) {
   const set = new Set()
   for (const t of (existingTransactions || [])) {
+    if (t.transaction_hash) set.add(t.transaction_hash)
     set.add(txnFingerprint(t))
   }
   return set
@@ -109,15 +137,14 @@ export function applyTierFilter(transactions, tier) {
  */
 export function calendarMonthStart(monthsBack = 0) {
   const now = new Date()
-  return new Date(now.getFullYear(), now.getMonth() - monthsBack, 1)
-    .toISOString().split('T')[0]
+  return formatLocalDate(new Date(now.getFullYear(), now.getMonth() - monthsBack, 1))
 }
 
 /**
  * Today's date as YYYY-MM-DD.
  */
 export function today() {
-  return new Date().toISOString().split('T')[0]
+  return formatLocalDate(new Date())
 }
 
 /**
@@ -184,6 +211,9 @@ export function buildMonthlyAverages(monthlyData) {
  * @param {boolean} [opts.dedup=false]    - deduplicate before calculating
  * @param {boolean} [opts.preferDeclared=true] - use declared salary as income source
  * @param {number}  [opts.monthCount]     - explicit inclusive calendar month count for averages
+ * @param {string}  [opts.debugLabel]     - label for temporary forensic console logging
+ * @param {string}  [opts.from]           - date range start for debug logging
+ * @param {string}  [opts.to]             - date range end for debug logging
  *
  * @typedef {Object} LedgerSummary
  * @property {Array}   all                  - tier-filtered (+ optionally deduped) transactions
@@ -213,7 +243,15 @@ export function buildMonthlyAverages(monthlyData) {
  * @returns {LedgerSummary}
  */
 export function buildLedgerSummary(transactions, profile, opts = {}) {
-  const { tier, dedup = false, preferDeclared = true, monthCount: explicitMonthCount } = opts
+  const {
+    tier,
+    dedup = false,
+    preferDeclared = true,
+    monthCount: explicitMonthCount,
+    debugLabel = '',
+    from = '',
+    to = '',
+  } = opts
 
   // ── Step 1: Tier date filter ───────────────────────────────────────────────
   let txns = tier ? applyTierFilter(transactions, tier) : (transactions || [])
@@ -265,6 +303,36 @@ export function buildLedgerSummary(transactions, profile, opts = {}) {
   // ── Step 8: Monthly averages (clearly separate from totals) ───────────────
   const { avgMonthlySpend, avgMonthlyIncome } = buildMonthlyAverages(monthlyData)
   const resolvedMonthlyIncome = monthCount > 0 ? income / monthCount : income
+
+  if (debugLabel && isLedgerDebugEnabled()) {
+    const excludedTxns = txns.filter(t => t?.category === 'Income' || t?.category === 'Transfer' || t?.category === 'Savings')
+    const categoryInputs = spendTxns.map(t => ({
+      id: t.id,
+      date: t.date,
+      amount: t.amount,
+      category: t.category,
+      name: t.name,
+    }))
+    console.groupCollapsed(`[bump ledger] ${debugLabel}`)
+    console.log({
+      boundaries: { from, to },
+      transactionCount: txns.length,
+      income: txnIncome,
+      totalSpend,
+      transferTotal: transferTxns.reduce((s, t) => s + (t.amount || 0), 0),
+      savingsTotal: txns.filter(t => t?.category === 'Savings').reduce((s, t) => s + (t.amount || 0), 0),
+      excludedTotal: excludedTxns.reduce((s, t) => s + (t.amount || 0), 0),
+      allIds: txns.map(t => t.id),
+      spendIds: spendTxns.map(t => t.id),
+      incomeIds: incomeTxns.map(t => t.id),
+      transferIds: transferTxns.map(t => t.id),
+      savingsIds: txns.filter(t => t?.category === 'Savings').map(t => t.id),
+      excludedIds: excludedTxns.map(t => t.id),
+      catTotals,
+      categoryInputs,
+    })
+    console.groupEnd()
+  }
 
   return {
     // Transaction buckets

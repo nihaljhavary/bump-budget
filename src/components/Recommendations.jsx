@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { fetchRecentMonths } from '../services/transactions'
+import { buildLedgerSummary } from '../utils/ledger'
 import './Recommendations.css'
 
 const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
@@ -133,15 +134,10 @@ export default function Recommendations() {
         supabase.from('budgets').select('category, amount').eq('user_id', user.id)
       ])
 
-      // Average monthly spend per category (excluding income + transfers)
-      const totals = {}
-      for (const t of txns) {
-        if (t.category === 'Income' || t.category === 'Transfer') continue
-        totals[t.category] = (totals[t.category] || 0) + t.amount
-      }
-      // Divide by 3 for monthly average
+      // Average monthly spend per category, using the canonical non-spend rules.
+      const ledger = buildLedgerSummary(txns || [], profile, { preferDeclared: false, monthCount: 3 })
       const avg = {}
-      for (const [cat, total] of Object.entries(totals)) {
+      for (const [cat, total] of Object.entries(ledger.catTotals)) {
         avg[cat] = total / 3
       }
       setSpendingData(avg)

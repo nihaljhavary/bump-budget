@@ -2,8 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { fetchTransactionsByRange } from '../services/transactions'
-import { resolveIncome } from '../utils/financials'
-import { applyTierFilter, buildMonthlyAverages, buildLedgerSummary } from '../utils/ledger'
+import { buildLedgerSummary, countCalendarMonths, formatLocalDate } from '../utils/ledger'
 import { useTier, isDateAllowed } from '../context/TierContext'
 import './Projections.css'
 
@@ -86,6 +85,7 @@ export default function Projections() {
   const [loading, setLoading] = useState(true)
   const [txns, setTxns] = useState([])
   const [view, setView] = useState('monthly')
+  const [range, setRange] = useState({ from: '', to: '' })
 
   // Manual override inputs (in Rands)
   const [netIncomeInput, setNetIncomeInput] = useState('')
@@ -102,17 +102,19 @@ export default function Projections() {
 
   useEffect(() => {
     loadTransactions()
-  }, [])
+  }, [user?.id, tier])
 
   async function loadTransactions() {
     setLoading(true)
     try {
       // Load last 3 full calendar months using month-start boundaries
       // (not a rolling window -- matches IncomeStatement and Analytics period logic)
-      const to   = new Date().toISOString().split('T')[0]
-      const from = new Date(
+      const now = new Date()
+      const to = formatLocalDate(now)
+      const from = formatLocalDate(new Date(
         new Date().getFullYear(), new Date().getMonth() - 2, 1
-      ).toISOString().split('T')[0]
+      ))
+      setRange({ from, to })
       const data = await fetchTransactionsByRange(user.id, from, to)
       // Apply tier date filter (free plan: 30-day limit applies here too)
       const filtered = (data || []).filter(t => isDateAllowed(t.date, tier))
@@ -129,7 +131,13 @@ export default function Projections() {
   // The ledger gives us avgMonthlySpend, which is more accurate than the
   // previous 92-day rolling window (which used an approximation for "3 months").
   const { avgVariableSpend, topVariableCategory, monthlyIncome } = useMemo(() => {
-    const ledger = buildLedgerSummary(txns, profile, { preferDeclared: false })
+    const ledger = buildLedgerSummary(txns, profile, {
+      preferDeclared: false,
+      monthCount: countCalendarMonths(range.from, range.to) || undefined,
+      debugLabel: `Projections ${range.from}..${range.to}`,
+      from: range.from,
+      to: range.to,
+    })
 
     // Variable categories (discretionary + semi-discretionary)
     const VARIABLE_CATS = new Set(['Groceries', 'Eating out', 'Entertainment', 'Clothing', 'Health', 'Transport', 'Fuel', 'Other'])
@@ -145,7 +153,7 @@ export default function Projections() {
     const avgIncome = ledger.avgMonthlyIncome
 
     return { avgVariableSpend: avgVar, topVariableCategory: topCat, monthlyIncome: avgIncome }
-  }, [txns, profile])
+  }, [txns, profile, range.from, range.to])
 
   const netIncome = parseFloat(netIncomeInput) || monthlyIncome || (profile?.net_income ? profile.net_income / 100 : 0)
   const debitOrders = parseFloat(debitOrdersInput) || (profile?.monthly_debit_orders ? profile.monthly_debit_orders / 100 : 0)

@@ -19,6 +19,11 @@ function applyRules(rules, description) {
   return null
 }
 
+function hasTransferHint(description, type = '') {
+  const text = `${type} ${description}`.toLowerCase()
+  return /\b(transfer|internal transfer|own account|own acc|account transfer|inter-?account|discovery pay|payshap|send money)\b/i.test(text)
+}
+
 // Chunk array into groups of N
 function chunk(arr, n) {
   const out = []
@@ -124,13 +129,16 @@ export async function handler(event) {
 
   // ── 5. Apply rules: user rules first, then SA pre-rules, then Claude ──────
   const withRules = transactions.map((t, idx) => {
-    // User-defined rules take highest priority
-    const userCat = applyRules(rules, t.description)
-    // SA merchant pre-categorisation second
+    // Bank statement metadata has highest priority for movement type.
+    // Transfer-like rows must never be promoted to Income or discretionary spend.
+    const transferHint = t.is_transfer === true || hasTransferHint(t.description, t.type)
+    const userCat = transferHint ? null : applyRules(rules, t.description)
     const saCat = userCat ? null : saPreCategory(t.description)
-    // is_income hint from frontend parser: if debit/credit columns said this was a credit
-    // and nothing else matched, mark as Income before falling back to Claude
-    const hintCat = (!userCat && !saCat && t.is_income === true) ? 'Income' : null
+    const hintCat = (!userCat && !saCat && transferHint)
+      ? 'Transfer'
+      : (!userCat && !saCat && t.is_income === true)
+        ? 'Income'
+        : null
     return {
       idx,
       ...t,

@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { useTier, isDateAllowed } from '../context/TierContext'
 import { fetchTransactionsByRange } from '../services/transactions'
 import { buildAIPayload } from '../utils/financials'
-import { buildLedgerSummary, countCalendarMonths } from '../utils/ledger'
+import { buildLedgerSummary, countCalendarMonths, formatLocalDate, getCalendarMonthRange } from '../utils/ledger'
 import { analyseSpending } from '../services/ai'
 import './Analytics.css'
 
@@ -29,33 +29,32 @@ const fmtR = n => 'R' + Math.round(n).toLocaleString('en-ZA')
 const PERIODS = ['1M','3M','1Y','Custom','Max']
 
 function getMonthRange(month) {
-  const [y, m] = month.split('-').map(Number)
-  const from = new Date(y, m - 1, 1).toISOString().split('T')[0]
-  const to = new Date(y, m, 0).toISOString().split('T')[0]
-  return { from, to }
+  return getCalendarMonthRange(month)
 }
 
 function getDateRange(period, customFrom, customTo, selectedMonth) {
   // Ranges use calendar-month start boundaries so they reconcile with
   // the Dashboard month picker and IncomeStatement period logic.
   const now = new Date()
-  const to = now.toISOString().split('T')[0]
+  const toToday = formatLocalDate(now)
+  const [sy, sm] = selectedMonth.split('-').map(Number)
+  const endOfSelectedMonth = formatLocalDate(new Date(sy, sm, 0))
   if (period === '1M') {
     // Selected dashboard calendar month, matching Overview exactly.
     return getMonthRange(selectedMonth)
   }
   if (period === '3M') {
-    // Last 3 months including current: first day 2 months ago -> today
-    const f = new Date(now.getFullYear(), now.getMonth() - 2, 1)
-    return { from: f.toISOString().split('T')[0], to }
+    // Three calendar months ending in selectedMonth (same anchor as Overview month).
+    const first = new Date(sy, sm - 1 - 2, 1)
+    return { from: formatLocalDate(first), to: endOfSelectedMonth }
   }
   if (period === '1Y') {
-    // Last 12 months: first day 11 months ago -> today
-    const f = new Date(now.getFullYear(), now.getMonth() - 11, 1)
-    return { from: f.toISOString().split('T')[0], to }
+    const first = new Date(sy, sm - 1 - 11, 1)
+    return { from: formatLocalDate(first), to: endOfSelectedMonth }
   }
-  if (period === 'Custom') return { from: customFrom || to, to: customTo || to }
-  return { from: '2020-01-01', to }
+  if (period === 'Custom') return { from: customFrom || toToday, to: customTo || toToday }
+  // Max: full history through today (not clipped to selected month)
+  return { from: '2020-01-01', to: toToday }
 }
 
 // Financial summaries come from buildLedgerSummary so totals, averages, and
@@ -354,7 +353,8 @@ function BudgetChat({ txns, budgets }) {
 // ── Main Component ───────────────────────────────────────────────────────────
 export default function Analytics({ selectedMonth }) {
   const { user, profile } = useAuth()
-  const [period, setPeriod] = useState('3M')
+  const tier = useTier()
+  const [period, setPeriod] = useState('1M')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
   const [txns, setTxns] = useState([])
@@ -365,7 +365,7 @@ export default function Analytics({ selectedMonth }) {
   const [saving, setSaving] = useState(false)
   const [suggestMsg, setSuggestMsg] = useState('')
 
-  const effectiveMonth = selectedMonth || new Date().toISOString().slice(0, 7)
+  const effectiveMonth = selectedMonth || formatLocalDate(new Date()).slice(0, 7)
   const range = useMemo(
     () => getDateRange(period, customFrom, customTo, effectiveMonth),
     [period, customFrom, customTo, effectiveMonth]
@@ -399,8 +399,14 @@ export default function Analytics({ selectedMonth }) {
   }
 
   const ledger = useMemo(
-    () => buildLedgerSummary(txns, profile, { preferDeclared: true, monthCount: rangeMonthCount }),
-    [txns, profile, rangeMonthCount]
+    () => buildLedgerSummary(txns, profile, {
+      preferDeclared: true,
+      monthCount: rangeMonthCount,
+      debugLabel: `Analytics ${period} ${range.from}..${range.to}`,
+      from: range.from,
+      to: range.to,
+    }),
+    [txns, profile, rangeMonthCount, period, range.from, range.to]
   )
   const catSpend = ledger.catTotals
   const monthlyData = ledger.monthlyData
@@ -410,11 +416,21 @@ export default function Analytics({ selectedMonth }) {
   const incomeSource = ledger.incomeSource
   const net = ledger.net
 
+  // Spend "per month" uses months that actually have spend in-range, capped by the
+  // selected period length — avoids dividing by 12 when only 1 month has rows.
+  const spendAvgMonths = useMemo(() => {
+    const md = ledger.monthlyData || {}
+    const withSpend = Object.keys(md).filter(k => (md[k]?.spend || 0) > 0).length
+    const cap = rangeMonthCount
+    if (withSpend === 0) return Math.max(1, cap)
+    return Math.max(1, Math.min(cap, withSpend))
+  }, [ledger.monthlyData, rangeMonthCount])
+
   const suggestedBudgets = useMemo(()=>{
     const sugg={}
-    for (const [cat,val] of Object.entries(catSpend)) sugg[cat]=Math.ceil((val/monthCount)/100)*100
+    for (const [cat,val] of Object.entries(catSpend)) sugg[cat]=Math.ceil((val/spendAvgMonths)/100)*100
     return sugg
-  },[catSpend,monthCount])
+  },[catSpend,spendAvgMonths])
 
   const sortedCats = useMemo(()=>Object.entries(catSpend).sort((a,b)=>b[1]-a[1]),[catSpend])
 
@@ -512,13 +528,13 @@ export default function Analytics({ selectedMonth }) {
               <button className="suggest-btn" onClick={applySuggested} disabled={saving}>✦ bump. suggest</button>
             </div>
             {suggestMsg && <div className="suggest-msg">{suggestMsg}</div>}
-            <p className="a-card-sub">Per-month average over {monthCount} month{monthCount!==1?'s':''}.</p>
-            <ActualVsBudgetChart catSpend={catSpend} budgets={budgets} monthCount={monthCount}/>
+            <p className="a-card-sub">Per-month spend average uses {spendAvgMonths} month{spendAvgMonths!==1?'s':''} with outflows (of {rangeMonthCount} in range).</p>
+            <ActualVsBudgetChart catSpend={catSpend} budgets={budgets} monthCount={spendAvgMonths}/>
 
             {/* Editable budget list below chart */}
             <div className="budget-list" style={{marginTop:16}}>
               {sortedCats.map(([cat,total])=>{
-                const monthly=total/monthCount
+                const monthly=total/spendAvgMonths
                 const budget=budgets[cat]||0
                 const isEditing=editingCat===cat
                 const over=budget>0&&monthly>budget

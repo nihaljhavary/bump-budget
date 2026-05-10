@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { useTier, isDateAllowed, PLAN_PRICES } from '../context/TierContext'
 import { fetchTransactions, fetchTransactionsByMonth, addTransaction, updateTransaction, deleteTransaction } from '../services/transactions'
 import { buildAIPayload } from '../utils/financials'
-import { buildLedgerSummary } from '../utils/ledger'
+import { buildLedgerSummary, getCalendarMonthRange } from '../utils/ledger'
 import { parseTransaction, analyseSpending } from '../services/ai'
 import ImportTransactions from './ImportTransactions'
 import Analytics from './Analytics'
@@ -165,8 +165,17 @@ export default function Dashboard({ onNavigate }) {
 
   // Canonical financial summary for the selected month.
   const ledger = useMemo(
-    () => buildLedgerSummary(allowedTransactions, profile, { preferDeclared: excludeSalary, monthCount: 1 }),
-    [allowedTransactions, profile, excludeSalary]
+    () => {
+      const range = getCalendarMonthRange(selectedMonth)
+      return buildLedgerSummary(allowedTransactions, profile, {
+        preferDeclared: excludeSalary,
+        monthCount: 1,
+        debugLabel: `Overview ${selectedMonth}`,
+        from: range.from,
+        to: range.to,
+      })
+    },
+    [allowedTransactions, profile, excludeSalary, selectedMonth]
   )
   const spendTxns = ledger.spendTxns
   const income = ledger.income
