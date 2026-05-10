@@ -3,6 +3,8 @@ import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { fetchTransactionsByRange } from '../services/transactions'
 import { resolveIncome } from '../utils/financials'
+import { applyTierFilter, buildMonthlyAverages, buildLedgerSummary } from '../utils/ledger'
+import { useTier, isDateAllowed } from '../context/TierContext'
 import './Projections.css'
 
 const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
@@ -80,6 +82,7 @@ function ProjectionChart({ currentPath, optimisedPath, view }) {
 
 export default function Projections() {
   const { user, profile } = useAuth()
+  const tier = useTier()
   const [loading, setLoading] = useState(true)
   const [txns, setTxns] = useState([])
   const [view, setView] = useState('monthly')
@@ -104,10 +107,16 @@ export default function Projections() {
   async function loadTransactions() {
     setLoading(true)
     try {
-      const to = new Date().toISOString().split('T')[0]
-      const from = new Date(new Date().getFullYear(), new Date().getMonth() - 5, 1).toISOString().split('T')[0]
+      // Load last 3 full calendar months using month-start boundaries
+      // (not a rolling window -- matches IncomeStatement and Analytics period logic)
+      const to   = new Date().toISOString().split('T')[0]
+      const from = new Date(
+        new Date().getFullYear(), new Date().getMonth() - 2, 1
+      ).toISOString().split('T')[0]
       const data = await fetchTransactionsByRange(user.id, from, to)
-      setTxns(data || [])
+      // Apply tier date filter (free plan: 30-day limit applies here too)
+      const filtered = (data || []).filter(t => isDateAllowed(t.date, tier))
+      setTxns(filtered)
     } catch (err) {
       console.error('Projections load error:', err)
     } finally {
@@ -115,26 +124,28 @@ export default function Projections() {
     }
   }
 
-  // Calculate averages from last 3 months of transactions
+  // Calculate averages using the canonical ledger summary.
+  // txns are already tier-filtered and cover 3 calendar months.
+  // The ledger gives us avgMonthlySpend, which is more accurate than the
+  // previous 92-day rolling window (which used an approximation for "3 months").
   const { avgVariableSpend, topVariableCategory, monthlyIncome } = useMemo(() => {
-    const now = new Date()
-    const last3Months = txns.filter(t => {
-      const d = new Date(t.date)
-      return (now - d) / (1000 * 60 * 60 * 24) <= 92
-    })
-    const income = last3Months.filter(t => t.category === 'Income').reduce((s, t) => s + t.amount, 0) / 3
-    const variableCategories = ['Groceries', 'Eating out', 'Entertainment', 'Clothing', 'Health', 'Transport', 'Fuel', 'Other']
+    const ledger = buildLedgerSummary(txns, profile, { preferDeclared: false })
+
+    // Variable categories (discretionary + semi-discretionary)
+    const VARIABLE_CATS = new Set(['Groceries', 'Eating out', 'Entertainment', 'Clothing', 'Health', 'Transport', 'Fuel', 'Other'])
     const varSpend = {}
-    for (const t of last3Months) {
-      if (variableCategories.includes(t.category)) {
-        varSpend[t.category] = (varSpend[t.category] || 0) + t.amount
-      }
+    for (const [cat, amt] of Object.entries(ledger.catTotals)) {
+      if (VARIABLE_CATS.has(cat)) varSpend[cat] = amt
     }
-    const totalVar = Object.values(varSpend).reduce((s, v) => s + v, 0) / 3
-    const topCat = Object.entries(varSpend).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Other'
-    // Transaction amounts are in rands -- no /100 conversion needed
-    return { avgVariableSpend: totalVar, topVariableCategory: topCat, monthlyIncome: income }
-  }, [txns])
+    const totalVar = Object.values(varSpend).reduce((s, v) => s + v, 0)
+    // Divide by actual distinct months (not hardcoded 3) so partial months are handled
+    const monthCount = ledger.monthCount || 1
+    const avgVar    = totalVar / monthCount
+    const topCat    = Object.entries(varSpend).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Other'
+    const avgIncome = ledger.avgMonthlyIncome
+
+    return { avgVariableSpend: avgVar, topVariableCategory: topCat, monthlyIncome: avgIncome }
+  }, [txns, profile])
 
   const netIncome = parseFloat(netIncomeInput) || monthlyIncome || (profile?.net_income ? profile.net_income / 100 : 0)
   const debitOrders = parseFloat(debitOrdersInput) || (profile?.monthly_debit_orders ? profile.monthly_debit_orders / 100 : 0)

@@ -16,7 +16,9 @@ import SupportChat from './SupportChat'
 import FAQ from './FAQ'
 import './Dashboard.css'
 
-const BUDGETS = {
+// Default budget fallbacks — used when user hasn't set budgets in Analytics yet.
+// These are replaced by real user budgets loaded from Supabase.
+const DEFAULT_BUDGETS = {
   Housing: 9500, Groceries: 3000, 'Eating out': 2000, Transport: 2500,
   Entertainment: 1500, Health: 1000, Clothing: 1000, Subscriptions: 500, Other: 1000
 }
@@ -62,6 +64,9 @@ export default function Dashboard({ onNavigate }) {
   const [chatLoading, setChatLoading] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
   const [showProfileModal, setShowProfileModal] = useState(false)
+  // Real user-set budgets from Supabase (set in the Analytics tab).
+  // Overrides DEFAULT_BUDGETS for the category cards in Overview.
+  const [userBudgets, setUserBudgets] = useState(DEFAULT_BUDGETS)
   const profileMenuRef = useRef(null)
   const chatEndRef = useRef(null)
   const textareaRef = useRef(null)
@@ -78,6 +83,7 @@ export default function Dashboard({ onNavigate }) {
   useEffect(() => {
     loadTransactions()
     loadConsultRequests()
+    loadBudgets()
   }, [selectedMonth])
 
   useEffect(() => {
@@ -90,6 +96,19 @@ export default function Dashboard({ onNavigate }) {
       setTransactions(data)
     } catch (err) {
       console.error('Failed to load transactions:', err)
+    }
+  }
+
+  async function loadBudgets() {
+    try {
+      const { data } = await supabase.from('budgets').select('category, amount').eq('user_id', user.id)
+      if (data && data.length > 0) {
+        const bmap = { ...DEFAULT_BUDGETS }
+        for (const b of data) bmap[b.category] = b.amount
+        setUserBudgets(bmap)
+      }
+    } catch (err) {
+      console.error('Failed to load budgets:', err)
     }
   }
 
@@ -257,7 +276,7 @@ export default function Dashboard({ onNavigate }) {
     try {
       const payload = buildAIPayload(allowedTransactions, profile, 200, {
         mode: 'overview',
-        budgets: BUDGETS,
+        budgets: userBudgets,
         monthlyData: groupByMonth(allowedTransactions),
       })
       const result = await analyseSpending(payload)
@@ -434,7 +453,7 @@ export default function Dashboard({ onNavigate }) {
               <div className="section-head">Spend by category</div>
               <div className="cats">
                 {Object.entries(catTotals).sort((a, b) => b[1] - a[1]).map(([cat, amt]) => {
-                  const budget = BUDGETS[cat] || 1000
+                  const budget = userBudgets[cat] || 1000
                   const over = amt > budget
                   const near = !over && amt > budget * 0.8
                   return (

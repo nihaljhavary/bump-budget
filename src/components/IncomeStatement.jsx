@@ -3,6 +3,8 @@ import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { fetchTransactionsByRange } from '../services/transactions'
 import { buildFinancialSummary, buildAIPayload, groupByMonth } from '../utils/financials'
+import { applyTierFilter } from '../utils/ledger'
+import { useTier, isDateAllowed } from '../context/TierContext'
 import { analyseSpending } from '../services/ai'
 import './IncomeStatement.css'
 
@@ -42,8 +44,9 @@ function getComparisonDates(period, fromDate, toDate) {
 // so the income statement reflects what was actually transacted.
 function buildStatement(txns, profile) {
   const s = buildFinancialSummary(txns, profile, { preferDeclared: false })
-  // Alias totalSpend -> totalExpenses for local template compatibility
-  return { income: s.income, catTotals: s.catTotals, totalExpenses: s.totalSpend, net: s.net }
+  const monthlyData = groupByMonth(txns)
+  const monthCount = Math.max(Object.keys(monthlyData).length, 1)
+  return { income: s.income, catTotals: s.catTotals, totalExpenses: s.totalSpend, net: s.net, monthCount }
 }
 
 function DeltaCell({ current, previous }) {
@@ -62,6 +65,7 @@ function DeltaCell({ current, previous }) {
 
 export default function IncomeStatement() {
   const { user, profile } = useAuth()
+  const tier = useTier()
   const [period, setPeriod] = useState('12m')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
@@ -86,8 +90,8 @@ export default function IncomeStatement() {
       fetchTransactionsByRange(user.id, from, to),
       showComparison ? fetchTransactionsByRange(user.id, compDates.from, compDates.to) : Promise.resolve([])
     ]).then(([main, comp]) => {
-      setTxns(main || [])
-      setCompTxns(comp || [])
+      setTxns((main || []).filter(t => isDateAllowed(t.date, tier)))
+      setCompTxns((comp || []).filter(t => isDateAllowed(t.date, tier)))
     }).catch(console.error).finally(() => setLoading(false))
   }, [from, to, showComparison, compDates.from, compDates.to])
 
@@ -192,6 +196,16 @@ export default function IncomeStatement() {
                 {showComparison && <td><span className={`is-val ${(compStmt?.net || 0) >= 0 ? 'green' : 'red'}`}>{fmt(compStmt?.net || 0)}</span></td>}
                 {showComparison && <DeltaCell current={stmt.net} previous={compStmt?.net} />}
               </tr>
+              {stmt.monthCount > 1 && (
+                <tr className="is-avg-row">
+                  <td style={{color:'var(--muted)',fontSize:'0.82em'}}>Monthly average ({stmt.monthCount} months)</td>
+                  <td style={{color:'var(--muted)',fontSize:'0.82em'}}>
+                    {fmt(stmt.net / stmt.monthCount)}/mo net · {fmt(stmt.totalExpenses / stmt.monthCount)}/mo spend
+                  </td>
+                  {showComparison && <td />}
+                  {showComparison && <td />}
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

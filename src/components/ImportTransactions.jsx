@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { normalizeForDisplay } from '../utils/merchantNormalizer'
+import { txnFingerprint, buildFingerprintSet } from '../utils/ledger'
 import './ImportTransactions.css'
 
 const CATEGORIES = [
@@ -193,6 +194,7 @@ export default function ImportTransactions({ onImportComplete }) {
   const [ruleMessage, setRuleMessage] = useState(null)
   const [saving, setSaving] = useState(false)
   const [savedCount, setSavedCount] = useState(0)
+  const [skippedCount, setSkippedCount] = useState(0)
   const fileRef = useRef()
 
   // ── File parsing ─────────────────────────────────────────────────────────
@@ -321,22 +323,60 @@ export default function ImportTransactions({ onImportComplete }) {
   async function handleSave() {
     setSaving(true)
     setError(null)
-    const batchId = crypto.randomUUID()
-    const toSave = categorised
-      .filter(t => t.include)
-      .map(t => ({
-        user_id: user.id,
-        name: t.name || normalizeForDisplay(t.description) || t.description,
-        amount: t.amount,
-        category: t.category || 'Other',
-        date: t.date,
-        raw_merchant: t.raw_merchant || t.description,
-        import_batch_id: batchId
-      }))
+    setSkippedCount(0)
+
+    const included = categorised.filter(t => t.include)
+    if (included.length === 0) { setSaving(false); return }
 
     try {
-      const { error } = await supabase.from('transactions').insert(toSave)
-      if (error) throw error
+      // ── Duplicate detection ─────────────────────────────────────────────
+      // Fetch existing transactions in the date window covered by this import
+      // to build a fingerprint set. Any row already in the database is skipped.
+      const dates = included.map(t => t.date).filter(Boolean).sort()
+      const minDate = dates[0] || '2020-01-01'
+      const maxDate = dates[dates.length - 1] || new Date().toISOString().split('T')[0]
+
+      const { data: existing } = await supabase
+        .from('transactions')
+        .select('date, amount, name, raw_merchant')
+        .eq('user_id', user.id)
+        .gte('date', minDate)
+        .lte('date', maxDate)
+
+      // Build fingerprint set from existing rows
+      // Existing rows use 'name' as display name; map to 'description' for fingerprint
+      const existingFingerprints = buildFingerprintSet(
+        (existing || []).map(t => ({ ...t, description: t.raw_merchant || t.name }))
+      )
+
+      const batchId = crypto.randomUUID()
+      const toSave = []
+      let skipped = 0
+
+      for (const t of included) {
+        const fp = txnFingerprint({ ...t, description: t.description || t.name })
+        if (existingFingerprints.has(fp)) {
+          skipped++
+          continue
+        }
+        toSave.push({
+          user_id:         user.id,
+          name:            t.name || normalizeForDisplay(t.description) || t.description,
+          amount:          t.amount,
+          category:        t.category || 'Other',
+          date:            t.date,
+          raw_merchant:    t.raw_merchant || t.description,
+          import_batch_id: batchId,
+        })
+      }
+
+      setSkippedCount(skipped)
+
+      if (toSave.length > 0) {
+        const { error } = await supabase.from('transactions').insert(toSave)
+        if (error) throw error
+      }
+
       setSavedCount(toSave.length)
       setStep('done')
 
@@ -574,8 +614,11 @@ export default function ImportTransactions({ onImportComplete }) {
     return (
       <div className="import-shell import-done">
         <div className="done-icon">✓</div>
-        <h2>{savedCount} transactions imported</h2>
-        <p>Your spending has been categorised and added to your dashboard.</p>
+        <h2>{savedCount} transaction{savedCount !== 1 ? 's' : ''} imported</h2>
+        <p>
+          Your spending has been categorised and added to your dashboard.
+          {skippedCount > 0 && ` ${skippedCount} duplicate${skippedCount !== 1 ? 's' : ''} were skipped.`}
+        </p>
         <div className="done-actions">
           <button className="import-primary-btn" onClick={onImportComplete}>
             View dashboard

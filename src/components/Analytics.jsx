@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
-import { useTier } from '../context/TierContext'
+import { useTier, isDateAllowed } from '../context/TierContext'
 import { fetchTransactionsByRange } from '../services/transactions'
-import { groupByMonth, sumByCategory, buildAIPayload, profileCentsToRands } from '../utils/financials'
+import { buildAIPayload, profileCentsToRands } from '../utils/financials'
+import { buildLedgerSummary } from '../utils/ledger'
 import { analyseSpending } from '../services/ai'
 import './Analytics.css'
 
@@ -28,13 +29,27 @@ const fmtR = n => 'R' + Math.round(n).toLocaleString('en-ZA')
 const PERIODS = ['1M','3M','1Y','Custom','Max']
 
 function getDateRange(period, customFrom, customTo) {
+  // Ranges use calendar-month start boundaries so they reconcile with
+  // the Dashboard month picker and IncomeStatement period logic.
   const now = new Date()
   const to = now.toISOString().split('T')[0]
-  if (period === '1M') { const f=new Date(now.getFullYear(),now.getMonth()-1,now.getDate()); return {from:f.toISOString().split('T')[0],to} }
-  if (period === '3M') { const f=new Date(now.getFullYear(),now.getMonth()-3,now.getDate()); return {from:f.toISOString().split('T')[0],to} }
-  if (period === '1Y') { const f=new Date(now.getFullYear()-1,now.getMonth(),now.getDate()); return {from:f.toISOString().split('T')[0],to} }
-  if (period === 'Custom') return {from:customFrom||to,to:customTo||to}
-  return {from:'2020-01-01',to}
+  if (period === '1M') {
+    // Current calendar month (first of month -> today), matching Dashboard
+    const f = new Date(now.getFullYear(), now.getMonth(), 1)
+    return { from: f.toISOString().split('T')[0], to }
+  }
+  if (period === '3M') {
+    // Last 3 months including current: first day 2 months ago -> today
+    const f = new Date(now.getFullYear(), now.getMonth() - 2, 1)
+    return { from: f.toISOString().split('T')[0], to }
+  }
+  if (period === '1Y') {
+    // Last 12 months: first day 11 months ago -> today
+    const f = new Date(now.getFullYear(), now.getMonth() - 11, 1)
+    return { from: f.toISOString().split('T')[0], to }
+  }
+  if (period === 'Custom') return { from: customFrom || to, to: customTo || to }
+  return { from: '2020-01-01', to }
 }
 
 // groupByMonth and groupByCategory (sumByCategory) are now imported
@@ -166,7 +181,7 @@ function DonutChart({ catSpend }) {
 }
 
 // ── AI Trend Analysis ───────────────────────────────────────────────────────
-function AITrendAnalysis({ txns, period, budgets }) {
+function AITrendAnalysis({ txns, period, budgets, parentLedger }) {
   const { user, profile } = useAuth()
   const [analysis, setAnalysis] = useState('')
   const [loading, setLoading] = useState(false)
@@ -179,7 +194,7 @@ function AITrendAnalysis({ txns, period, budgets }) {
       const payload = buildAIPayload(txns, profile, 200, {
         mode: 'analytics',
         budgets: budgets || {},
-        monthlyData: groupByMonth(txns),
+        monthlyData: parentLedger?.monthlyData || {},
       })
       const data = await analyseSpending(payload)
       setAnalysis(data.analysis || 'Analysis complete.')
@@ -351,7 +366,9 @@ export default function Analytics() {
         fetchTransactionsByRange(user.id,range.from,range.to),
         supabase.from('budgets').select('category, amount').eq('user_id',user.id)
       ])
-      setTxns(txnData||[])
+      // Apply tier date filter -- free users must see the same date window as Overview
+      const filtered = (txnData||[]).filter(t => isDateAllowed(t.date, tier))
+      setTxns(filtered)
       const bmap={}
       for (const b of (budgetData||[])) bmap[b.category]=b.amount
       setBudgets(bmap)
@@ -442,7 +459,10 @@ export default function Analytics() {
             <div className="summary-divider"/>
             <div className="summary-item">
               <div className="summary-val green">{fmtR(totalIncome)}</div>
-              <div className="summary-lbl">income{incomeSource==='declared'?' (declared)':''}</div>
+              <div className="summary-lbl">
+                {monthCount > 1 ? `${monthCount}mo income total` : 'income'}
+                {incomeSource === 'declared' ? ' (declared)' : ''}
+              </div>
             </div>
             <div className="summary-divider"/>
             <div className="summary-item">
@@ -519,7 +539,7 @@ export default function Analytics() {
           </div>
 
           {/* AI Trend Analysis */}
-          <AITrendAnalysis txns={txns} period={period} budgets={budgets} />
+          <AITrendAnalysis txns={txns} period={period} budgets={budgets} parentLedger={ledger} />
 
           {/* Budget Q&A */}
           <BudgetChat txns={txns} budgets={budgets}/>
