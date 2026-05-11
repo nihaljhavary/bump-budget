@@ -141,21 +141,29 @@ export async function handler(event) {
   // ── 8. Call Claude ─────────────────────────────────────────────────────────
   let analysis
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 600,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: prompt }]
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 8000)
+    let res, data
+    try {
+      res = await fetch('https://api.anthropic.com/v1/messages', {
+        signal: controller.signal,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 600,
+          system: SYSTEM_PROMPT,
+          messages: [{ role: 'user', content: prompt }]
+        })
       })
-    })
-    const data = await res.json()
+      data = await res.json()
+    } finally {
+      clearTimeout(timer)
+    }
     if (!res.ok) {
       const errMsg = data?.error?.message || JSON.stringify(data)
       console.error(`[analyse] Anthropic API error ${res.status}: ${errMsg}`)
@@ -167,8 +175,8 @@ export async function handler(event) {
       return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ analysis: 'AI returned empty response. Try again.' }) }
     }
   } catch (err) {
-    console.error('[analyse] fetch error:', err)
-    return { statusCode: 500, body: JSON.stringify({ analysis: `Analysis failed: ${err.message}` }) }
+    console.error('[analyse] fetch error:', err.name, err.message)
+    return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ analysis: `Analysis failed: ${err.name === 'AbortError' ? 'Anthropic API timed out (8s)' : err.message}` }) }
   }
 
   // ── 9. Log usage for free users ────────────────────────────────────────────
