@@ -60,6 +60,24 @@ export async function analyseSpending(payload) {
 }
 
 /**
+ * Re-categorise all of the user's transactions using rules + Claude.
+ * Returns { processed, changed, breakdown }.
+ */
+export async function recategoriseAll() {
+  const token = await getToken()
+  const res = await fetch('/.netlify/functions/recategorise-all', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: JSON.stringify({})
+  })
+  if (!res.ok) throw new Error('Recategorisation failed')
+  return res.json()
+}
+
+/**
  * Enrich an unknown merchant with AI categorisation.
  * Falls back to rules-based matching server-side before calling Claude.
  *
