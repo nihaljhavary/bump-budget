@@ -55,7 +55,10 @@ export async function analyseSpending(payload) {
     const data = await res.json().catch(() => ({}))
     throw new Error(data.error || 'Monthly AI limit reached. Upgrade to Budget Coach for 500 calls/month.')
   }
-  if (!res.ok) throw new Error('Analysis request failed')
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.analysis || data.error || `Analysis failed (${res.status})`)
+  }
   return res.json()
 }
 
@@ -73,7 +76,10 @@ export async function recategoriseAll() {
     },
     body: JSON.stringify({})
   })
-  if (!res.ok) throw new Error('Recategorisation failed')
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || `Recategorisation failed (${res.status})`)
+  }
   return res.json()
 }
 

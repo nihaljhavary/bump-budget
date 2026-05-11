@@ -195,7 +195,7 @@ export default function Dashboard({ onNavigate }) {
       setRecatAll({ loading: false, result: r })
       await loadTransactions()
     } catch (e) {
-      setRecatAll({ loading: false, result: { error: 'Failed — try again.' } })
+      setRecatAll({ loading: false, result: { error: e.message || 'Failed — try again.' } })
     }
   }
 
@@ -306,8 +306,8 @@ export default function Dashboard({ onNavigate }) {
       })
       const result = await analyseSpending(payload)
       setAiText(result.analysis)
-    } catch {
-      setAiText('Analysis failed -- check your connection and try again.')
+    } catch (e) {
+      setAiText(e.message || 'Analysis failed -- check your connection and try again.')
     }
     setAiLoading(false)
   }
