@@ -2,10 +2,11 @@
  * bump. — Recategorise All Transactions
  * netlify/functions/recategorise-all.js
  *
- * Re-runs categorisation across ALL of a user's transactions:
- *   1. User correction rules (highest priority)
- *   2. SA_RULES keyword matching
- *   3. Claude Haiku for anything unmatched
+ * Strategy (fast enough for Netlify's 10s limit):
+ *   1. User correction rules  — applied to every transaction
+ *   2. SA_RULES keyword match — applied to every transaction
+ *   3. Claude Haiku           — ONLY for transactions still in "Other"
+ *      Batches run in parallel (not sequential) to stay under timeout.
  *
  * Only updates rows where the category actually changes.
  * Returns { processed, changed, breakdown }.
@@ -48,24 +49,23 @@ Rules:
 - Checkers/Woolworths Food/Pick n Pay/Spar/Shoprite → "Groceries"
 - Uber Eats/Mr D/KFC/McDonald's/restaurants/cafes/bakeries → "Eating out"
 - Engen/BP/Shell/Sasol/Total fuel stations → "Fuel"
-- Uber trips/Bolt ride/Gautrain/parking → "Transport"
-- Netflix/Spotify/DSTV/Showmax/gym/streaming/software subs → "Subscriptions"
+- Uber/Bolt ride/Gautrain/MyCiti/parking → "Transport"
+- Netflix/Spotify/DSTV/Showmax/gym memberships → "Subscriptions"
 - Discovery/Sanlam/Outsurance/insurance premiums → "Insurance"
-- Rent/bond/body corporate levy → "Housing"
+- Rent/bond/body corporate → "Housing"
 - ATM/cash withdrawal → "ATM / Cash"
-- Bank account fee/bank charges/interest charged → "Fees & Charges"
-- Eskom/electricity/municipal/fibre/airtime/MTN/Vodacom/Telkom → "Utilities"
-- Clicks/Dis-Chem/pharmacy/doctor/hospital/medical → "Health"
-- Mr Price/H&M/Zara/Woolworths fashion/clothing stores → "Clothing"
-- Easy Equities/unit trust/retirement annuity/investment → "Savings"
-- Airbnb/hotel/flights/Kulula/FlySafair → "Travel"
-- Own account transfer/PayShap/SnapScan peer payment → "Transfer"
-- Descriptions are pre-cleaned merchant names — categorise from the name shown.
-- Small businesses: barber/hair → Health, hardware/DIY → Home & Garden, boutique → Clothing.
-- Takealot/Amazon/online retail: infer from context; default to Other if unclear.
+- Bank fees/interest charged/bank charges → "Fees & Charges"
+- Eskom/electricity/municipal/fibre/airtime → "Utilities"
+- Clicks/Dis-Chem/pharmacy/doctor/hospital → "Health"
+- Mr Price/H&M/Zara/clothing stores → "Clothing"
+- School fees/university/tuition/Udemy → "Education"
+- Easy Equities/unit trust/retirement annuity → "Savings"
+- Airbnb/hotel/flights → "Travel"
+- Gift cards/flowers/donations → "Gifts"
+- Cinema/casino/Computicket/events → "Entertainment"
+- Names stripped of bank noise — infer from the merchant name
 
-Respond with ONLY a raw JSON array, no markdown:
-[{"idx": number, "category": "CategoryName"}, ...]
+Respond with ONLY a raw JSON array: [{"idx":0,"category":"..."},...]
 
 Transactions:
 ${JSON.stringify(items.map(t => ({ idx: t._idx, description: t._clean, amount: t.amount })))}`
@@ -81,7 +81,7 @@ async function callClaude(items) {
     },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 4000,
+      max_tokens: 2000,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: buildPrompt(items) }],
     }),
@@ -111,39 +111,32 @@ export async function handler(event) {
     return { statusCode: 401, body: JSON.stringify({ error: 'Invalid or expired session' }) }
   }
 
-  // Load user correction rules (highest priority)
   const { data: rules } = await adminClient
     .from('categorization_rules')
     .select('merchant_pattern, category')
     .eq('user_id', user.id)
 
-  // Fetch all transactions
   const { data: allTxns, error: txnError } = await adminClient
     .from('transactions')
     .select('id, name, description, amount, category')
     .eq('user_id', user.id)
     .order('date', { ascending: false })
 
-  if (txnError) {
-    return { statusCode: 500, body: JSON.stringify({ error: 'Failed to fetch transactions' }) }
-  }
+  if (txnError) return { statusCode: 500, body: JSON.stringify({ error: 'Failed to fetch transactions' }) }
   if (!allTxns || allTxns.length === 0) {
-    return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ processed: 0, changed: 0, breakdown: {} }) }
+    return { statusCode: 200, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ processed: 0, changed: 0, breakdown: {} }) }
   }
 
-  // ── Step 1: Rules-based pass ───────────────────────────────────────────────
-  // updates: newCategory → [id, ...]
-  const updates = {}
-  const needsClaude = []
+  // ── Step 1: Rules pass (fast, no network) ─────────────────────────────────
+  const updates = {}   // { newCategory: [id, ...] }
+  const needsClaude = []  // only "Other" transactions SA_RULES couldn't resolve
 
   allTxns.forEach((t, i) => {
     const desc = t.description || t.name || ''
     const name = t.name || ''
-
-    // User rules take priority over everything
     const userCat = applyRules(rules, desc) || applyRules(rules, name)
-    // SA keyword rules
-    const saCat = userCat ? null : (saPreCategory(desc) || saPreCategory(name))
+    const saCat   = userCat ? null : (saPreCategory(desc) || saPreCategory(name))
     const resolved = userCat || saCat
 
     if (resolved) {
@@ -151,41 +144,39 @@ export async function handler(event) {
         if (!updates[resolved]) updates[resolved] = []
         updates[resolved].push(t.id)
       }
-      // else: already correct, no update needed
-    } else {
-      // Needs Claude — use cleanForAI so it sees merchant name not raw bank string
+    } else if (t.category === 'Other' || !t.category) {
+      // Only send genuinely unresolved "Other" transactions to Claude
       const clean = cleanForAI(desc) || cleanForAI(name) || desc || name
       needsClaude.push({ _idx: i, id: t.id, currentCat: t.category, _clean: clean, amount: t.amount })
     }
+    // If already in a specific category (not Other) and no rule override → leave it alone
   })
 
-  // ── Step 2: Claude pass for unresolved ────────────────────────────────────
+  // ── Step 2: Claude pass — parallel batches, "Other" only ─────────────────
   if (needsClaude.length > 0) {
-    const chunks = chunk(needsClaude, 150)
+    const chunks = chunk(needsClaude, 100)  // smaller batches = faster per call
 
-    for (const ch of chunks) {
-      let results
+    const chunkResults = await Promise.all(chunks.map(async (ch) => {
       try {
-        results = await callClaude(ch)
+        return await callClaude(ch)
       } catch {
-        // Batch failed — retry each transaction individually
-        console.error('[recategorise] Batch failed, retrying individually')
-        results = []
-        for (const t of ch) {
+        // Batch failed — try each individually
+        const singles = await Promise.all(ch.map(async (t) => {
           try {
             const r = await callClaude([t])
-            if (r[0]) results.push(r[0])
-          } catch { /* skip — transaction stays with current category */ }
-        }
+            return r[0] || null
+          } catch { return null }
+        }))
+        return singles.filter(Boolean)
       }
+    }))
 
+    for (const results of chunkResults) {
       for (const r of results) {
         const orig = needsClaude.find(t => t._idx === r.idx)
-        if (!orig || !r.category) continue
-        if (r.category !== orig.currentCat) {
-          if (!updates[r.category]) updates[r.category] = []
-          updates[r.category].push(orig.id)
-        }
+        if (!orig || !r.category || r.category === orig.currentCat) continue
+        if (!updates[r.category]) updates[r.category] = []
+        updates[r.category].push(orig.id)
       }
     }
   }
@@ -193,7 +184,6 @@ export async function handler(event) {
   // ── Step 3: Apply updates ─────────────────────────────────────────────────
   let changed = 0
   for (const [category, ids] of Object.entries(updates)) {
-    // Supabase IN filter has limits — chunk to 500
     for (const idChunk of chunk(ids, 500)) {
       const { error } = await adminClient
         .from('transactions')
@@ -204,13 +194,13 @@ export async function handler(event) {
     }
   }
 
-  const breakdown = Object.fromEntries(
-    Object.entries(updates).map(([cat, ids]) => [cat, ids.length])
-  )
-
   return {
     statusCode: 200,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ processed: allTxns.length, changed, breakdown }),
+    body: JSON.stringify({
+      processed: allTxns.length,
+      changed,
+      breakdown: Object.fromEntries(Object.entries(updates).map(([cat, ids]) => [cat, ids.length])),
+    }),
   }
 }
