@@ -27,3 +27,6 @@ Thumbs.db
 
 # Local Netlify folder
 .netlify
+
+# npm lockfile — keep out of repo to avoid esbuild empty-version issue
+package-lock.json
