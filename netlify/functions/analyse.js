@@ -149,16 +149,26 @@ export async function handler(event) {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 450,
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 600,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: prompt }]
       })
     })
     const data = await res.json()
-    analysis = data.content?.[0]?.text || 'Analysis unavailable.'
+    if (!res.ok) {
+      const errMsg = data?.error?.message || JSON.stringify(data)
+      console.error(`[analyse] Anthropic API error ${res.status}: ${errMsg}`)
+      return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ analysis: `AI error (${res.status}): ${errMsg}` }) }
+    }
+    analysis = data.content?.[0]?.text
+    if (!analysis) {
+      console.error('[analyse] Anthropic returned no content:', JSON.stringify(data))
+      return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ analysis: 'AI returned empty response. Try again.' }) }
+    }
   } catch (err) {
-    return { statusCode: 500, body: JSON.stringify({ analysis: 'Analysis failed. Try again.' }) }
+    console.error('[analyse] fetch error:', err)
+    return { statusCode: 500, body: JSON.stringify({ analysis: `Analysis failed: ${err.message}` }) }
   }
 
   // ── 9. Log usage for free users ────────────────────────────────────────────

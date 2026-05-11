@@ -87,7 +87,17 @@ async function callClaude(items) {
     }),
   })
   const data = await res.json()
-  const text = (data.content?.[0]?.text || '[]').trim()
+  if (!res.ok) {
+    const errMsg = data?.error?.message || JSON.stringify(data)
+    console.error(`[recat] Anthropic API error ${res.status}: ${errMsg}`)
+    throw new Error(`Anthropic ${res.status}: ${errMsg}`)
+  }
+  const rawText = data.content?.[0]?.text
+  if (!rawText) {
+    console.error('[recat] Anthropic returned no content:', JSON.stringify(data))
+    throw new Error('Anthropic returned empty response')
+  }
+  const text = rawText.trim()
     .replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
   return JSON.parse(text)
 }
