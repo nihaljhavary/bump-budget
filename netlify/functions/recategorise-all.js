@@ -110,6 +110,15 @@ async function callClaude(items) {
 }
 
 export async function handler(event) {
+  try {
+    return await _handler(event)
+  } catch (err) {
+    console.error('[recat] Unhandled error:', err.message, err.stack)
+    return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: `Server error: ${err.message}` }) }
+  }
+}
+
+async function _handler(event) {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' }
   }
