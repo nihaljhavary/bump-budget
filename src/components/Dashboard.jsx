@@ -5,7 +5,7 @@ import { useTier, isDateAllowed, PLAN_PRICES } from '../context/TierContext'
 import { fetchTransactions, fetchTransactionsByMonth, addTransaction, updateTransaction, deleteTransaction } from '../services/transactions'
 import { buildAIPayload } from '../utils/financials'
 import { buildLedgerSummary, getCalendarMonthRange } from '../utils/ledger'
-import { parseTransaction, analyseSpending } from '../services/ai'
+import { parseTransaction, analyseSpending, recategoriseAll } from '../services/ai'
 import ImportTransactions from './ImportTransactions'
 import Analytics from './Analytics'
 import Recommendations from './Recommendations'
@@ -80,6 +80,8 @@ export default function Dashboard({ onNavigate }) {
   const [recatId, setRecatId] = useState(null)        // which txn is being edited
   const [recatSaving, setRecatSaving] = useState(false)
   const [recatPrompt, setRecatPrompt] = useState(null) // { id, name, category } - show "save as rule?" dialog
+  const [selectedCat, setSelectedCat] = useState(null)   // drill-down: which category card was tapped
+  const [recatAll, setRecatAll] = useState({ loading: false, result: null })
 
   useEffect(() => {
     loadTransactions()
@@ -184,6 +186,18 @@ export default function Dashboard({ onNavigate }) {
   const net = ledger.net
   const catTotals = ledger.catTotals
   const maxCat = Math.max(...Object.values(catTotals), 1)
+
+  // Bulk re-categorise all transactions via AI
+  async function handleRecatAll() {
+    setRecatAll({ loading: true, result: null })
+    try {
+      const r = await recategoriseAll()
+      setRecatAll({ loading: false, result: r })
+      await loadTransactions()
+    } catch (e) {
+      setRecatAll({ loading: false, result: { error: 'Failed — try again.' } })
+    }
+  }
 
   // Handle inline recategorisation
   async function handleRecat(txnId, txnName, newCategory) {
@@ -468,7 +482,7 @@ export default function Dashboard({ onNavigate }) {
                   const over = amt > budget
                   const near = !over && amt > budget * 0.8
                   return (
-                    <div className="cat-card" key={cat}>
+                    <div className="cat-card" key={cat} onClick={() => setSelectedCat(cat)} style={{cursor:'pointer'}}>
                       <div className="cat-top">
                         <span className="cat-name">{cat}</span>
                         <span className={`cat-badge ${over ? 'over' : near ? 'near' : 'ok'}`}>
@@ -493,6 +507,56 @@ export default function Dashboard({ onNavigate }) {
                 })}
               </div>
             </>
+          )}
+
+          {/* Category drill-down drawer */}
+          {selectedCat && (
+            <div className="cat-drawer-overlay" onClick={() => setSelectedCat(null)}>
+              <div className="cat-drawer" onClick={e => e.stopPropagation()}>
+                <div className="cat-drawer-header">
+                  <div className="cat-drawer-title">
+                    <span style={{fontSize:'1.4rem'}}>{CAT_ICONS[selectedCat] || '📦'}</span>
+                    <span>{selectedCat}</span>
+                    <span className="cat-drawer-total">{fmt(catTotals[selectedCat] || 0)}</span>
+                  </div>
+                  <button className="cat-drawer-close" onClick={() => setSelectedCat(null)}>✕</button>
+                </div>
+                <div className="cat-drawer-list">
+                  {transactions
+                    .filter(t => t.category === selectedCat)
+                    .sort((a, b) => b.amount - a.amount)
+                    .map(t => (
+                      <div key={t.id} className="cat-drawer-row">
+                        <div className="cat-drawer-row-info">
+                          <span className="cat-drawer-row-name">{t.name || t.description}</span>
+                          <span className="cat-drawer-row-date">{fmtDate(t.date)}</span>
+                        </div>
+                        <div className="cat-drawer-row-right">
+                          <span className="cat-drawer-row-amt">{fmt(t.amount)}</span>
+                          <select
+                            className="cat-drawer-recat"
+                            value={t.category}
+                            onChange={e => {
+                              handleRecat(t.id, t.name, e.target.value)
+                              setTransactions(prev => prev.map(tx => tx.id === t.id ? {...tx, category: e.target.value} : tx))
+                            }}
+                          >
+                            {['Groceries','Eating out','Transport','Entertainment','Health','Clothing',
+                              'Subscriptions','Education','Insurance','Savings','Fuel','ATM / Cash',
+                              'Fees & Charges','Utilities','Travel','Gifts','Home & Garden','Housing',
+                              'Income','Transfer','Other'].map(c => (
+                              <option key={c} value={c}>{c}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    ))}
+                  {transactions.filter(t => t.category === selectedCat).length === 0 && (
+                    <p style={{color:'var(--muted)',textAlign:'center',padding:'1rem'}}>No transactions in this category this month.</p>
+                  )}
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Import CTA */}
@@ -532,6 +596,23 @@ export default function Dashboard({ onNavigate }) {
           <button className="analyse-btn" onClick={runAnalysis} disabled={aiLoading || transactions.length === 0}>
             {aiLoading ? 'bump. is working on it...' : aiText ? 'Re-analyse' : 'Analyse my spending'}
           </button>
+
+          {/* Re-categorise all transactions */}
+          <div className="recat-all-strip">
+            <div className="recat-all-text">
+              <strong>Transactions landing in Other?</strong>
+              <span> Re-run AI categorisation on all your transactions.</span>
+            </div>
+            {recatAll.result && !recatAll.result.error && (
+              <span className="recat-all-badge">✓ {recatAll.result.changed} updated</span>
+            )}
+            {recatAll.result?.error && (
+              <span className="recat-all-badge error">{recatAll.result.error}</span>
+            )}
+            <button className="recat-all-btn" onClick={handleRecatAll} disabled={recatAll.loading}>
+              {recatAll.loading ? 'Re-categorising...' : 'Re-categorise all'}
+            </button>
+          </div>
 
           {/* Book a Consultation CTA — Pro only */}
           <LockedFeature locked={!tier.canConsult} feature="consult" label="Upgrade to Pro — R199/mo">

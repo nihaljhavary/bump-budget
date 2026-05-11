@@ -92,7 +92,7 @@ export default function Analytics() {
   const { user, profile } = useAuth()
   const tier = useTier()
 
-  const [period, setPeriod]         = useState('1m')
+  const [period, setPeriod]         = useState('3m')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo]     = useState('')
   const [txns, setTxns]             = useState([])
