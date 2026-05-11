@@ -191,7 +191,7 @@ export default function Analytics() {
       })
       const data = await analyseSpending(payload)
       setAiText(data.analysis || '')
-    } catch { setAiText('Could not generate insights. Please try again.') }
+    } catch (e) { setAiText(e.message || 'Could not generate insights. Please try again.') }
     setAiLoading(false)
   }
 

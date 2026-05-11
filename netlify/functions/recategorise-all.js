@@ -72,34 +72,41 @@ ${JSON.stringify(items.map(t => ({ idx: t._idx, description: t._clean, amount: t
 }
 
 async function callClaude(items) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 2000,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: buildPrompt(items) }],
-    }),
-  })
-  const data = await res.json()
-  if (!res.ok) {
-    const errMsg = data?.error?.message || JSON.stringify(data)
-    console.error(`[recat] Anthropic API error ${res.status}: ${errMsg}`)
-    throw new Error(`Anthropic ${res.status}: ${errMsg}`)
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 7000)  // 7s per batch max
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      signal: controller.signal,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 2000,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: buildPrompt(items) }],
+      }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      const errMsg = data?.error?.message || JSON.stringify(data)
+      console.error(`[recat] Anthropic API error ${res.status}: ${errMsg}`)
+      throw new Error(`Anthropic ${res.status}: ${errMsg}`)
+    }
+    const rawText = data.content?.[0]?.text
+    if (!rawText) {
+      console.error('[recat] Anthropic returned no content:', JSON.stringify(data))
+      throw new Error('Anthropic returned empty response')
+    }
+    const text = rawText.trim()
+      .replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+    return JSON.parse(text)
+  } finally {
+    clearTimeout(timer)
   }
-  const rawText = data.content?.[0]?.text
-  if (!rawText) {
-    console.error('[recat] Anthropic returned no content:', JSON.stringify(data))
-    throw new Error('Anthropic returned empty response')
-  }
-  const text = rawText.trim()
-    .replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
-  return JSON.parse(text)
 }
 
 export async function handler(event) {
@@ -166,18 +173,13 @@ export async function handler(event) {
   if (needsClaude.length > 0) {
     const chunks = chunk(needsClaude, 100)  // smaller batches = faster per call
 
+    // Run batches in parallel — if a batch fails, skip it (don't retry individually)
     const chunkResults = await Promise.all(chunks.map(async (ch) => {
       try {
         return await callClaude(ch)
-      } catch {
-        // Batch failed — try each individually
-        const singles = await Promise.all(ch.map(async (t) => {
-          try {
-            const r = await callClaude([t])
-            return r[0] || null
-          } catch { return null }
-        }))
-        return singles.filter(Boolean)
+      } catch (e) {
+        console.error(`[recat] Batch of ${ch.length} failed: ${e.message}`)
+        return []  // Skip failed batch — rules pass already handled what it could
       }
     }))
 
