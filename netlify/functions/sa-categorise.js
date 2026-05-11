@@ -515,4 +515,5 @@ export function cleanForAI(description) {
  * @returns {boolean}
  */
 export function isSpendTransaction(txn) {
-  return !EXCLUDED_FROM_SPEND.has(txn?.c
+  return !EXCLUDED_FROM_SPEND.has(txn?.category)
+}

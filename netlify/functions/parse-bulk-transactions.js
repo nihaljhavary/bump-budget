@@ -263,4 +263,18 @@ ${JSON.stringify(chunkItems.map(t => ({ idx: t.idx, description: t._clean, amoun
   })
 
   // ── 7. Increment usage (1 call per bulk import) ───────────────────────────
-  if (limi
+  if (limit !== Infinity) {
+    await adminClient
+      .from('ai_usage')
+      .upsert(
+        { user_id: user.id, month, call_count: callCount + 1 },
+        { onConflict: 'user_id,month' }
+      )
+  }
+
+  return {
+    statusCode: 200,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ transactions: result }),
+  }
+}

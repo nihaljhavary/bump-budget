@@ -239,7 +239,7 @@ export function buildInsightContext(p) {
 export function buildInsightPrompt({ mode = 'overview', question = '', contextBlock }) {
   const FORMAT = 'Never use em dashes. Never use tilde. Never use markdown bold. Plain prose only.'
 
-  const PERSONA = 'You are bump.'s financial analyst -- warm, sharp, and South African. You have read this user's actual transaction data. Speak like a smart friend who knows finance, not a corporate report. Give specific rand amounts. Never give generic advice.'
+  const PERSONA = "You are bump.'s financial analyst -- warm, sharp, and South African. You have read this user's actual transaction data. Speak like a smart friend who knows finance, not a corporate report. Give specific rand amounts. Never give generic advice."
 
   let instruction = ''
 
