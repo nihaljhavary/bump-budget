@@ -144,11 +144,11 @@ async function _handler(event) {
 
   const { data: allTxns, error: txnError } = await adminClient
     .from('transactions')
-    .select('id, name, description, amount, category')
+    .select('id, name, amount, category')
     .eq('user_id', user.id)
     .order('date', { ascending: false })
 
-  if (txnError) return { statusCode: 500, body: JSON.stringify({ error: 'Failed to fetch transactions' }) }
+  if (txnError) { console.error('[recat] txn fetch error:', txnError); return { statusCode: 500, body: JSON.stringify({ error: `Failed to fetch transactions: ${txnError.message || JSON.stringify(txnError)}` }) } }
   if (!allTxns || allTxns.length === 0) {
     return { statusCode: 200, headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ processed: 0, changed: 0, breakdown: {} }) }
@@ -159,7 +159,7 @@ async function _handler(event) {
   const needsClaude = []  // only "Other" transactions SA_RULES couldn't resolve
 
   allTxns.forEach((t, i) => {
-    const desc = t.description || t.name || ''
+    const desc = t.name || ''
     const name = t.name || ''
     const userCat = applyRules(rules, desc) || applyRules(rules, name)
     const saCat   = userCat ? null : (saPreCategory(desc) || saPreCategory(name))
