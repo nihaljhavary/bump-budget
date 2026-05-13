@@ -157,6 +157,8 @@ async function _handler(event) {
     debitOrders:      profileContext?.monthly_debit_orders || 0,
     savingsGoal:      profileContext?.savings_goal || 0,
     usageType:        profileContext?.usage_type || 'personal',
+    additionalIncome: profileContext?.additional_income || 0,
+    savingsBalance:   profileContext?.savings_balance || 0,
     recurringContext: (typeof recurringContext === 'string' && recurringContext.length < 800) ? recurringContext : '',
     monthlyData:      monthlyData || null,
     transactions,

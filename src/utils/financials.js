@@ -374,6 +374,8 @@ export function buildAIPayload(transactions, profile, limit = 200, opts = {}) {
     savings_goal:         profileCentsToRands(profile?.savings_goal),
     monthly_debit_orders: profileCentsToRands(profile?.monthly_debit_orders),
     usage_type:           profile?.usage_type || 'personal',
+    additional_income:    profileCentsToRands(profile?.additional_income),
+    savings_balance:      profileCentsToRands(profile?.savings_balance),
   }
 
   const payload = { transactions: aiTxns, declaredIncome, profileContext }

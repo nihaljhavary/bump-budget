@@ -47,7 +47,7 @@ const fmtDate = d => new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { day
 const monthLabel = () => new Date().toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })
 
 export default function Dashboard({ onNavigate }) {
-  const { user, profile } = useAuth()
+  const { user, profile, updateProfile } = useAuth()
   const tier = useTier()
   const [tab, setTab] = useState('overview')
   const [transactions, setTransactions] = useState([])
@@ -71,6 +71,8 @@ export default function Dashboard({ onNavigate }) {
   const [userBudgets, setUserBudgets] = useState(DEFAULT_BUDGETS)
   // Increments each time an import completes — signals Recommendations to refresh.
   const [importSignal, setImportSignal] = useState(0)
+  const [savingsBal, setSavingsBal]             = useState('')
+  const [savingsBalSaving, setSavingsBalSaving] = useState(false)
   const profileMenuRef = useRef(null)
   const chatEndRef = useRef(null)
   const textareaRef = useRef(null)
@@ -189,6 +191,14 @@ export default function Dashboard({ onNavigate }) {
   const net = ledger.net
   const catTotals = ledger.catTotals
   const maxCat = Math.max(...Object.values(catTotals), 1)
+
+  // Savings drawdown detection
+  const EXCEPTIONAL_CATS_OV = new Set(['Gifts', 'Travel', 'Entertainment', 'Clothing', 'Home & Garden'])
+  const exceptionalSpendOV  = Object.entries(catTotals)
+    .filter(([cat]) => EXCEPTIONAL_CATS_OV.has(cat))
+    .reduce((s, [, v]) => s + v, 0)
+  const regularNet     = income - (totalSpend - exceptionalSpendOV)
+  const likelyDrawdown = net < 0 && exceptionalSpendOV > 0
 
   // Bulk re-categorise all transactions via AI
   async function handleRecatAll() {
@@ -601,6 +611,64 @@ export default function Dashboard({ onNavigate }) {
             </div>
           )}
 
+          {/* Savings drawdown prompt */}
+          {likelyDrawdown && (
+            <div className="savings-drawdown-card">
+              <div className="sdc-header">
+                <span className="sdc-icon">💰</span>
+                <div>
+                  <div className="sdc-title">Looks like you dipped into savings this month</div>
+                  <div className="sdc-sub">
+                    You spent {fmt(exceptionalSpendOV)} on exceptional items (gifts, travel, entertainment)
+                    that likely came from savings. Strip those out and your underlying position is{' '}
+                    <strong className={regularNet >= 0 ? 'sdc-pos' : 'sdc-neg'}>
+                      {fmt(Math.abs(regularNet))} {regularNet >= 0 ? 'surplus' : 'deficit'}
+                    </strong> — {regularNet >= 0 ? 'your regular spending is healthy.' : 'worth keeping an eye on.'}
+                  </div>
+                </div>
+              </div>
+              {profile?.savings_balance > 0 && (
+                <div className="sdc-balance-row">
+                  <div>
+                    <span className="sdc-balance-label">Estimated savings balance after this month: </span>
+                    <strong>{fmt(Math.max(Math.round(profile.savings_balance / 100) + net, 0))}</strong>
+                    <span className="sdc-balance-was"> (was {fmt(Math.round(profile.savings_balance / 100))})</span>
+                  </div>
+                  <span className="sdc-balance-hint">Update below if this looks off</span>
+                </div>
+              )}
+              {!profile?.savings_balance && (
+                <div className="sdc-balance-hint sdc-balance-hint--nudge">
+                  Add your savings balance in Account Centre so bump. can track drawdowns accurately.
+                </div>
+              )}
+              <div className="sdc-edit-row">
+                <label className="sdc-edit-label">Update savings balance</label>
+                <div className="sdc-edit-wrap">
+                  <span className="sdc-prefix">R</span>
+                  <input
+                    className="sdc-input"
+                    type="number"
+                    placeholder={profile?.savings_balance ? String(Math.round(profile.savings_balance / 100)) : '0'}
+                    value={savingsBal}
+                    onChange={e => setSavingsBal(e.target.value)}
+                  />
+                  <button
+                    className="sdc-save-btn"
+                    disabled={!savingsBal || savingsBalSaving}
+                    onClick={async () => {
+                      if (!savingsBal) return
+                      setSavingsBalSaving(true)
+                      await updateProfile({ savings_balance: Math.round(parseFloat(savingsBal) * 100) })
+                      setSavingsBal('')
+                      setSavingsBalSaving(false)
+                    }}
+                  >{savingsBalSaving ? 'Saving...' : 'Save'}</button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* AI Analysis */}
           <div className="ai-panel">
             <div className="ai-head">
@@ -1008,6 +1076,8 @@ function AccountCentreModal({ user, profile, tier, onClose, onNavigate }) {
     net_income:            profile?.net_income            ? String(Math.round(profile.net_income / 100))            : '',
     monthly_debit_orders:  profile?.monthly_debit_orders  ? String(Math.round(profile.monthly_debit_orders / 100))  : '',
     savings_goal:          profile?.savings_goal          ? String(Math.round(profile.savings_goal / 100))          : '',
+    additional_income:     profile?.additional_income     ? String(Math.round(profile.additional_income / 100))     : '',
+    savings_balance:       profile?.savings_balance       ? String(Math.round(profile.savings_balance / 100))       : '',
     bank:                  profile?.bank || '',
   })
   const [saving, setSaving]     = useState(false)
@@ -1025,6 +1095,8 @@ function AccountCentreModal({ user, profile, tier, onClose, onNavigate }) {
       net_income:           toC(form.net_income),
       monthly_debit_orders: toC(form.monthly_debit_orders),
       savings_goal:         toC(form.savings_goal),
+      additional_income:    toC(form.additional_income),
+      savings_balance:      toC(form.savings_balance),
       bank:                 form.bank || null,
     })
     setSaving(false); setSaved(true)
@@ -1068,6 +1140,8 @@ function AccountCentreModal({ user, profile, tier, onClose, onNavigate }) {
                 { label: 'Net (take-home) salary',     field: 'net_income',           type: 'number', prefix: 'R' },
                 { label: 'Fixed monthly debit orders', field: 'monthly_debit_orders', type: 'number', prefix: 'R' },
                 { label: 'Monthly savings goal',       field: 'savings_goal',         type: 'number', prefix: 'R' },
+                { label: 'Additional monthly income',  field: 'additional_income',    type: 'number', prefix: 'R' },
+                { label: 'Current savings balance',    field: 'savings_balance',      type: 'number', prefix: 'R' },
                 { label: 'Primary bank',               field: 'bank',                 type: 'text',   prefix: '' },
               ].map(({ label, field, type, prefix }) => (
                 <div className="ac-field" key={field}>

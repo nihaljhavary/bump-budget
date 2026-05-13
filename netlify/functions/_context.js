@@ -59,12 +59,25 @@ export function buildInsightContext(p) {
     periodLabel = 'this period',
     mode = 'overview',
     periodDays = null,
+    additionalIncome = 0,
+    savingsBalance = 0,
   } = p
 
-  const net = income - totalSpend
-  const spendPct = income > 0 ? Math.round(totalSpend / income * 100) : 0
-  const savingsRate = income > 0 ? Math.round(net / income * 100) : 0
+  const totalIncome = income + (additionalIncome || 0)
+  const net = totalIncome - totalSpend
+  const spendPct = totalIncome > 0 ? Math.round(totalSpend / totalIncome * 100) : 0
+  const savingsRate = totalIncome > 0 ? Math.round(net / totalIncome * 100) : 0
   const discretionary = debitOrders > 0 ? totalSpend - debitOrders : null
+
+  // Savings drawdown detection
+  // Categories people commonly fund from savings (exceptional, non-recurring)
+  const EXCEPTIONAL_CATS = new Set(['Gifts', 'Travel', 'Entertainment', 'Clothing', 'Home & Garden'])
+  const exceptionalSpend = Object.entries(catTotals)
+    .filter(([cat]) => EXCEPTIONAL_CATS.has(cat))
+    .reduce((s, [, v]) => s + v, 0)
+  const regularSpend = totalSpend - exceptionalSpend
+  const regularNet   = totalIncome - regularSpend
+  const likelyDrawdown = net < 0 && exceptionalSpend > 0
 
   const lines = []
 
@@ -81,7 +94,11 @@ export function buildInsightContext(p) {
     incomeLabel += ' (declared; transaction income also logged)'
   }
 
-  lines.push(`Income: ${fmt(income)} (${incomeLabel})`)
+  lines.push(`Primary income: ${fmt(income)} (${incomeLabel})`)
+  if (additionalIncome > 0) {
+    lines.push(`Additional income: ${fmt(additionalIncome)}/mo (secondary/side income -- declared in profile)`)
+    lines.push(`Total income: ${fmt(totalIncome)}`)
+  }
   lines.push(`Total spend: ${fmt(totalSpend)} (${spendPct}% of income, transfers/savings excluded)`)
 
   if (debitOrders > 0) {
@@ -93,7 +110,7 @@ export function buildInsightContext(p) {
     }
   }
 
-  lines.push(`Net position: ${fmt(net)} ${net >= 0 ? 'surplus' : 'DEFICIT'}`)
+  lines.push(`Net position: ${fmt(net)} ${net >= 0 ? 'surplus' : 'DEFICIT'}${additionalIncome > 0 ? ' (including additional income)' : ''}`)
 
   if (savingsGoal > 0) {
     const onTrack = net >= savingsGoal
@@ -105,6 +122,31 @@ export function buildInsightContext(p) {
     }
   } else if (net > 0 && income > 0) {
     lines.push(`Savings rate: ${savingsRate}% (no savings goal set)`)
+  }
+
+  // -- Savings balance + drawdown detection --
+  if (savingsBalance > 0) {
+    lines.push(`Current savings balance: ${fmt(savingsBalance)} (declared by user)`)
+  }
+
+  if (likelyDrawdown && exceptionalSpend > 0) {
+    lines.push('')
+    lines.push('SAVINGS DRAWDOWN SIGNAL:')
+    const exceptCats = Object.entries(catTotals)
+      .filter(([cat]) => EXCEPTIONAL_CATS.has(cat) && catTotals[cat] > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([cat, amt]) => `${cat} (${fmt(amt)})`)
+      .join(', ')
+    lines.push(`  Spend exceeds income by ${fmt(Math.abs(net))} this period.`)
+    lines.push(`  Exceptional spend (likely savings-funded): ${fmt(exceptionalSpend)} across ${exceptCats}`)
+    lines.push(`  Regular month-to-month position (excl. exceptional): ${fmt(regularNet)} ${regularNet >= 0 ? 'SURPLUS' : 'DEFICIT'}`)
+    if (savingsBalance > 0) {
+      const estimatedBalance = Math.max(savingsBalance - Math.abs(net), 0)
+      lines.push(`  Estimated savings balance after drawdown: ${fmt(estimatedBalance)} (down from ${fmt(savingsBalance)})`)
+      lines.push(`  PROMPT USER: Ask if they used savings for exceptional spend and whether they want to update their savings balance.`)
+    } else {
+      lines.push(`  No savings balance declared. Suggest user set a savings balance in their profile for more accurate analysis.`)
+    }
   }
 
   // -- Category breakdown --
