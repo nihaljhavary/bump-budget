@@ -105,7 +105,7 @@ function MonthlyBars({ data }) {
   )
 }
 
-export default function Analytics({ preferDeclared = false }) {
+export default function Analytics({ preferDeclared = true }) {
   const { user, profile } = useAuth()
   const tier = useTier()
 
@@ -149,7 +149,15 @@ export default function Analytics({ preferDeclared = false }) {
     try { localStorage.setItem('bumpBudgetMode', mode) } catch {}
   }
 
-  // Calendar days for custom periods (for prorated income)
+  // Explicit month count for standard period buttons.
+  // Custom ranges don't have a clean monthCount; use periodDays instead.
+  const periodMonthCount = useMemo(() => {
+    if (period === 'custom') return null
+    return { '1m': 1, '3m': 3, '6m': 6, '12m': 12 }[period] ?? 1
+  }, [period])
+
+  // Calendar days — only computed (and used for income proration) on custom ranges.
+  // Standard periods use monthCount×declared so Overview and Analytics stay in sync.
   const periodDays = useMemo(() => {
     if (period === 'custom') return countCalendarDays(from, to)
     return null
@@ -159,11 +167,12 @@ export default function Analytics({ preferDeclared = false }) {
   const ledger = useMemo(
     () => buildLedgerSummary(txns, profile, {
       preferDeclared,
-      periodDays,
+      periodDays,               // non-null only for custom ranges
+      monthCount: periodMonthCount ?? undefined,
       from,
       to,
     }),
-    [txns, profile, preferDeclared, periodDays, from, to]
+    [txns, profile, preferDeclared, periodDays, periodMonthCount, from, to]
   )
 
   const catData = useMemo(() =>

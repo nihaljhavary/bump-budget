@@ -271,9 +271,13 @@ export function buildLedgerSummary(transactions, profile, opts = {}) {
   }
 
   // -- Step 7: Period-aware income resolution via canonical resolver --
+  // Income resolution: only use explicitly-supplied periodDays for proration.
+  // Auto-computed periodDays (from from/to strings) is for display/info only.
+  // Standard period buttons (1m/3m/6m/12m) must use monthCount×declared — not
+  // a partial-month day count — so that Overview and Analytics stay in sync.
   const resolution = resolveEffectiveIncome(txns, profile, {
     preferDeclared,
-    periodDays,
+    periodDays: explicitPeriodDays ?? null,
     monthCount,
   })
   const {
