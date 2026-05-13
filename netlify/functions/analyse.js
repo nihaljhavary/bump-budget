@@ -13,11 +13,19 @@ const DEFAULT_BUDGETS = {
 }
 
 const ALLOWED_FIELDS = new Set([
-  'transactions', 'question', 'declaredIncome', 'profileContext',
-  'budgets',          // { category: rands } -- user-set budgets from DB
-  'recurringContext', // compact string from recurringToContext()
-  'monthlyData',      // { 'YYYY-MM': { spend, income } } for trend signals
-  'mode',             // 'overview' | 'analytics' | 'income_statement'
+  'transactions',
+  'question',
+  'declaredIncome',
+  'profileContext',
+  'budgets',              // { category: rands } -- user-set budgets from DB
+  'recurringContext',     // compact string from recurringToContext()
+  'monthlyData',          // { 'YYYY-MM': { spend, income } } for trend signals
+  'mode',                 // 'overview' | 'analytics' | 'income_statement'
+  'topMerchants',         // [{ name, category, total, count, pctOfSpend }]
+  'incomeResolutionMode', // 'declared_prorated' | 'transaction_derived' | 'blended'
+  'effectiveIncome',      // resolved period income (rands) -- overrides txn-derived calc
+  'periodDays',           // calendar days in period (for proration context in prompt)
+  'periodLabel',          // human-readable label e.g. "last 3 months"
 ])
 
 const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
@@ -37,7 +45,7 @@ async function _handler(event) {
     return { statusCode: 405, body: 'Method not allowed' }
   }
 
-  // ── 1. Parse + validate body ───────────────────────────────────────────────
+  // -- 1. Parse + validate body --
   let body
   try {
     body = JSON.parse(event.body || '{}')
@@ -50,7 +58,11 @@ async function _handler(event) {
     return { statusCode: 400, body: JSON.stringify({ error: `Unexpected fields: ${extraFields.join(', ')}` }) }
   }
 
-  const { transactions, question, declaredIncome, profileContext, budgets, recurringContext, monthlyData, mode } = body
+  const {
+    transactions, question, declaredIncome, profileContext,
+    budgets, recurringContext, monthlyData, mode,
+    topMerchants, incomeResolutionMode, effectiveIncome, periodDays, periodLabel,
+  } = body
 
   if (!Array.isArray(transactions)) {
     return { statusCode: 400, body: JSON.stringify({ error: '`transactions` must be an array' }) }
@@ -62,25 +74,28 @@ async function _handler(event) {
   if (recurringContext !== undefined && typeof recurringContext !== 'string') {
     return { statusCode: 400, body: JSON.stringify({ error: '`recurringContext` must be a string' }) }
   }
+  if (topMerchants !== undefined && !Array.isArray(topMerchants)) {
+    return { statusCode: 400, body: JSON.stringify({ error: '`topMerchants` must be an array' }) }
+  }
 
-  // ── 2. Auth ────────────────────────────────────────────────────────────────
+  // -- 2. Auth --
   const authHeader = event.headers['authorization'] || event.headers['Authorization'] || ''
   if (!authHeader.startsWith('Bearer ')) {
     return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized' }) }
   }
   const token = authHeader.slice(7)
 
-  const anonClient = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY)
+  const anonClient  = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY)
   const adminClient = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
 
   const { data: { user }, error: authError } = await anonClient.auth.getUser(token)
   if (authError || !user) return { statusCode: 401, body: JSON.stringify({ error: 'Invalid or expired session' }) }
 
-  // ── 3. Plan check + rate limiting ─────────────────────────────────────────
+  // -- 3. Plan check + rate limiting --
   const { data: profileData } = await adminClient
     .from('profiles').select('subscription_plan, is_admin').eq('id', user.id).single()
 
-  const plan = profileData?.subscription_plan || 'free'
+  const plan    = profileData?.subscription_plan || 'free'
   const isAdmin = profileData?.is_admin === true
 
   if (!isAdmin && plan === 'free') {
@@ -98,10 +113,15 @@ async function _handler(event) {
     }
   }
 
-  // ── 4. Build financial summary from transactions ───────────────────────────
+  // -- 4. Build financial summary from canonical fields --
+  // Use effectiveIncome if the client resolved it correctly; otherwise fall back to txn sum.
   const txnIncome = transactions.filter(t => t.category === 'Income').reduce((s, t) => s + t.amount, 0)
-  const income = txnIncome > 0 ? txnIncome : (declaredIncome || 0)
-  const incomeSource = txnIncome > 0 ? 'transactions' : (declaredIncome > 0 ? 'declared' : 'unknown')
+  const income = (effectiveIncome != null && effectiveIncome > 0)
+    ? effectiveIncome
+    : (txnIncome > 0 ? txnIncome : (declaredIncome || 0))
+  const resolvedIncomeSource = (effectiveIncome != null && effectiveIncome > 0)
+    ? (incomeResolutionMode || 'declared_prorated')
+    : (txnIncome > 0 ? 'transactions' : (declaredIncome > 0 ? 'declared' : 'unknown'))
 
   const catTotals = {}
   transactions
@@ -109,45 +129,51 @@ async function _handler(event) {
     .forEach(t => { catTotals[t.category] = (catTotals[t.category] || 0) + t.amount })
   const totalSpend = Object.values(catTotals).reduce((s, v) => s + v, 0)
 
-  // ── 5. Build period label ──────────────────────────────────────────────────
-  let periodLabel = 'this period'
-  if (monthlyData && typeof monthlyData === 'object') {
+  // -- 5. Build period label --
+  let resolvedPeriodLabel = periodLabel || 'this period'
+  if (!periodLabel && monthlyData && typeof monthlyData === 'object') {
     const months = Object.keys(monthlyData).sort()
     if (months.length === 1) {
       const [y, m] = months[0].split('-')
-      periodLabel = new Date(Number(y), Number(m) - 1, 1)
+      resolvedPeriodLabel = new Date(Number(y), Number(m) - 1, 1)
         .toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })
     } else if (months.length > 1) {
-      periodLabel = `last ${months.length} months`
+      resolvedPeriodLabel = `last ${months.length} months`
     }
   }
 
-  // ── 6. Build rich context block ────────────────────────────────────────────
+  // -- 6. Build rich context block --
   const contextBlock = buildInsightContext({
     income,
-    incomeSource,
+    incomeSource:         resolvedIncomeSource === 'declared_prorated' ? 'declared' :
+                          resolvedIncomeSource === 'transaction_derived' ? 'transactions' :
+                          resolvedIncomeSource === 'blended' ? 'declared' : resolvedIncomeSource,
+    incomeResolutionMode: typeof resolvedIncomeSource === 'string' && ['declared_prorated','transaction_derived','blended'].includes(resolvedIncomeSource)
+                          ? resolvedIncomeSource : incomeResolutionMode,
     totalSpend,
     catTotals,
-    budgets: budgets || {},
-    defaultBudgets: DEFAULT_BUDGETS,
-    debitOrders: profileContext?.monthly_debit_orders || 0,
-    savingsGoal: profileContext?.savings_goal || 0,
-    usageType: profileContext?.usage_type || 'personal',
+    budgets:          budgets || {},
+    defaultBudgets:   DEFAULT_BUDGETS,
+    debitOrders:      profileContext?.monthly_debit_orders || 0,
+    savingsGoal:      profileContext?.savings_goal || 0,
+    usageType:        profileContext?.usage_type || 'personal',
     recurringContext: (typeof recurringContext === 'string' && recurringContext.length < 800) ? recurringContext : '',
-    monthlyData: monthlyData || null,
+    monthlyData:      monthlyData || null,
     transactions,
-    periodLabel,
-    mode: mode || 'overview',
+    topMerchants:     Array.isArray(topMerchants) ? topMerchants : [],
+    periodLabel:      resolvedPeriodLabel,
+    periodDays:       periodDays || null,
+    mode:             mode || 'overview',
   })
 
-  // ── 7. Build prompt ────────────────────────────────────────────────────────
+  // -- 7. Build prompt --
   const prompt = buildInsightPrompt({
-    mode: mode || 'overview',
-    question: question || '',
+    mode:         mode || 'overview',
+    question:     question || '',
     contextBlock,
   })
 
-  // ── 8. Call Claude ─────────────────────────────────────────────────────────
+  // -- 8. Call Claude --
   let analysis
   try {
     const controller = new AbortController()
@@ -188,7 +214,7 @@ async function _handler(event) {
     return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ analysis: `Analysis failed: ${err.name === 'AbortError' ? 'Anthropic API timed out (8s)' : err.message}` }) }
   }
 
-  // ── 9. Log usage for free users ────────────────────────────────────────────
+  // -- 9. Log usage for free users --
   if (!isAdmin && plan === 'free') {
     try {
       await adminClient.from('budget_chat_usage').insert({ user_id: user.id, question_preview: '[analysis]' })

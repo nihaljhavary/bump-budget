@@ -359,3 +359,59 @@
   margin: 0;
   line-height: 1.5;
 }
+
+/* -- Income resolution badge -- */
+.income-mode-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 0.76rem;
+  color: var(--muted);
+  align-self: flex-start;
+}
+.income-mode-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  flex-shrink: 0;
+}
+
+/* -- Budget mode toggle -- */
+.budget-mode-toggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.bm-btn {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.bm-btn.active {
+  background: var(--coral);
+  color: #fff;
+}
+.bm-btn:not(.active):hover { background: var(--surface-alt, var(--border)); }
+.bm-hint {
+  font-size: 0.76rem;
+  color: var(--muted);
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  background: var(--surface);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  line-height: 1.5;
+}

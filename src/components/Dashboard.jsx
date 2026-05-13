@@ -65,9 +65,12 @@ export default function Dashboard({ onNavigate }) {
   const [chatLoading, setChatLoading] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
   const [showProfileModal, setShowProfileModal] = useState(false)
+  const [showAccountCentre, setShowAccountCentre] = useState(false)
   // Real user-set budgets from Supabase (set in the Analytics tab).
   // Overrides DEFAULT_BUDGETS for the category cards in Overview.
   const [userBudgets, setUserBudgets] = useState(DEFAULT_BUDGETS)
+  // Increments each time an import completes — signals Recommendations to refresh.
+  const [importSignal, setImportSignal] = useState(0)
   const profileMenuRef = useRef(null)
   const chatEndRef = useRef(null)
   const textareaRef = useRef(null)
@@ -362,10 +365,13 @@ export default function Dashboard({ onNavigate }) {
             </button>
             {showProfileMenu && (
               <div className="profile-dropdown">
+                <button className="profile-dropdown-item" onClick={() => { setShowProfileMenu(false); setShowAccountCentre(true) }}>Account Centre</button>
                 <button className="profile-dropdown-item" onClick={() => { setShowProfileMenu(false); setShowProfileModal(true) }}>My Profile</button>
+                <div className="profile-dropdown-divider" />
                 <button className="profile-dropdown-item" onClick={() => { setShowProfileMenu(false); setTab('support') }}>Support</button>
                 <button className="profile-dropdown-item" onClick={() => { setShowProfileMenu(false); setTab('faq') }}>FAQs</button>
                 <div className="profile-dropdown-divider" />
+                <button className="profile-dropdown-item" onClick={() => { setShowProfileMenu(false); setTab('privacy') }}>Privacy</button>
                 <button className="profile-dropdown-item red" onClick={() => supabase.auth.signOut()}>Sign out</button>
               </div>
             )}
@@ -396,8 +402,8 @@ export default function Dashboard({ onNavigate }) {
         </div>
       )}
 
-      {/* TABS */}
-      <div className="tabs">
+      {/* DESKTOP TABS — scrollable horizontal strip, hidden on mobile */}
+      <div className="tabs desktop-tabs">
         {['overview', 'income statement', 'analytics', 'projections', 'groceries', 'budget', 'add spend', 'import', 'transactions'].map(t => (
           <button
             key={t}
@@ -408,6 +414,26 @@ export default function Dashboard({ onNavigate }) {
           </button>
         ))}
       </div>
+
+      {/* MOBILE BOTTOM NAV — primary 5-tab navigation for small screens */}
+      <nav className="mobile-bottom-nav">
+        {[
+          { id: 'overview',      icon: '🏠', label: 'Overview' },
+          { id: 'analytics',     icon: '📊', label: 'Analytics' },
+          { id: 'groceries',     icon: '🛒', label: 'Groceries' },
+          { id: 'budget',        icon: '🧠', label: 'Recommendations' },
+          { id: 'transactions',  icon: '📋', label: 'Transactions' },
+        ].map(({ id, icon, label }) => (
+          <button
+            key={id}
+            className={`mbn-item ${tab === id ? 'active' : ''}`}
+            onClick={() => setTab(id)}
+          >
+            <span className="mbn-icon">{icon}</span>
+            <span className="mbn-label">{label}</span>
+          </button>
+        ))}
+      </nav>
 
       {/* OVERVIEW */}
       {tab === 'overview' && (
@@ -641,7 +667,7 @@ export default function Dashboard({ onNavigate }) {
       {/* ANALYTICS */}
       {tab === 'analytics' && (
         tier.canAnalytics
-          ? <Analytics selectedMonth={selectedMonth} preferDeclared={excludeSalary} />
+          ? <Analytics preferDeclared={excludeSalary} />
           : <div className="tab-body">
               <LockedFeature locked feature="analytics">
                 <div className="locked-placeholder">
@@ -683,7 +709,7 @@ export default function Dashboard({ onNavigate }) {
       )}
 
       {/* BUDGET RECOMMENDATIONS */}
-      {tab === 'budget' && <Recommendations />}
+      {tab === 'budget' && <Recommendations onImportSignal={importSignal} />}
 
       {/* ADD SPEND */}
       {tab === 'add spend' && (
@@ -837,11 +863,25 @@ export default function Dashboard({ onNavigate }) {
         <ImportTransactions
           onImportComplete={() => {
             loadTransactions()
+            setImportSignal(s => s + 1)
             setTab('overview')
           }}
         />
       )}
     {showProfileModal && <ProfileModal user={user} profile={profile} onClose={() => setShowProfileModal(false)} />}
+    {showAccountCentre && <AccountCentreModal user={user} profile={profile} tier={tier} onClose={() => setShowAccountCentre(false)} onNavigate={onNavigate} />}
+
+      {/* PRIVACY */}
+      {tab === 'privacy' && (
+        <div className="tab-body">
+          <div className="privacy-shell">
+            <h2 className="privacy-title">Privacy &amp; Data</h2>
+            <p className="privacy-body">bump. stores your transaction data securely in Supabase. Your data is never shared with advertisers. AI analysis runs on anonymised summaries — your raw transactions are never sent to third parties in bulk.</p>
+            <p className="privacy-body">You can export or delete your data at any time from Account Centre.</p>
+            <button className="privacy-account-btn" onClick={() => { setTab('overview'); setShowAccountCentre(true) }}>Open Account Centre</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -888,6 +928,7 @@ function ProfileModal({ user, profile, onClose }) {
             { label: 'Full name', field: 'full_name', type: 'text', prefix: '' },
             { label: 'Gross monthly salary', field: 'gross_income', type: 'number', prefix: 'R' },
             { label: 'Net (take-home) salary', field: 'net_income', type: 'number', prefix: 'R' },
+
             { label: 'Fixed monthly debit orders', field: 'monthly_debit_orders', type: 'number', prefix: 'R' },
             { label: 'Monthly savings goal', field: 'savings_goal', type: 'number', prefix: 'R' },
           ].map(({ label, field, type, prefix }) => (
@@ -954,5 +995,209 @@ function ConsultRequestCard({ request, loading, onRespond }) {
         </button>
       </div>
     </div>
+  )
+}
+
+// AccountCentreModal -- financial profile, subscription, data controls
+function AccountCentreModal({ user, profile, tier, onClose, onNavigate }) {
+  const { updateProfile } = useAuth()
+  const [section, setSection]   = useState('profile')
+  const [form, setForm]         = useState({
+    full_name:             profile?.full_name || '',
+    gross_income:          profile?.gross_income          ? String(Math.round(profile.gross_income / 100))          : '',
+    net_income:            profile?.net_income            ? String(Math.round(profile.net_income / 100))            : '',
+    monthly_debit_orders:  profile?.monthly_debit_orders  ? String(Math.round(profile.monthly_debit_orders / 100))  : '',
+    savings_goal:          profile?.savings_goal          ? String(Math.round(profile.savings_goal / 100))          : '',
+    bank:                  profile?.bank || '',
+  })
+  const [saving, setSaving]     = useState(false)
+  const [saved, setSaved]       = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
+
+  const planLabel = { free: 'Free', starter: 'Starter (R49/mo)', growth: 'Growth (R99/mo)', pro: 'Pro (R199/mo)', admin: 'Admin' }
+
+  async function saveProfile() {
+    setSaving(true)
+    const toC = v => v ? Math.round(parseFloat(v) * 100) : null
+    await updateProfile({
+      full_name:            form.full_name || null,
+      gross_income:         toC(form.gross_income),
+      net_income:           toC(form.net_income),
+      monthly_debit_orders: toC(form.monthly_debit_orders),
+      savings_goal:         toC(form.savings_goal),
+      bank:                 form.bank || null,
+    })
+    setSaving(false); setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  const SECTIONS = [
+    { id: 'profile',      label: 'Financial Profile' },
+    { id: 'subscription', label: 'Subscription' },
+    { id: 'data',         label: 'Data & Privacy' },
+  ]
+
+  return (
+    <div className="ac-overlay" onClick={onClose}>
+      <div className="ac-modal" onClick={e => e.stopPropagation()}>
+        <div className="ac-header">
+          <span className="ac-title">Account Centre</span>
+          <button className="ac-close" onClick={onClose}>&#x2715;</button>
+        </div>
+
+        {/* Section tabs */}
+        <div className="ac-section-tabs">
+          {SECTIONS.map(s => (
+            <button
+              key={s.id}
+              className={`ac-section-tab ${section === s.id ? 'active' : ''}`}
+              onClick={() => setSection(s.id)}
+            >{s.label}</button>
+          ))}
+        </div>
+
+        <div className="ac-body">
+
+          {/* -- Financial Profile -- */}
+          {section === 'profile' && (
+            <div className="ac-section-content">
+              <p className="ac-section-hint">{user.email}</p>
+              {[
+                { label: 'Full name',                  field: 'full_name',            type: 'text',   prefix: '' },
+                { label: 'Gross monthly salary',       field: 'gross_income',         type: 'number', prefix: 'R' },
+                { label: 'Net (take-home) salary',     field: 'net_income',           type: 'number', prefix: 'R' },
+                { label: 'Fixed monthly debit orders', field: 'monthly_debit_orders', type: 'number', prefix: 'R' },
+                { label: 'Monthly savings goal',       field: 'savings_goal',         type: 'number', prefix: 'R' },
+                { label: 'Primary bank',               field: 'bank',                 type: 'text',   prefix: '' },
+              ].map(({ label, field, type, prefix }) => (
+                <div className="ac-field" key={field}>
+                  <label className="ac-field-label">{label}</label>
+                  <div className="ac-field-input-wrap">
+                    {prefix && <span className="ac-field-prefix">{prefix}</span>}
+                    <input
+                      className="ac-field-input"
+                      type={type}
+                      value={form[field]}
+                      onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))}
+                      style={prefix ? { paddingLeft: '22px' } : {}}
+                    />
+                  </div>
+                </div>
+              ))}
+              <button className="ac-save-btn" onClick={saveProfile} disabled={saving}>
+                {saving ? 'Saving...' : saved ? 'Saved!' : 'Save changes'}
+              </button>
+            </div>
+          )}
+
+          {/* -- Subscription -- */}
+          {section === 'subscription' && (() => {
+            const sub = tier.subscription || {}
+            const fmtDate = d => d ? d.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : null
+            return (
+            <div className="ac-section-content">
+              <div className="ac-sub-current">
+                <span className="ac-sub-label">Current plan</span>
+                <span className="ac-sub-plan">{planLabel[tier.plan] || tier.plan}</span>
+              </div>
+
+              {/* Billing cycle dates when available from Paystack */}
+              {sub.billingCycleStart && sub.billingCycleEnd && (
+                <p className="ac-section-hint">
+                  Billing period: {fmtDate(sub.billingCycleStart)} – {fmtDate(sub.billingCycleEnd)}
+                </p>
+              )}
+              {sub.nextBillingDate && !sub.cancelAtPeriodEnd && (
+                <p className="ac-section-hint">Next renewal: {fmtDate(sub.nextBillingDate)}</p>
+              )}
+
+              {/* Pending downgrade or cancellation */}
+              {sub.cancelAtPeriodEnd && (
+                <div className="ac-pending-change warning">
+                  ⚠️ Cancellation scheduled — your plan will revert to Free at end of current billing period
+                  {sub.billingCycleEnd && ` (${fmtDate(sub.billingCycleEnd)})`}.
+                </div>
+              )}
+              {sub.scheduledTier && !sub.cancelAtPeriodEnd && sub.scheduledTier !== tier.plan && (
+                <div className="ac-pending-change warning">
+                  ⚠️ Plan change to {sub.scheduledTier} scheduled for next billing cycle
+                  {sub.billingCycleEnd && ` (${fmtDate(sub.billingCycleEnd)})`}.
+                </div>
+              )}
+
+              {/* History access note */}
+              {tier.cutoffDate && (
+                <p className="ac-section-hint">
+                  History access from: {fmtDate(tier.cutoffDate)}
+                </p>
+              )}
+
+              {/* Free: upgrade prompt */}
+              {!tier.isAdmin && tier.plan === 'free' && (
+                <div className="ac-upgrade-block">
+                  <p className="ac-upgrade-text">Upgrade to unlock full history, advanced analytics, and AI projections.</p>
+                  <div className="ac-upgrade-plans">
+                    {['starter', 'growth', 'pro'].map(p => (
+                      <div key={p} className="ac-upgrade-plan-card">
+                        <span className="ac-up-name">{p.charAt(0).toUpperCase() + p.slice(1)}</span>
+                        <span className="ac-up-price">{{ starter: 'R49', growth: 'R99', pro: 'R199' }[p]}/mo</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="ac-upgrade-note">Contact support to upgrade or manage your plan.</p>
+                </div>
+              )}
+
+              {/* Paid: manage plan */}
+              {!tier.isAdmin && tier.plan !== 'free' && (
+                <div className="ac-manage-block">
+                  <p className="ac-section-hint">To change or cancel your plan, contact bump. support. Downgrades take effect at the end of your current billing cycle — you keep full access until then.</p>
+                  <button className="ac-support-btn" onClick={() => { onClose(); onNavigate && onNavigate('support') }}>
+                    Contact support
+                  </button>
+                </div>
+              )}
+            </div>
+            )
+          })()}
+
+          {/* -- Data & Privacy -- */}
+          {section === 'data' && (
+            <div className="ac-section-content">
+              <p className="ac-section-hint">
+                Your transaction data is stored securely. It is never shared with advertisers or sold to third parties.
+              </p>
+
+              <div className="ac-data-actions">
+                <div className="ac-data-row">
+                  <div>
+                    <div className="ac-data-row-title">Export my data</div>
+                    <div className="ac-data-row-hint">Download a CSV of all your transactions.</div>
+                  </div>
+                  <button className="ac-data-btn" onClick={() => alert('Export coming soon.')}>Export</button>
+                </div>
+
+                <div className="ac-data-row">
+                  <div>
+                    <div className="ac-data-row-title">Delete my account</div>
+                    <div className="ac-data-row-hint">Permanently removes your profile and all transaction data. This cannot be undone.</div>
+                  </div>
+                  {!deleteConfirm ? (
+                    <button className="ac-data-btn danger" onClick={() => setDeleteConfirm(true)}>Delete</button>
+                  ) : (
+                    <div className="ac-delete-confirm">
+                      <span className="ac-delete-warn">Are you sure?</span>
+                      <button className="ac-data-btn danger" onClick={() => alert('Please contact support to delete your account.')}>Yes, delete</button>
+                      <button className="ac-data-btn" onClick={() => setDeleteConfirm(false)}>Cancel</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>{/* end ac-body */}
+      </div>{/* end ac-modal */}
+    </div>   /* end ac-overlay */
   )
 }

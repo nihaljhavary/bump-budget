@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { fetchRecentMonths } from '../services/transactions'
@@ -7,6 +7,11 @@ import './Recommendations.css'
 
 const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
 
+// localStorage key prefix -- per user so multi-account devices work correctly.
+const LS_KEY = uid => `bump_rec_v2_${uid}`
+// Persist recommendations for 30 days (was 7).
+const MAX_AGE_DAYS = 30
+
 const QUESTIONS = [
   {
     id: 'income',
@@ -14,15 +19,15 @@ const QUESTIONS = [
     hint: 'After tax, into your bank account',
     type: 'number',
     prefix: 'R',
-    placeholder: '25000'
+    placeholder: '25000',
   },
   {
     id: 'savingsGoal',
     label: 'How much do you want to save per month?',
-    hint: 'Your target, even if you\'re not hitting it yet',
+    hint: "Your target, even if you're not hitting it yet",
     type: 'number',
     prefix: 'R',
-    placeholder: '3000'
+    placeholder: '3000',
   },
   {
     id: 'goal',
@@ -38,138 +43,171 @@ const QUESTIONS = [
       'Go on holiday',
       'Start a business',
       'Just survive month-to-month',
-    ]
+    ],
   },
   {
     id: 'stress',
     label: 'What is your biggest financial stress?',
-    hint: 'Be honest — this helps us prioritise',
+    hint: 'Be honest -- this helps us prioritise',
     type: 'select',
     options: [
       'I spend more than I earn',
       'I have no savings',
       'Debt repayments eat my income',
       'Unexpected expenses wipe me out',
-      'I don\'t know where my money goes',
+      "I don't know where my money goes",
       'My income is irregular',
       'Rising cost of living',
-    ]
+    ],
   },
   {
     id: 'ownProperty',
     label: 'Do you own property or pay a bond?',
     type: 'select',
-    options: ['No, I rent', 'Yes, I pay a bond', 'I live rent-free', 'I\'m saving for a deposit']
+    options: ['No, I rent', 'Yes, I pay a bond', 'I live rent-free', "I'm saving for a deposit"],
   },
   {
     id: 'dependants',
     label: 'Do you have financial dependants?',
     hint: 'Children, parents, siblings, etc.',
     type: 'select',
-    options: ['No', 'Yes, 1 person', 'Yes, 2–3 people', 'Yes, 4+ people']
+    options: ['No', 'Yes, 1 person', 'Yes, 2-3 people', 'Yes, 4+ people'],
   },
   {
     id: 'emergencyFund',
     label: 'Do you have an emergency fund (3+ months of expenses)?',
     type: 'select',
-    options: ['No, not at all', 'I have 1 month', 'I have 2 months', 'Yes, 3+ months ✓']
-  }
+    options: ['No, not at all', 'I have 1 month', 'I have 2 months', 'Yes, 3+ months ✓'],
+  },
 ]
 
-export default function Recommendations() {
+// -- Persistence helpers -------------------------------------------------------
+
+function loadSaved(uid) {
+  try {
+    const raw = localStorage.getItem(LS_KEY(uid))
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    const ageDays = (Date.now() - (parsed.savedAt || 0)) / (1000 * 60 * 60 * 24)
+    if (ageDays > MAX_AGE_DAYS) { localStorage.removeItem(LS_KEY(uid)); return null }
+    return parsed
+  } catch { return null }
+}
+
+function persist(uid, answers, result) {
+  try {
+    localStorage.setItem(LS_KEY(uid), JSON.stringify({ answers, result, savedAt: Date.now() }))
+  } catch {}
+}
+
+function clearSaved(uid) {
+  try { localStorage.removeItem(LS_KEY(uid)) } catch {}
+}
+
+// ---------------------------------------------------------------------------
+
+export default function Recommendations({ onImportSignal = 0 }) {
   const { user, profile } = useAuth()
-  const [step, setStep] = useState('intro')   // 'intro' | 'quiz' | 'loading' | 'results'
-  const [qIndex, setQIndex] = useState(0)
-  const [answers, setAnswers] = useState({})
+
+  // step: 'intro' | 'quiz' | 'loading' | 'results'
+  const [step, setStep]           = useState('intro')
+  const [qIndex, setQIndex]       = useState(0)
+  const [answers, setAnswers]     = useState({})
   const [currentVal, setCurrentVal] = useState('')
-  const [result, setResult] = useState(null)
-  const [error, setError] = useState('')
+  const [result, setResult]       = useState(null)
+  const [error, setError]         = useState('')
   const [spendingData, setSpendingData] = useState(null)
-  const [budgets, setBudgets] = useState({})
+  const [budgets, setBudgets]     = useState({})
   const [savedDate, setSavedDate] = useState(null)
+  const [dataLoaded, setDataLoaded] = useState(false)
 
-  // Load spending data and budgets
-  useEffect(() => {
+  // Load spending data (runs on mount and after each import signal)
+  const loadData = useCallback(async () => {
     if (!user) return
-    loadData()
-  }, [user])
-
-  // Restore saved results from localStorage (max 7 days old)
-  useEffect(() => {
-    if (!user) return
-    try {
-      const saved = localStorage.getItem(`bump_rec_${user.id}`)
-      if (saved) {
-        const { answers: sa, result: sr, savedAt } = JSON.parse(saved)
-        const ageDays = (Date.now() - savedAt) / (1000 * 60 * 60 * 24)
-        if (sr && ageDays < 7) {
-          setAnswers(sa || {})
-          setResult(sr)
-          setStep('results')
-          setSavedDate(new Date(savedAt))
-        }
-      }
-    } catch {}
-  }, [user])
-
-  // Pre-fill income and savings goal from profile when available
-  useEffect(() => {
-    if (!profile) return
-    setAnswers(prev => {
-      const updated = { ...prev }
-      if (!updated.income && profile.net_income) {
-        updated.income = String(Math.round(profile.net_income / 100))
-      }
-      if (!updated.savingsGoal && profile.savings_goal) {
-        updated.savingsGoal = String(Math.round(profile.savings_goal / 100))
-      }
-      return updated
-    })
-  }, [profile])
-
-  async function loadData() {
     try {
       const [txns, { data: budgetRows }] = await Promise.all([
-        fetchRecentMonths(user.id, 3),
-        supabase.from('budgets').select('category, amount').eq('user_id', user.id)
+        fetchRecentMonths(user.id, 12),   // up to 12 months for better averages
+        supabase.from('budgets').select('category, amount').eq('user_id', user.id),
       ])
-
-      // Average monthly spend per category, using the canonical non-spend rules.
-      const ledger = buildLedgerSummary(txns || [], profile, { preferDeclared: false, monthCount: 3, dedup: true })
+      // Use canonical ledger for averages -- divide by month count
+      const ledger = buildLedgerSummary(txns || [], profile, {
+        preferDeclared: false,
+        dedup: true,
+      })
+      const monthCount = Math.max(ledger.monthCount, 1)
       const avg = {}
       for (const [cat, total] of Object.entries(ledger.catTotals)) {
-        avg[cat] = total / 3
+        avg[cat] = total / monthCount
       }
       setSpendingData(avg)
-
-      // Budgets map
       const bMap = {}
       for (const b of (budgetRows || [])) bMap[b.category] = b.amount
       setBudgets(bMap)
+      setDataLoaded(true)
     } catch (e) {
       console.error('Failed to load spending data', e)
     }
-  }
+  }, [user, profile])
+
+  useEffect(() => { loadData() }, [loadData])
+
+  // Auto-refresh spending data after import (signal increments)
+  useEffect(() => {
+    if (onImportSignal > 0) loadData()
+  }, [onImportSignal, loadData])
+
+  // Restore saved results -- but if results exist AND data just refreshed, re-run
+  useEffect(() => {
+    if (!user) return
+    const saved = loadSaved(user.id)
+    if (!saved) return
+    setAnswers(saved.answers || {})
+    setResult(saved.result)
+    setStep('results')
+    setSavedDate(new Date(saved.savedAt))
+  }, [user])
+
+  // Pre-fill from profile (income + savings goal)
+  useEffect(() => {
+    if (!profile) return
+    setAnswers(prev => {
+      const next = { ...prev }
+      if (!next.income && profile.net_income)
+        next.income = String(Math.round(profile.net_income / 100))
+      if (!next.savingsGoal && profile.savings_goal)
+        next.savingsGoal = String(Math.round(profile.savings_goal / 100))
+      return next
+    })
+  }, [profile])
 
   const currentQ = QUESTIONS[qIndex]
 
+  function startQuiz() {
+    setStep('quiz')
+    setQIndex(0)
+    setCurrentVal(answers[QUESTIONS[0].id] || '')
+    setError('')
+  }
+
   function handleNext() {
     if (!currentVal && currentVal !== 0) return
-    setAnswers(a => ({ ...a, [currentQ.id]: currentVal }))
+    const updatedAnswers = { ...answers, [currentQ.id]: currentVal }
+    setAnswers(updatedAnswers)
     setCurrentVal('')
     if (qIndex < QUESTIONS.length - 1) {
+      const nextQ = QUESTIONS[qIndex + 1]
       setQIndex(i => i + 1)
+      setCurrentVal(updatedAnswers[nextQ.id] || '')
     } else {
-      // All answered — get recommendations
-      const finalAnswers = { ...answers, [currentQ.id]: currentVal }
-      getRecommendations(finalAnswers)
+      getRecommendations(updatedAnswers)
     }
   }
 
   function handleBack() {
     if (qIndex > 0) {
+      const prevQ = QUESTIONS[qIndex - 1]
       setQIndex(i => i - 1)
-      setCurrentVal(answers[QUESTIONS[qIndex - 1].id] || '')
+      setCurrentVal(answers[prevQ.id] || '')
     } else {
       setStep('intro')
     }
@@ -178,80 +216,103 @@ export default function Recommendations() {
   async function getRecommendations(finalAnswers) {
     setStep('loading')
     setError('')
-
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch('/.netlify/functions/get-recommendations', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({
-          answers: finalAnswers,
-          spendingData,
-          budgets
-        })
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ answers: finalAnswers, spendingData, budgets }),
       })
-
       const d = await res.json()
       if (!res.ok) throw new Error(d.error || 'Failed to get recommendations')
+
       setResult(d.result)
       setStep('results')
-      // Persist answers and results
-      try {
-        localStorage.setItem(`bump_rec_${user?.id}`, JSON.stringify({
-          answers: finalAnswers,
-          result: d.result,
-          savedAt: Date.now()
-        }))
-        setSavedDate(new Date())
-      } catch {}
+      setSavedDate(new Date())
+      persist(user?.id, finalAnswers, d.result)
     } catch (e) {
       setError(e.message)
       setStep('quiz')
     }
   }
 
-  // ── Intro screen ─────────────────────────────────────────────────────────
+  function handleReAnalyze() {
+    // Keep answers, clear result, run fresh analysis with current spending data
+    setResult(null)
+    clearSaved(user?.id)
+    setSavedDate(null)
+    // Re-load spending data then re-run
+    loadData().then(() => {
+      if (Object.keys(answers).length >= QUESTIONS.length) {
+        getRecommendations(answers)
+      } else {
+        setStep('quiz')
+        setQIndex(0)
+        setCurrentVal(answers[QUESTIONS[0].id] || '')
+      }
+    })
+  }
+
+  function handleEditAnswers() {
+    setStep('quiz')
+    setQIndex(0)
+    setCurrentVal(answers[QUESTIONS[0].id] || '')
+    setError('')
+  }
+
+  function handleStartFresh() {
+    clearSaved(user?.id)
+    setResult(null)
+    setSavedDate(null)
+    setAnswers({
+      ...(profile?.net_income   ? { income:      String(Math.round(profile.net_income / 100))   } : {}),
+      ...(profile?.savings_goal ? { savingsGoal: String(Math.round(profile.savings_goal / 100)) } : {}),
+    })
+    setStep('intro')
+  }
+
+  // -- Intro --
   if (step === 'intro') {
-    const totalSpend = spendingData
-      ? Object.values(spendingData).reduce((a, b) => a + b, 0)
-      : 0
+    const totalSpend = spendingData ? Object.values(spendingData).reduce((a, b) => a + b, 0) : 0
+    const hasSaved = result != null
 
     return (
       <div className="rec-shell">
         <div className="rec-intro-card">
-          <div className="rec-intro-icon">🧠</div>
+          <div className="rec-intro-icon">\U0001f9e0</div>
           <h2 className="rec-intro-title">Smart Money Analysis</h2>
           <p className="rec-intro-sub">
-            Answer 7 quick questions and bump. will analyse your actual spending
-            to give you a personalised plan.
+            Answer 7 quick questions and bump. will analyse your actual spending to give you a personalised plan.
           </p>
 
           {totalSpend > 0 && (
             <div className="rec-data-badge">
-              📊 Based on {fmt(totalSpend)}/mo avg spending across{' '}
-              {Object.keys(spendingData).length} categories
+              \U0001f4ca Based on {fmt(totalSpend)}/mo avg spending across {Object.keys(spendingData).length} categories
             </div>
           )}
 
-          {!spendingData && (
+          {!dataLoaded && (
             <div className="rec-no-data">
-              ℹ️ Import your bank statement first for the best recommendations.
-              You can still get general advice without it.
+              ℹ️ Import your bank statement first for the best recommendations. You can still get general advice without it.
             </div>
           )}
 
-          <button className="rec-start-btn" onClick={() => { setStep('quiz'); setQIndex(0); setCurrentVal(answers[QUESTIONS[0].id] || '') }}>
-            Start analysis →
+          {hasSaved && savedDate && (
+            <div className="rec-saved-notice">
+              You have results from {savedDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}.{' '}
+              <button className="rec-link-btn" onClick={() => setStep('results')}>View them</button> or start a new analysis below.
+            </div>
+          )}
+
+          <button className="rec-start-btn" onClick={startQuiz}>
+            {hasSaved ? 'Start new analysis →' : 'Start analysis →'}
           </button>
         </div>
       </div>
     )
   }
 
-  // ── Loading screen ───────────────────────────────────────────────────────
+  // -- Loading --
   if (step === 'loading') {
     return (
       <div className="rec-shell rec-loading-shell">
@@ -262,13 +323,11 @@ export default function Recommendations() {
     )
   }
 
-  // ── Quiz screen ──────────────────────────────────────────────────────────
+  // -- Quiz --
   if (step === 'quiz') {
-    const progress = ((qIndex) / QUESTIONS.length) * 100
-
+    const progress = (qIndex / QUESTIONS.length) * 100
     return (
       <div className="rec-shell">
-        {/* Progress bar */}
         <div className="rec-progress-track">
           <div className="rec-progress-fill" style={{ width: `${progress}%` }} />
         </div>
@@ -277,7 +336,6 @@ export default function Recommendations() {
           <div className="rec-q-counter">{qIndex + 1} of {QUESTIONS.length}</div>
           <h3 className="rec-q-label">{currentQ.label}</h3>
           {currentQ.hint && <p className="rec-q-hint">{currentQ.hint}</p>}
-
           {error && <div className="rec-error">{error}</div>}
 
           {currentQ.type === 'number' && (
@@ -324,21 +382,33 @@ export default function Recommendations() {
     )
   }
 
-  // ── Results screen ───────────────────────────────────────────────────────
+  // -- Results --
   if (step === 'results' && result) {
     const scoreColor = result.healthScore >= 7 ? 'var(--success)' : result.healthScore >= 4 ? 'var(--amber)' : 'var(--coral)'
 
     return (
       <div className="rec-shell rec-results-shell">
-        {savedDate && (
-          <div className="rec-saved-badge">
-            Last analysed {savedDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}
-            {' — '}
-            <button className="rec-update-btn" onClick={() => { setStep('quiz'); setQIndex(0); setCurrentVal(answers[QUESTIONS[0].id] || '') }}>
-              Update answers
+
+        {/* Persistence header */}
+        <div className="rec-persistence-bar">
+          {savedDate && (
+            <span className="rec-saved-date">
+              Last analysed {savedDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </span>
+          )}
+          <div className="rec-persistence-actions">
+            <button className="rec-action-btn" onClick={handleReAnalyze} title="Refresh analysis with your latest spending data">
+              ↻ Re-analyze
+            </button>
+            <button className="rec-action-btn" onClick={handleEditAnswers} title="Change your answers and re-run">
+              ✎ Edit answers
+            </button>
+            <button className="rec-action-btn secondary" onClick={handleStartFresh} title="Clear results and start over">
+              Start fresh
             </button>
           </div>
-        )}
+        </div>
+
         {/* Health score */}
         <div className="rec-score-card">
           <div className="rec-score-ring" style={{ '--score-color': scoreColor }}>
@@ -388,14 +458,13 @@ export default function Recommendations() {
                       <span className="rec-cut-val green">{fmt(cut.recommended)}</span>
                     </div>
                   </div>
-                  {/* Progress bar */}
                   <div className="rec-cut-bar-track">
                     <div
                       className="rec-cut-bar-fill"
                       style={{ width: `${Math.min(100, (cut.recommended / cut.currentAvg) * 100)}%` }}
                     />
                   </div>
-                  <div className="rec-cut-tip">💡 {cut.tip}</div>
+                  <div className="rec-cut-tip">\U0001f4a1 {cut.tip}</div>
                 </div>
               ))}
             </div>
@@ -413,7 +482,7 @@ export default function Recommendations() {
               </div>
               <div className="rec-savings-meta">
                 <div>⏱ {result.savingsPlan.timeToGoal}</div>
-                <div>💰 {result.savingsPlan.fundedBy}</div>
+                <div>\U0001f4b0 {result.savingsPlan.fundedBy}</div>
               </div>
             </div>
           </div>
@@ -431,17 +500,6 @@ export default function Recommendations() {
             </div>
           </div>
         )}
-
-        <button className="rec-redo-btn" onClick={() => {
-          try { localStorage.removeItem(`bump_rec_${user?.id}`) } catch {}
-          setStep('intro'); setResult(null); setAnswers({
-            // Keep profile-derived values when clearing manual answers
-            ...(profile?.net_income ? { income: String(Math.round(profile.net_income / 100)) } : {}),
-            ...(profile?.savings_goal ? { savingsGoal: String(Math.round(profile.savings_goal / 100)) } : {}),
-          }); setSavedDate(null)
-        }}>
-          Run analysis again
-        </button>
       </div>
     )
   }

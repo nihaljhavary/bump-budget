@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useTier, isDateAllowed } from '../context/TierContext'
 import { fetchTransactionsByRange } from '../services/transactions'
-import { buildLedgerSummary } from '../utils/ledger'
-import { buildAIPayload } from '../utils/financials'
+import { buildLedgerSummary, countCalendarDays } from '../utils/ledger'
+import { buildAIPayload, buildTopMerchants } from '../utils/financials'
 import { analyseSpending, recategoriseAll } from '../services/ai'
 import { supabase } from '../supabase'
 import './Analytics.css'
@@ -53,7 +53,25 @@ function getDateRange(period, customFrom, customTo) {
   return { from: (starts[period] || starts['1m']).toISOString().slice(0, 10), to }
 }
 
-// Lightweight SVG bar chart — no external dependency
+function buildPeriodLabel(period, from, to, monthCount) {
+  if (period === 'custom') return `${from} to ${to}`
+  if (period === '1m') {
+    const [y, m] = from.split('-').map(Number)
+    return new Date(y, m - 1, 1).toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })
+  }
+  return `last ${monthCount} month${monthCount !== 1 ? 's' : ''}`
+}
+
+function buildAISuggestedBudgets(catTotals, monthCount) {
+  if (!catTotals || monthCount < 1) return {}
+  const suggested = {}
+  for (const [cat, total] of Object.entries(catTotals)) {
+    const avgMonthly = total / monthCount
+    suggested[cat] = Math.round(avgMonthly * 0.85)
+  }
+  return suggested
+}
+
 function MonthlyBars({ data }) {
   if (!data || data.length === 0) return null
   const maxVal = Math.max(...data.flatMap(d => [d.income, d.spend]), 1)
@@ -64,7 +82,6 @@ function MonthlyBars({ data }) {
   const fmt_k = v => v >= 1000 ? `R${(v/1000).toFixed(0)}k` : `R${v}`
   return (
     <svg viewBox={`0 0 ${W} ${H + PAD_B + 4}`} width="100%" style={{display:'block',overflow:'visible'}}>
-      {/* Y-axis guides */}
       {[0, 0.5, 1].map(f => {
         const y = H - f * H
         return <g key={f}>
@@ -88,19 +105,22 @@ function MonthlyBars({ data }) {
   )
 }
 
-export default function Analytics() {
+export default function Analytics({ preferDeclared = false }) {
   const { user, profile } = useAuth()
   const tier = useTier()
 
-  const [period, setPeriod]         = useState('3m')
-  const [customFrom, setCustomFrom] = useState('')
-  const [customTo, setCustomTo]     = useState('')
-  const [txns, setTxns]             = useState([])
-  const [budgets, setBudgets]       = useState({})
-  const [loading, setLoading]       = useState(false)
-  const [aiText, setAiText]         = useState('')
-  const [aiLoading, setAiLoading]   = useState(false)
-  const [recat, setRecat]           = useState({ loading: false, result: null })
+  const [period, setPeriod]           = useState('3m')
+  const [customFrom, setCustomFrom]   = useState('')
+  const [customTo, setCustomTo]       = useState('')
+  const [txns, setTxns]               = useState([])
+  const [userBudgets, setUserBudgets] = useState({})
+  const [loading, setLoading]         = useState(false)
+  const [aiText, setAiText]           = useState('')
+  const [aiLoading, setAiLoading]     = useState(false)
+  const [recat, setRecat]             = useState({ loading: false, result: null })
+  const [budgetMode, setBudgetMode]   = useState(() => {
+    try { return localStorage.getItem('bumpBudgetMode') || 'my' } catch { return 'my' }
+  })
 
   const { from, to } = useMemo(
     () => getDateRange(period, customFrom, customTo),
@@ -119,18 +139,33 @@ export default function Analytics() {
       if (budgetRows) {
         const bmap = {}
         budgetRows.forEach(b => { bmap[b.category] = b.amount })
-        setBudgets(bmap)
+        setUserBudgets(bmap)
       }
     }).catch(console.error).finally(() => setLoading(false))
   }, [from, to, user, tier])
 
-  // ── Single source of truth ─────────────────────────────────────────────────
+  function handleBudgetModeChange(mode) {
+    setBudgetMode(mode)
+    try { localStorage.setItem('bumpBudgetMode', mode) } catch {}
+  }
+
+  // Calendar days for custom periods (for prorated income)
+  const periodDays = useMemo(() => {
+    if (period === 'custom') return countCalendarDays(from, to)
+    return null
+  }, [period, from, to])
+
+  // Canonical ledger -- single source of truth
   const ledger = useMemo(
-    () => buildLedgerSummary(txns, profile, { preferDeclared: false }),
-    [txns, profile]
+    () => buildLedgerSummary(txns, profile, {
+      preferDeclared,
+      periodDays,
+      from,
+      to,
+    }),
+    [txns, profile, preferDeclared, periodDays, from, to]
   )
 
-  // Spend by category — sorted desc, top 12
   const catData = useMemo(() =>
     Object.entries(ledger.catTotals)
       .map(([cat, amount]) => ({ cat, amount: Math.round(amount) }))
@@ -140,58 +175,66 @@ export default function Analytics() {
   )
   const maxCat = catData[0]?.amount || 1
 
-  // Monthly trend — sorted by month for recharts
   const monthlyChartData = useMemo(() =>
     Object.entries(ledger.monthlyData)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([month, d]) => ({
-        month: month.slice(5),            // "MM"
+        month:  month.slice(5),
         spend:  Math.round(d.spend  || 0),
         income: Math.round(d.income || 0),
       })),
     [ledger.monthlyData]
   )
 
-  // Top merchants — group spendTxns by name, sum amounts
-  const topMerchants = useMemo(() => {
-    const map = {}
-    ledger.spendTxns.forEach(t => {
-      const key = t.name || t.description || 'Unknown'
-      if (!map[key]) map[key] = { name: key, category: t.category, total: 0, count: 0 }
-      map[key].total += t.amount
-      map[key].count++
-    })
-    return Object.values(map)
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 10)
-  }, [ledger.spendTxns])
+  // Top merchants from spend transactions
+  const topMerchants = useMemo(
+    () => buildTopMerchants(ledger.spendTxns, 15),
+    [ledger.spendTxns]
+  )
 
-  // Budget vs actual — only categories with spend or a budget
+  // AI-suggested budgets from rolling averages (85% of avg spend)
+  const aiSuggestedBudgets = useMemo(
+    () => buildAISuggestedBudgets(ledger.catTotals, ledger.monthCount),
+    [ledger.catTotals, ledger.monthCount]
+  )
+
+  const activeBudgets = budgetMode === 'ai' ? aiSuggestedBudgets : userBudgets
+
   const budgetRows = useMemo(() => {
-    const cats = new Set([...Object.keys(budgets), ...Object.keys(ledger.catTotals)])
+    const cats = new Set([...Object.keys(activeBudgets), ...Object.keys(ledger.catTotals)])
     return [...cats]
       .map(cat => ({
         cat,
-        budget: budgets[cat] || 0,
+        budget: activeBudgets[cat] || 0,
         spent:  Math.round(ledger.catTotals[cat] || 0),
       }))
       .filter(r => r.budget > 0)
       .sort((a, b) => b.budget - a.budget)
-  }, [budgets, ledger.catTotals])
+  }, [activeBudgets, ledger.catTotals])
+
+  const periodLabel = useMemo(
+    () => buildPeriodLabel(period, from, to, ledger.monthCount),
+    [period, from, to, ledger.monthCount]
+  )
 
   async function handleAI() {
     setAiLoading(true)
     try {
-      const top3 = catData.slice(0, 3).map(c => `${c.cat}: ${fmt(c.amount)}`).join(', ')
-      const question = `Analytics for ${from} to ${to}. Spend: ${fmt(ledger.totalSpend)}, Income: ${fmt(ledger.income)}, Net: ${fmt(ledger.net)}. Top categories: ${top3}. What patterns stand out and what should I act on?`
       const payload = buildAIPayload(txns, profile, 200, {
-        mode: 'analytics',
-        monthlyData: ledger.monthlyData,
-        question,
+        mode:                 'analytics',
+        monthlyData:          ledger.monthlyData,
+        topMerchants,
+        incomeResolutionMode: ledger.incomeResolutionMode,
+        effectiveIncome:      ledger.income,
+        periodDays,
+        periodLabel,
+        budgets:              activeBudgets,
       })
       const data = await analyseSpending(payload)
       setAiText(data.analysis || '')
-    } catch (e) { setAiText(e.message || 'Could not generate insights. Please try again.') }
+    } catch (e) {
+      setAiText(e.message || 'Could not generate insights. Please try again.')
+    }
     setAiLoading(false)
   }
 
@@ -200,7 +243,6 @@ export default function Analytics() {
     try {
       const result = await recategoriseAll()
       setRecat({ loading: false, result })
-      // Reload transactions so the new categories are visible immediately
       const txnData = await fetchTransactionsByRange(user.id, from, to)
       setTxns((txnData || []).filter(t => isDateAllowed(t.date, tier)))
     } catch (e) {
@@ -238,13 +280,9 @@ export default function Analytics() {
           {recat.loading ? 'Re-categorising…' : 'Re-categorise all'}
         </button>
         {recat.result && !recat.result.error && (
-          <span className="recat-done">
-            {recat.result.changed} of {recat.result.processed} updated
-          </span>
+          <span className="recat-done">{recat.result.changed} of {recat.result.processed} updated</span>
         )}
-        {recat.result?.error && (
-          <span className="recat-err">Failed — try again</span>
-        )}
+        {recat.result?.error && <span className="recat-err">Failed — try again</span>}
       </div>
 
       {loading ? (
@@ -254,11 +292,28 @@ export default function Analytics() {
         </div>
       ) : !hasTxns ? (
         <div className="analytics-empty">
-          <div className="empty-icon">📊</div>
+          <div className="empty-icon">\U0001f4ca</div>
           <p>No spend transactions found for this period.<br />Import your bank statement to see analytics.</p>
         </div>
       ) : (
         <>
+          {/* Income resolution badge */}
+          {ledger.incomeResolutionMode && (
+            <div className="income-mode-badge">
+              <span className="income-mode-dot" />
+              <span className="income-mode-label">
+                {ledger.incomeResolutionMode === 'declared_prorated' && period === 'custom'
+                  ? `Declared salary prorated over ${periodDays} days`
+                  : ledger.incomeResolutionMode === 'transaction_derived'
+                    ? 'Income from logged transactions'
+                    : ledger.incomeResolutionMode === 'blended'
+                      ? 'Declared salary (transaction income also present)'
+                      : `Declared salary \xd7 ${ledger.monthCount} month${ledger.monthCount !== 1 ? 's' : ''}`
+                }
+              </span>
+            </div>
+          )}
+
           {/* Summary strip */}
           <div className="summary-strip">
             <div className="summary-item">
@@ -277,7 +332,7 @@ export default function Analytics() {
             </div>
           </div>
 
-          {/* 1 — Spend by category */}
+          {/* 1 -- Spend by category */}
           <div className="a-card">
             <div className="a-card-head">
               <span className="a-card-title">Spend by category</span>
@@ -302,7 +357,7 @@ export default function Analytics() {
             </div>
           </div>
 
-          {/* 2 — Monthly trend (only when multiple months) */}
+          {/* 2 -- Monthly trend */}
           {monthlyChartData.length > 1 && (
             <div className="a-card">
               <div className="a-card-head">
@@ -317,38 +372,54 @@ export default function Analytics() {
             </div>
           )}
 
-          {/* 3 — Top merchants */}
-          <div className="a-card">
-            <div className="a-card-head">
-              <span className="a-card-title">Top merchants</span>
-              <span className="a-card-sub">by total spend</span>
-            </div>
-            <div className="merchant-list">
-              {topMerchants.map((m, i) => (
-                <div key={m.name} className="merchant-row">
-                  <span className="merchant-rank">{i + 1}</span>
-                  <div className="merchant-info">
-                    <span className="merchant-name">{m.name}</span>
-                    <span className="merchant-cat-badge" style={{ background: CAT_COLORS[m.category] || '#9e9e9e' }}>
-                      {m.category}
-                    </span>
+          {/* 3 -- Top merchants */}
+          {topMerchants.length > 0 && (
+            <div className="a-card">
+              <div className="a-card-head">
+                <span className="a-card-title">Top merchants</span>
+                <span className="a-card-sub">by total spend</span>
+              </div>
+              <div className="merchant-list">
+                {topMerchants.slice(0, 10).map((m, i) => (
+                  <div key={m.name} className="merchant-row">
+                    <span className="merchant-rank">{i + 1}</span>
+                    <div className="merchant-info">
+                      <span className="merchant-name">{m.name}</span>
+                      <span className="merchant-cat-badge" style={{ background: CAT_COLORS[m.category] || '#9e9e9e' }}>
+                        {m.category}
+                      </span>
+                    </div>
+                    <div className="merchant-right">
+                      <span className="merchant-amt">{fmt(m.total)}</span>
+                      <span className="merchant-count">{m.count}\xd7</span>
+                    </div>
                   </div>
-                  <div className="merchant-right">
-                    <span className="merchant-amt">{fmt(m.total)}</span>
-                    <span className="merchant-count">{m.count}×</span>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* 4 — Budget vs actual */}
+          {/* 4 -- Budget vs actual */}
           {budgetRows.length > 0 && (
             <div className="a-card">
               <div className="a-card-head">
                 <span className="a-card-title">Budget vs actual</span>
-                <span className="a-card-sub">this period</span>
+                <div className="budget-mode-toggle">
+                  <button
+                    className={`bm-btn ${budgetMode === 'my' ? 'active' : ''}`}
+                    onClick={() => handleBudgetModeChange('my')}
+                    title="Use your manually set budgets"
+                  >My Budget</button>
+                  <button
+                    className={`bm-btn ${budgetMode === 'ai' ? 'active' : ''}`}
+                    onClick={() => handleBudgetModeChange('ai')}
+                    title="AI targets from your rolling averages"
+                  >AI Suggested</button>
+                </div>
               </div>
+              {budgetMode === 'ai' && (
+                <p className="bm-hint">Targets are 85% of your average monthly spend per category over this period — a gentle reduction from your baseline.</p>
+              )}
               <div className="bva-list">
                 {budgetRows.map(({ cat, budget, spent }) => {
                   const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0
@@ -370,9 +441,7 @@ export default function Analytics() {
                           }}
                         />
                       </div>
-                      {over && (
-                        <span className="bva-over-tag">{fmt(spent - budget)} over</span>
-                      )}
+                      {over && <span className="bva-over-tag">{fmt(spent - budget)} over</span>}
                     </div>
                   )
                 })}
@@ -390,7 +459,7 @@ export default function Analytics() {
             </div>
             {aiText
               ? <div className="suggest-msg">{aiText}</div>
-              : <p className="ai-hint-text">Get an AI read of your spending patterns, what changed, and what to act on.</p>
+              : <p className="ai-hint-text">Get a merchant-level AI read of your spending patterns, what changed, and what to act on.</p>
             }
           </div>
         </>

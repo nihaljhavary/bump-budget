@@ -7,38 +7,44 @@
 
 const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
 
-// ── Behavioural spend buckets ─────────────────────────────────────────────────
-// Categorise spend categories into behavioural buckets for richer AI context.
+// -- Behavioural spend buckets --
 const OBLIGATION_CATS  = new Set(['Housing', 'Insurance', 'Utilities', 'Fees & Charges'])
 const LIFESTYLE_CATS   = new Set(['Eating out', 'Entertainment', 'Travel', 'Clothing', 'Subscriptions', 'Gifts', 'Home & Garden'])
 const ESSENTIAL_CATS   = new Set(['Groceries', 'Health', 'Fuel', 'Transport', 'Education'])
 const WEALTH_CATS      = new Set(['Savings'])
 const UNTRACKED_CATS   = new Set(['ATM / Cash', 'Other'])
 
+// Known delivery app identifiers (SA context)
+const DELIVERY_KEYWORDS = ['uber eats', 'mr d', 'mr. d', 'bolt food', 'order in', 'orderin', 'menulog', 'checkers sixty60', 'sixty60']
+
 /**
  * Build a rich, dense context string for injection into AI insight prompts.
  *
  * @param {Object} p
- * @param {number}  p.income            - monthly income in rands
- * @param {string}  p.incomeSource      - 'declared' | 'transactions' | 'unknown'
- * @param {number}  p.totalSpend        - total lifestyle spend (transfers excluded)
- * @param {Object}  p.catTotals         - { category: rands }
- * @param {Object}  [p.budgets]         - { category: rands } -- user-set budgets from DB
- * @param {Object}  [p.defaultBudgets]  - { category: rands } -- fallback defaults
- * @param {number}  [p.debitOrders]     - fixed monthly debit orders in rands
- * @param {number}  [p.savingsGoal]     - monthly savings goal in rands
- * @param {string}  [p.usageType]       - 'personal' | 'household' | 'side_hustle' | 'sole_prop'
- * @param {string}  [p.recurringContext]- compact string from recurringToContext()
- * @param {Object}  [p.monthlyData]     - { 'YYYY-MM': { spend, income } } for trend signals
- * @param {Array}   [p.transactions]    - raw transactions for anomaly detection
- * @param {string}  [p.periodLabel]     - e.g. 'May 2025' or 'last 3 months'
- * @param {string}  [p.mode]            - 'overview' | 'analytics' | 'income_statement' | 'recommendations'
+ * @param {number}  p.income                - period income in rands (canonical effective income)
+ * @param {string}  p.incomeSource          - 'declared' | 'transactions' | 'unknown'
+ * @param {string}  [p.incomeResolutionMode]- 'declared_prorated' | 'transaction_derived' | 'blended'
+ * @param {number}  p.totalSpend            - total lifestyle spend (transfers excluded)
+ * @param {Object}  p.catTotals             - { category: rands }
+ * @param {Object}  [p.budgets]             - { category: rands } -- user-set budgets
+ * @param {Object}  [p.defaultBudgets]      - { category: rands } -- fallback defaults
+ * @param {number}  [p.debitOrders]         - fixed monthly debit orders in rands
+ * @param {number}  [p.savingsGoal]         - monthly savings goal in rands
+ * @param {string}  [p.usageType]           - 'personal' | 'household' | 'side_hustle' | 'sole_prop'
+ * @param {string}  [p.recurringContext]    - compact string from recurringToContext()
+ * @param {Object}  [p.monthlyData]         - { 'YYYY-MM': { spend, income } } for trend signals
+ * @param {Array}   [p.transactions]        - raw spend transactions for merchant analysis
+ * @param {Array}   [p.topMerchants]        - pre-computed from buildTopMerchants() on client
+ * @param {string}  [p.periodLabel]         - e.g. 'May 2025' or 'last 3 months'
+ * @param {string}  [p.mode]               - 'overview' | 'analytics' | 'income_statement' | 'recommendations'
+ * @param {number}  [p.periodDays]          - calendar days in period (for proration context)
  * @returns {string}
  */
 export function buildInsightContext(p) {
   const {
     income = 0,
     incomeSource = 'unknown',
+    incomeResolutionMode = null,
     totalSpend = 0,
     catTotals = {},
     budgets = {},
@@ -49,8 +55,10 @@ export function buildInsightContext(p) {
     recurringContext = '',
     monthlyData = null,
     transactions = [],
+    topMerchants = [],
     periodLabel = 'this period',
     mode = 'overview',
+    periodDays = null,
   } = p
 
   const net = income - totalSpend
@@ -60,11 +68,19 @@ export function buildInsightContext(p) {
 
   const lines = []
 
-  // ── Headline snapshot ─────────────────────────────────────────────────────
+  // -- Headline snapshot --
   lines.push(`FINANCIAL SNAPSHOT (${periodLabel})`)
-  const incomeLabel = incomeSource === 'declared'
+
+  let incomeLabel = incomeSource === 'declared'
     ? 'declared take-home salary'
     : incomeSource === 'transactions' ? 'from logged income' : 'unknown source'
+
+  if (incomeResolutionMode === 'declared_prorated' && periodDays) {
+    incomeLabel += ` prorated over ${periodDays} days`
+  } else if (incomeResolutionMode === 'blended') {
+    incomeLabel += ' (declared; transaction income also logged)'
+  }
+
   lines.push(`Income: ${fmt(income)} (${incomeLabel})`)
   lines.push(`Total spend: ${fmt(totalSpend)} (${spendPct}% of income, transfers/savings excluded)`)
 
@@ -91,13 +107,12 @@ export function buildInsightContext(p) {
     lines.push(`Savings rate: ${savingsRate}% (no savings goal set)`)
   }
 
-  // ── Category breakdown ────────────────────────────────────────────────────
+  // -- Category breakdown --
   const catEntries = Object.entries(catTotals).sort((a, b) => b[1] - a[1])
   if (catEntries.length > 0) {
     lines.push('')
     lines.push('SPENDING BREAKDOWN (transfers/savings excluded):')
     for (const [cat, amt] of catEntries.slice(0, 10)) {
-      // Prefer user-set budgets, fall back to defaults
       const budget = (budgets && budgets[cat] > 0) ? budgets[cat]
                    : (defaultBudgets && defaultBudgets[cat]) ? defaultBudgets[cat]
                    : 0
@@ -105,9 +120,9 @@ export function buildInsightContext(p) {
         const diff = amt - budget
         const overPct = Math.round(Math.abs(diff) / budget * 100)
         let status
-        if (diff > 0)            status = `OVER by ${fmt(diff)} (+${overPct}%)`
+        if (diff > 0)                 status = `OVER by ${fmt(diff)} (+${overPct}%)`
         else if (diff > -budget * 0.2) status = 'near limit'
-        else                     status = 'on track'
+        else                           status = 'on track'
         lines.push(`  ${cat}: ${fmt(amt)} (budget ${fmt(budget)}) -- ${status}`)
       } else {
         lines.push(`  ${cat}: ${fmt(amt)}`)
@@ -115,7 +130,7 @@ export function buildInsightContext(p) {
     }
   }
 
-  // ── Spending concentration ─────────────────────────────────────────────────
+  // -- Spending concentration --
   if (catEntries.length >= 2 && totalSpend > 0) {
     const top3 = catEntries.slice(0, Math.min(3, catEntries.length))
     const top3Total = top3.reduce((s, [, v]) => s + v, 0)
@@ -124,15 +139,60 @@ export function buildInsightContext(p) {
     lines.push(`  Concentration: ${top3Names} = ${top3Pct}% of total spend`)
   }
 
-  // ── Behavioural spend classification ─────────────────────────────────────────
+  // -- Merchant intelligence (uses pre-computed topMerchants or derives from transactions) --
+  const spendTxns = transactions.filter(t => t.category !== 'Income' && t.category !== 'Transfer' && t.category !== 'Savings')
+  const merchantsToUse = topMerchants.length > 0 ? topMerchants : null
+
+  if (merchantsToUse && merchantsToUse.length > 0) {
+    lines.push('')
+    lines.push('TOP MERCHANTS (by total spend):')
+
+    for (const m of merchantsToUse.slice(0, 10)) {
+      const pctStr = m.pctOfSpend > 0 ? ` (${m.pctOfSpend}% of total spend)` : ''
+      lines.push(`  ${m.name}: ${fmt(m.total)} x${m.count}${pctStr} [${m.category}]`)
+    }
+
+    // Delivery vs dine-in analysis for Eating out
+    const eatingOutMerchants = merchantsToUse.filter(m => m.category === 'Eating out')
+    if (eatingOutMerchants.length >= 2) {
+      const deliveryTotal = eatingOutMerchants
+        .filter(m => DELIVERY_KEYWORDS.some(kw => m.name.toLowerCase().includes(kw)))
+        .reduce((s, m) => s + m.total, 0)
+      const eatingOutTotal = catTotals['Eating out'] || 0
+      if (deliveryTotal > 0 && eatingOutTotal > 0) {
+        const deliveryPct = Math.round(deliveryTotal / eatingOutTotal * 100)
+        const dineInPct = 100 - deliveryPct
+        lines.push(`  Eating out split: ${deliveryPct}% delivery apps vs ${dineInPct}% restaurants/cafes`)
+      }
+    }
+  } else if (spendTxns.length >= 3) {
+    // Derive merchants from raw transactions if topMerchants not passed
+    const map = {}
+    for (const t of spendTxns) {
+      const key = (t.name || 'Unknown').trim()
+      if (!map[key]) map[key] = { name: key, category: t.category, total: 0, count: 0 }
+      map[key].total += t.amount || 0
+      map[key].count++
+    }
+    const topDerived = Object.values(map).sort((a, b) => b.total - a.total).slice(0, 8)
+    if (topDerived.length > 0) {
+      lines.push('')
+      lines.push('TOP MERCHANTS:')
+      for (const m of topDerived) {
+        lines.push(`  ${m.name}: ${fmt(Math.round(m.total))} x${m.count} [${m.category}]`)
+      }
+    }
+  }
+
+  // -- Behavioural spend classification --
   {
     let obligations = 0, lifestyle = 0, essentials = 0, wealthBuilding = 0, untracked = 0
     for (const [cat, amt] of catEntries) {
-      if (OBLIGATION_CATS.has(cat))  obligations  += amt
-      else if (LIFESTYLE_CATS.has(cat))   lifestyle    += amt
-      else if (ESSENTIAL_CATS.has(cat))   essentials   += amt
+      if (OBLIGATION_CATS.has(cat))       obligations    += amt
+      else if (LIFESTYLE_CATS.has(cat))   lifestyle      += amt
+      else if (ESSENTIAL_CATS.has(cat))   essentials     += amt
       else if (WEALTH_CATS.has(cat))      wealthBuilding += amt
-      else if (UNTRACKED_CATS.has(cat))   untracked    += amt
+      else if (UNTRACKED_CATS.has(cat))   untracked      += amt
     }
     const hasBuckets = obligations + lifestyle + essentials + wealthBuilding > 0
     if (hasBuckets) {
@@ -160,7 +220,6 @@ export function buildInsightContext(p) {
       if (untracked > 0) {
         lines.push(`  ATM/cash + unclassified: ${fmt(untracked)} (${Math.round(untracked / totalSpend * 100)}% of spend)`)
       }
-      // Lifestyle vs obligations ratio signal
       if (lifestyle > 0 && obligations > 0) {
         const ratio = (lifestyle / obligations).toFixed(1)
         if (lifestyle > obligations * 1.5) {
@@ -172,16 +231,16 @@ export function buildInsightContext(p) {
     }
   }
 
-    // ── Month-on-month trend ───────────────────────────────────────────────────
+  // -- Month-on-month trend --
   if (monthlyData && typeof monthlyData === 'object') {
     const months = Object.keys(monthlyData).sort()
     if (months.length >= 2) {
       const recent = monthlyData[months[months.length - 1]]
-      const prev = monthlyData[months[months.length - 2]]
+      const prev   = monthlyData[months[months.length - 2]]
       if (recent && prev && prev.spend > 0) {
-        const delta = recent.spend - prev.spend
+        const delta    = recent.spend - prev.spend
         const deltaPct = Math.round(Math.abs(delta) / prev.spend * 100)
-        const dir = delta > 0 ? 'UP' : 'DOWN'
+        const dir      = delta > 0 ? 'UP' : 'DOWN'
         lines.push('')
         lines.push(`MONTH-ON-MONTH: Spend ${dir} ${fmt(Math.abs(delta))} (${deltaPct}%) vs prior month`)
         if (recent.income > 0 && prev.income > 0) {
@@ -193,38 +252,50 @@ export function buildInsightContext(p) {
         }
       }
     }
-  }
 
-  // ── Anomaly detection ──────────────────────────────────────────────────────
-  if (transactions.length > 3) {
-    const spendTxns = transactions.filter(t => t.category !== 'Income' && t.category !== 'Transfer' && t.category !== 'Savings')
-    if (spendTxns.length > 3) {
-      const avgAmt = spendTxns.reduce((s, t) => s + t.amount, 0) / spendTxns.length
-      const threshold = Math.max(avgAmt * 4, 500)
-      const anomalies = spendTxns
-        .filter(t => t.amount > threshold)
-        .sort((a, b) => b.amount - a.amount)
-        .slice(0, 2)
-      if (anomalies.length > 0) {
-        lines.push('')
-        lines.push('NOTABLE TRANSACTIONS:')
-        for (const a of anomalies) {
-          lines.push(`  ${a.name}: ${fmt(a.amount)} (${a.category}, ${a.date})`)
-        }
+    // Rolling averages if 3+ months
+    if (months.length >= 3) {
+      const allSpend = months.map(m => monthlyData[m].spend || 0)
+      const avgSpend = Math.round(allSpend.reduce((s, v) => s + v, 0) / allSpend.length)
+      const recentSpend = monthlyData[months[months.length - 1]].spend || 0
+      const vsAvg = recentSpend - avgSpend
+      const vsAvgPct = avgSpend > 0 ? Math.round(Math.abs(vsAvg) / avgSpend * 100) : 0
+      if (Math.abs(vsAvgPct) >= 10) {
+        const dir = vsAvg > 0 ? 'above' : 'below'
+        lines.push(`  Most recent month ${fmt(recentSpend)} is ${vsAvgPct}% ${dir} ${months.length}-month avg of ${fmt(avgSpend)}`)
       }
     }
   }
 
-  // ── Recurring obligations ──────────────────────────────────────────────────
+  // -- Anomaly detection --
+  if (spendTxns.length > 3) {
+    const avgAmt = spendTxns.reduce((s, t) => s + t.amount, 0) / spendTxns.length
+    const threshold = Math.max(avgAmt * 4, 500)
+    const anomalies = spendTxns
+      .filter(t => t.amount > threshold)
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 2)
+    if (anomalies.length > 0) {
+      lines.push('')
+      lines.push('NOTABLE TRANSACTIONS:')
+      for (const a of anomalies) {
+        lines.push(`  ${a.name}: ${fmt(a.amount)} (${a.category}, ${a.date})`)
+      }
+    }
+  }
+
+  // -- Recurring obligations --
   if (recurringContext) {
     lines.push('')
     lines.push(recurringContext)
   }
 
-  // ── Profile ────────────────────────────────────────────────────────────────
+  // -- Profile --
   const usageLabels = {
-    personal: 'personal', household: 'household (multiple earners)',
-    side_hustle: 'has a side hustle', sole_prop: 'sole proprietor/freelancer'
+    personal:   'personal',
+    household:  'household (multiple earners)',
+    side_hustle: 'has a side hustle',
+    sole_prop:   'sole proprietor/freelancer',
   }
   lines.push('')
   lines.push(`PROFILE: ${usageLabels[usageType] || usageType}`)
@@ -234,12 +305,11 @@ export function buildInsightContext(p) {
 
 /**
  * Build the behavioral insight prompt instruction based on context mode.
- * Mode determines the focus area and what the AI should prioritise.
  */
 export function buildInsightPrompt({ mode = 'overview', question = '', contextBlock }) {
   const FORMAT = 'Never use em dashes. Never use tilde. Never use markdown bold. Plain prose only.'
 
-  const PERSONA = "You are bump.'s financial analyst -- warm, sharp, and South African. You have read this user's actual transaction data. Speak like a smart friend who knows finance, not a corporate report. Give specific rand amounts. Never give generic advice."
+  const PERSONA = "You are bump.'s financial analyst -- warm, sharp, and South African. You have read this user's actual transaction data including their top merchants. Speak like a smart friend who knows finance, not a corporate report. Name specific merchants and rand amounts. Never give generic advice."
 
   let instruction = ''
 
@@ -252,11 +322,12 @@ If recurring obligations or anomalies are listed, reference them specifically. U
   }
 
   else if (mode === 'analytics') {
-    instruction = `Analyse this user's spending trends across the period. In 3-4 short paragraphs:
-1. Identify the most meaningful trend -- what has changed, grown, or shrunk, and why it matters.
-2. Comment on spending concentration -- is spend spread across many categories or dominated by a few?
-3. Give one forward-looking observation: based on this pattern, what should they watch or act on?
-If month-on-month changes or recurring items are listed, use them. Under 200 words. No headers.`
+    instruction = `Analyse this user's spending trends across the full period. In 3-4 short paragraphs:
+1. Name the top 2-3 merchants by spend -- give exact rand amounts. If delivery apps appear, call out the delivery vs restaurant split specifically.
+2. Identify the most meaningful trend across categories -- what has grown or shrunk, and why it matters to their finances.
+3. Comment on spend concentration: is their money spread thin or dominated by a few merchants/categories?
+4. Give one forward-looking observation or action based on the patterns.
+Use the merchant list, category breakdowns, and month-on-month data. Under 220 words. No headers.`
   }
 
   else if (mode === 'income_statement') {

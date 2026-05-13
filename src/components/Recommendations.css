@@ -592,3 +592,61 @@
 .rec-update-btn:hover {
   opacity: 0.8;
 }
+
+/* -- Persistence bar (results header) -- */
+.rec-persistence-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 4px;
+}
+.rec-saved-date {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.rec-persistence-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.rec-action-btn {
+  padding: 5px 10px;
+  font-size: 0.76rem;
+  font-weight: 500;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text);
+  transition: all 0.15s;
+}
+.rec-action-btn:hover { border-color: var(--coral); color: var(--coral); }
+.rec-action-btn.secondary { color: var(--muted); }
+.rec-action-btn.secondary:hover { color: var(--text); }
+
+/* -- Intro saved notice -- */
+.rec-saved-notice {
+  font-size: 0.82rem;
+  color: var(--muted);
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-top: 4px;
+}
+.rec-link-btn {
+  background: none;
+  border: none;
+  color: var(--coral);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  font-size: inherit;
+  text-decoration: underline;
+}
