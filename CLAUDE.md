@@ -24,6 +24,7 @@ The sandbox Linux shell and the Windows file tools (Read/Write/Edit) see the sam
 3. Never use the Edit tool on files longer than ~100 lines — use Python rewrite instead
 4. To fix null bytes: `open(path,'rb').read().replace(b'\x00',b'')` then write back
 5. After any file change, check Linux line count: `wc -l <file>` — if it's less than expected, the file is truncated, append missing lines
+6. **After editing ANY netlify function, run `node --check` on ALL function files** — truncation in one file (e.g. sa-categorise.js) crashes any function that imports it, causing 502s with no useful error message. Run: `for f in netlify/functions/*.js; do node --check "$f" || echo "BROKEN: $f"; done`
 
 **Path mapping:**
 - Windows: `C:\Users\nihal\Downloads\Bump Budget\` → Linux: `/sessions/*/mnt/Bump Budget/`
@@ -89,17 +90,17 @@ If the branch has diverged, user runs: `git push --force origin dev`
 | `TierContext.jsx` | `useTier()` → `{ plan, isAdmin, canAnalytics, canProjections, canGroceries, canRules, canConsult, simulatedPlan, setSimulatedPlan, simulating }`. Plans: free/starter/growth/pro. Admin simulation stored in localStorage key `bumpSimPlan`. |
 
 ### src/services/
-- `transactions.js` — `fetchTransactions`, `fetchTransactionsByMonth`, `fetchTransactionsByRange`, `addTransaction`, `deleteTransaction`
-- `ai.js` — `parseTransaction`, `analyseSpending`
+- `transactions.js` — `fetchTransactions`, `fetchTransactionsByMonth`, `fetchTransactionsByRange`, `addTransaction`, `updateTransaction`, `deleteTransaction`, `recategorizeMatchingTransactions`
+- `ai.js` — `parseTransaction`, `analyseSpending`, `recategoriseAll`, `enrichMerchant`
 
 ### netlify/functions/
 | File | Purpose |
 |------|---------|
-| `analyse.js` | Main AI analysis. Has FORMAT_RULES. |
+| `analyse.js` | Main AI analysis. Has FORMAT_RULES. Imports `_context.js`. |
 | `budget-chat.js` | AI budget Q&A. Rate limited: 10/month free, unlimited paid. Has FORMAT_RULES. |
 | `support-chat.js` | Support chatbot using Haiku. Has FORMAT_RULES. |
 | `parse-transaction.js` | Single SMS/text transaction parser |
-| `parse-bulk-transactions.js` | Bulk statement import parser |
+| `parse-bulk-transactions.js` | Bulk statement import parser. Uses `ai_usage` table for rate limiting. |
 | `compare-groceries.js` | Grocery price comparison |
 | `get-recommendations.js` | Budget recommendations |
 | `admin-data.js` | Admin: get_dashboard, update_access_status, get_user_transactions |
@@ -108,33 +109,17 @@ If the branch has diverged, user runs: `git push --force origin dev`
 | `create-subscription.js` | Paystack subscription |
 | `verify-payment.js` | Payment verification |
 | `paystack-webhook.js` | Paystack webhook handler |
+| `recategorise-all.js` | Bulk AI recategorisation. Rules pass first, then Claude only for "Other". Imports `sa-categorise.js`. |
+| `sa-categorise.js` | Shared SA merchant rules + `saPreCategory()`, `cleanForAI()`, `isSpendTransaction()`. Imported by recategorise-all + parse functions. |
+| `_context.js` | Shared AI context builder. Imported by analyse.js. Prefixed `_` so Netlify ignores it as an endpoint. |
+| `enrich-merchant.js` | Single merchant AI enrichment fallback. |
 
 ---
 
 ## Key conventions
 
+- **Claude model:** use `claude-haiku-4-5-20251001` for all functions. `claude-sonnet-4-6` is NOT a valid direct API model string — it causes silent failures.
 - **Amounts:** stored as integer cents in Supabase. Divide by 100 for display. `fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')`
 - **Dates:** ISO string `YYYY-MM-DD`. Display via `fmtDate = d => new Date(d + 'T12:00:00').toLocaleDateString('en-GB', ...)`  — the `T12:00:00` prevents timezone off-by-one
 - **Profile save:** always use `.upsert({...}, { onConflict: 'id' })` not `.update()` — avoids "no rows updated" errors
-- **AI FORMAT_RULES:** "Never use em dashes (—). Never use tilde (~). Never use markdown bold (**text**). Write in plain prose." — added to SYSTEM_PROMPT in analyse.js, budget-chat.js, support-chat.js
-- **Tier locking:** Analytics → starter+, Projections → growth+, Groceries → growth+, Consult → pro only
-- **Free plan limits:** 30 days history, 10 AI budget questions/month (tracked in `budget_chat_usage` table)
-
----
-
-## Supabase tables (key ones)
-
-- `profiles` — id, full_name, gross_income, net_income, monthly_debit_orders, savings_goal, bank, subscription_plan, subscription_status, is_admin, role, usage_type
-- `transactions` — id, user_id, name, amount, category, date, created_at
-- `consultant_access` — id, user_id, status, granted_at, podcast_consent
-- `budget_chat_usage` — id, user_id, question_preview, created_at
-- `bookings` — consultation bookings
-
----
-
-## Pending / not yet built
-
-- Error/support logging system (log errors to Supabase or external service)
-- Admin Excel export of user data
-- Admin analytics dashboards (user growth, revenue, AI usage stats)
-- Free tier: more explicit upgrade prompts on budget/recommendations tabs
+- **AI FORMAT_RULES:** "Never use em dashes (—). Never use tilde (~). 
