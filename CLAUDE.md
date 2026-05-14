@@ -122,4 +122,57 @@ If the branch has diverged, user runs: `git push --force origin dev`
 - **Amounts:** stored as integer cents in Supabase. Divide by 100 for display. `fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')`
 - **Dates:** ISO string `YYYY-MM-DD`. Display via `fmtDate = d => new Date(d + 'T12:00:00').toLocaleDateString('en-GB', ...)`  — the `T12:00:00` prevents timezone off-by-one
 - **Profile save:** always use `.upsert({...}, { onConflict: 'id' })` not `.update()` — avoids "no rows updated" errors
-- **AI FORMAT_RULES:** "Never use em dashes (—). Never use tilde (~). 
+- **AI FORMAT_RULES:** "Never use em dashes (—). Never use tilde (~). Never use markdown bold (**text**). Write in plain prose." — added to SYSTEM_PROMPT in analyse.js, budget-chat.js, support-chat.js
+- **Tier locking:** Analytics → starter+, Projections → growth+, Groceries → growth+, Consult → pro only
+- **Free plan limits:** 30 days history, 10 AI budget questions/month (tracked in `budget_chat_usage` table)
+
+---
+
+## Supabase tables (key ones)
+
+- `profiles` — id, full_name, gross_income, net_income, monthly_debit_orders, savings_goal, bank, subscription_plan, subscription_status, is_admin, role, usage_type
+- `transactions` — id, user_id, name, amount, category, date, created_at (**no `description` column** — selecting it causes a Supabase fetch error)
+- `consultant_access` — id, user_id, status, granted_at, podcast_consent
+- `budget_chat_usage` — id, user_id, question_preview, created_at
+- `bookings` — consultation bookings
+
+---
+
+## Pending / not yet built
+
+- Error/support logging system (log errors to Supabase or external service)
+- Admin Excel export of user data
+- Admin analytics dashboards (user growth, revenue, AI usage stats)
+- Free tier: more explicit upgrade prompts on budget/recommendations tabs
+
+---
+
+## UI & Interaction architecture (2026-05 stabilisation session)
+
+### CSS variables
+All components must use only defined CSS variables. Aliases defined in `index.css :root`:
+- `--card`, `--card-bg` → alias for `--surface` (white)
+- `--accent` → alias for `--coral`
+- `--hover-bg` → alias for `--bg-alt`
+- `--input-bg` → alias for `--bg`
+- `--green` → `#16a34a`
+Never use undefined variable names — they silently fall through to browser defaults.
+
+### Desktop avatar dropdown: stacking context bug
+On desktop, `.nav` (z-index: 10) and `.tabs` (z-index: 11) are siblings. A `.profile-dropdown` inside `.nav` inherits the nav's stacking context, so it renders BELOW `.tabs` regardless of its own z-index.
+**Fix:** `.nav` must have `z-index: 20` (higher than tabs) in the desktop media query. Dropdown must use `left: 0; right: auto` (not `right: 0`) on desktop because `.avatar-wrap` is only 32px wide — right-anchoring causes the menu to render off-screen to the left. `.avatar-wrap` must be `width: 100%` on desktop so the dropdown has a sensible anchor.
+
+### Mobile bottom nav
+Primary tabs: Overview, Analytics, Groceries, Budget (id: 'budget'), Transactions. Keep labels ≤ 8 chars for mobile. Secondary actions (Support, FAQs, Privacy, Sign out) live behind the avatar/profile dropdown.
+
+### Budget mode toggle (Overview)
+State: `budgetMode` ('personal' | 'ai'). `activeBudgets` = userBudgets when personal, 85%-of-current-month catTotals when 'ai'. Toggle renders above category cards. AI budgets are single-month approximations only — for rolling averages, see Recommendations tab.
+
+### AI interpretation: canonical context wiring
+`runAnalysis()` in Dashboard.jsx MUST pass: `topMerchants` (from `buildTopMerchants(spendTxns, 15)`), `effectiveIncome` (from ledger), `incomeResolutionMode` (from ledger), `periodLabel`. Without these, the AI receives no merchant data and produces generic analysis.
+
+### AI budget recommendation month count
+`get-recommendations.js` accepts `monthCount` from the client. `Recommendations.jsx` tracks `monthCount` in state from `ledger.monthCount`. Always divide historical category totals by the ACTUAL uploaded month count, not a fixed 12. Cap at 12 months via `fetchRecentMonths(uid, 12)`.
+
+### AI prompt design (merchant-aware)
+`buildInsightPrompt` in `_context.js` now instructs the AI to name specific merchants and exact rand amounts. Generic statements ("you spent a lot on dining") are anti-patterns. The context string includes `MERCHANT BREAKDOWN BY CATEGORY` with per-merchant totals for Eating out, Groceries, Entertainment, Clothing, Transport, Health — so the AI can produce outputs like "Uber Eats at R1 200, Vida e Caffe at R800".

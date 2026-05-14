@@ -226,6 +226,34 @@ export function buildInsightContext(p) {
     }
   }
 
+  // ── Per-category merchant breakdowns for high-value categories ──────────
+  // Build category-level merchant details so the AI can say "you spent R1 200
+  // at Uber Eats, R800 at Vida e Caffe" rather than just "R2 000 on dining".
+  const highValueCats = new Set(['Eating out', 'Groceries', 'Entertainment', 'Clothing', 'Transport', 'Health'])
+  const catMerchantMap = {}
+  for (const t of spendTxns) {
+    const cat = t.category || 'Other'
+    if (!highValueCats.has(cat)) continue
+    const key = (t.name || 'Unknown').trim()
+    if (!catMerchantMap[cat]) catMerchantMap[cat] = {}
+    if (!catMerchantMap[cat][key]) catMerchantMap[cat][key] = { name: key, total: 0, count: 0 }
+    catMerchantMap[cat][key].total += t.amount || 0
+    catMerchantMap[cat][key].count++
+  }
+  const richCats = Object.entries(catMerchantMap)
+    .filter(([cat]) => catTotals[cat] > 0)
+    .sort((a, b) => (catTotals[b[0]] || 0) - (catTotals[a[0]] || 0))
+    .slice(0, 4)
+  if (richCats.length > 0) {
+    lines.push('')
+    lines.push('MERCHANT BREAKDOWN BY CATEGORY:')
+    for (const [cat, merchants] of richCats) {
+      const top = Object.values(merchants).sort((a, b) => b.total - a.total).slice(0, 4)
+      const detail = top.map(m => `${m.name} ${fmt(Math.round(m.total))}`).join(', ')
+      lines.push(`  ${cat} (${fmt(catTotals[cat] || 0)}): ${detail}`)
+    }
+  }
+
   // -- Behavioural spend classification --
   {
     let obligations = 0, lifestyle = 0, essentials = 0, wealthBuilding = 0, untracked = 0
@@ -351,37 +379,37 @@ export function buildInsightContext(p) {
 export function buildInsightPrompt({ mode = 'overview', question = '', contextBlock }) {
   const FORMAT = 'Never use em dashes. Never use tilde. Never use markdown bold. Plain prose only.'
 
-  const PERSONA = "You are bump.'s financial analyst -- warm, sharp, and South African. You have read this user's actual transaction data including their top merchants. Speak like a smart friend who knows finance, not a corporate report. Name specific merchants and rand amounts. Never give generic advice."
+  const PERSONA = "You are bump.'s financial analyst -- warm, sharp, and South African. You have read this user's actual transaction data including their top merchants by name and rand amount. Speak like a smart friend who knows finance, not a corporate report. Always name specific merchants and exact rand amounts. Never say \'you spent a lot on X' without naming who and how much. Never give generic advice."
 
   let instruction = ''
 
   if (mode === 'overview') {
-    instruction = `Analyse this user's spending for the current month. In 3-4 short paragraphs:
-1. Flag the 1-2 most significant overspends -- name the category, the overage in rands, and one concrete action.
-2. Observe one positive pattern or behaviour worth acknowledging.
-3. Comment on their net position and whether they are on track for their savings goal.
-If recurring obligations or anomalies are listed, reference them specifically. Under 180 words. No headers.`
+    instruction = `Analyse this user's spending for the period shown. Write 3-4 short, punchy paragraphs:
+1. Merchant spotlight: Name the top 2-3 merchants by spend with exact rand amounts (e.g. "Woolies took R2 400, Uber Eats R1 100"). If dining or delivery appears, name the specific merchants and call out delivery vs restaurant split.
+2. Overspend flag: Identify the 1-2 biggest budget breaches -- name the category, the overage in rands, and which specific merchants are driving it. Give one concrete action.
+3. Positive signal + net position: Note one genuinely healthy behaviour (specific, not generic), then state whether they are on track for their savings goal -- with actual numbers.
+If anomalies or recurring obligations appear in the data, reference them by name. Under 200 words. No headers.`
   }
 
   else if (mode === 'analytics') {
-    instruction = `Analyse this user's spending trends across the full period. In 3-4 short paragraphs:
-1. Name the top 2-3 merchants by spend -- give exact rand amounts. If delivery apps appear, call out the delivery vs restaurant split specifically.
-2. Identify the most meaningful trend across categories -- what has grown or shrunk, and why it matters to their finances.
-3. Comment on spend concentration: is their money spread thin or dominated by a few merchants/categories?
-4. Give one forward-looking observation or action based on the patterns.
-Use the merchant list, category breakdowns, and month-on-month data. Under 220 words. No headers.`
+    instruction = `Analyse this user's spending trends across the full period. Write 3-4 short paragraphs:
+1. Merchant concentration: Name the top 3 merchants by total spend -- give exact rand amounts and how many transactions each. If delivery apps (Uber Eats, Mr D, Checkers Sixty60) appear, call out the exact delivery-vs-dine-in split in rands and percentage.
+2. Category trend: What is the most meaningful shift across categories -- what has grown or shrunk month on month, and what does that signal about their lifestyle or financial health?
+3. Spend concentration risk: Is their money spread across many merchants, or dominated by 1-2? Name the concentration and explain why it matters (single-vendor dependency, subscription creep, etc.).
+4. Forward action: Based on the patterns, give one specific, actionable change with an estimated rand saving. Reference real merchant names.
+Use the merchant list, category breakdowns, and month-on-month data throughout. Under 230 words. No headers.`
   }
 
   else if (mode === 'income_statement') {
-    instruction = `Interpret this income statement. In 3-4 short paragraphs:
-1. What story do the numbers tell -- are expenses rising faster than income?
-2. Identify the 1-2 categories with the most significant movement.
-3. What should the user actually do based on this period's data?
-Be specific with rand amounts. Under 200 words. No headers.`
+    instruction = `Interpret this income statement. Write 3-4 short paragraphs:
+1. Trend narrative: Are expenses rising faster than income? By how much in rands? What is the trajectory?
+2. Category movements: Identify the 1-2 categories with the most significant rand movement -- name the specific merchants or spend patterns driving each shift.
+3. Actionable verdict: What should the user actually do based on this period? Be specific about which categories to target, by how much, and what the resulting net position would be.
+Under 200 words. No headers.`
   }
 
   const questionBlock = question && question.trim()
-    ? `\n\nUSER'S QUESTION: "${question.trim()}"\nAddress this directly in your response.`
+    ? `\n\nUSER'S QUESTION: "${question.trim()}"\nAddress this directly in your response, referencing the specific merchant and rand data above.`
     : ''
 
   return `${PERSONA}

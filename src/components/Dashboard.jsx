@@ -2,8 +2,8 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { useTier, isDateAllowed, PLAN_PRICES } from '../context/TierContext'
-import { fetchTransactions, fetchTransactionsByMonth, addTransaction, updateTransaction, deleteTransaction } from '../services/transactions'
-import { buildAIPayload } from '../utils/financials'
+import { fetchTransactions, fetchTransactionsByMonth, fetchRecentMonths, addTransaction, updateTransaction, deleteTransaction } from '../services/transactions'
+import { buildAIPayload, buildTopMerchants } from '../utils/financials'
 import { buildLedgerSummary, getCalendarMonthRange } from '../utils/ledger'
 import { parseTransaction, analyseSpending, recategoriseAll } from '../services/ai'
 import ImportTransactions from './ImportTransactions'
@@ -64,6 +64,8 @@ export default function Dashboard({ onNavigate }) {
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
+  // Budget mode toggle: 'personal' = user-set budgets, 'ai' = AI-suggested (85% of recent avg)
+  const [budgetMode, setBudgetMode] = useState('personal')
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [showAccountCentre, setShowAccountCentre] = useState(false)
   // Real user-set budgets from Supabase (set in the Analytics tab).
@@ -192,6 +194,19 @@ export default function Dashboard({ onNavigate }) {
   const catTotals = ledger.catTotals
   const maxCat = Math.max(...Object.values(catTotals), 1)
 
+  // AI-suggested budget: 85% of this month's actual spend per category.
+  // Used when budgetMode === 'ai'. Gives a realistic stretch target.
+  const aiSuggestedBudgets = useMemo(() => {
+    const suggested = {}
+    for (const [cat, total] of Object.entries(catTotals)) {
+      if (total > 0) suggested[cat] = Math.round(total * 0.85)
+    }
+    return suggested
+  }, [catTotals])
+
+  // Active budgets depend on mode — personal (DB-set) or AI-suggested
+  const activeBudgets = budgetMode === 'ai' ? aiSuggestedBudgets : userBudgets
+
   // Savings drawdown detection
   const EXCEPTIONAL_CATS_OV = new Set(['Gifts', 'Travel', 'Entertainment', 'Clothing', 'Home & Garden'])
   const exceptionalSpendOV  = Object.entries(catTotals)
@@ -312,10 +327,16 @@ export default function Dashboard({ onNavigate }) {
     setAiLoading(true)
     setAiText('')
     try {
+      // Build merchant summary from spend transactions for richer AI context
+      const topMerchants = buildTopMerchants(spendTxns, 15)
       const payload = buildAIPayload(allowedTransactions, profile, 200, {
         mode: 'overview',
-        budgets: userBudgets,
+        budgets: activeBudgets,
         monthlyData: ledger.monthlyData,
+        topMerchants,
+        effectiveIncome: ledger.income,
+        incomeResolutionMode: ledger.incomeResolutionMode,
+        periodLabel: monthDisplayLabel(),
       })
       const result = await analyseSpending(payload)
       setAiText(result.analysis)
@@ -430,7 +451,7 @@ export default function Dashboard({ onNavigate }) {
           { id: 'overview',      icon: '🏠', label: 'Overview' },
           { id: 'analytics',     icon: '📊', label: 'Analytics' },
           { id: 'groceries',     icon: '🛒', label: 'Groceries' },
-          { id: 'budget',        icon: '🧠', label: 'Recommendations' },
+          { id: 'budget',        icon: '🧠', label: 'Budget' },
           { id: 'transactions',  icon: '📋', label: 'Transactions' },
         ].map(({ id, icon, label }) => (
           <button
@@ -510,10 +531,27 @@ export default function Dashboard({ onNavigate }) {
           {/* Categories */}
           {Object.keys(catTotals).length > 0 && (
             <>
-              <div className="section-head">Spend by category</div>
+              <div className="section-head-row">
+                <span className="section-head">Spend by category</span>
+                <div className="budget-mode-toggle">
+                  <button
+                    className={`bmt-btn ${budgetMode === 'personal' ? 'active' : ''}`}
+                    onClick={() => setBudgetMode('personal')}
+                    title="Use your manually-set budgets"
+                  >Personal</button>
+                  <button
+                    className={`bmt-btn ${budgetMode === 'ai' ? 'active' : ''}`}
+                    onClick={() => setBudgetMode('ai')}
+                    title="AI-suggested budgets: 85% of this month's actuals"
+                  >AI Suggested</button>
+                </div>
+              </div>
+              {budgetMode === 'ai' && (
+                <div className="bmt-hint">AI budgets target 85% of your current month spend per category.</div>
+              )}
               <div className="cats">
                 {Object.entries(catTotals).sort((a, b) => b[1] - a[1]).map(([cat, amt]) => {
-                  const budget = userBudgets[cat] || 1000
+                  const budget = activeBudgets[cat] || 1000
                   const over = amt > budget
                   const near = !over && amt > budget * 0.8
                   return (

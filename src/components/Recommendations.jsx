@@ -120,6 +120,7 @@ export default function Recommendations({ onImportSignal = 0 }) {
   const [budgets, setBudgets]     = useState({})
   const [savedDate, setSavedDate] = useState(null)
   const [dataLoaded, setDataLoaded] = useState(false)
+  const [monthCount, setMonthCount] = useState(1)
 
   // Load spending data (runs on mount and after each import signal)
   const loadData = useCallback(async () => {
@@ -134,10 +135,11 @@ export default function Recommendations({ onImportSignal = 0 }) {
         preferDeclared: false,
         dedup: true,
       })
-      const monthCount = Math.max(ledger.monthCount, 1)
+      const resolvedMonthCount = Math.max(ledger.monthCount, 1)
+      setMonthCount(resolvedMonthCount)
       const avg = {}
       for (const [cat, total] of Object.entries(ledger.catTotals)) {
-        avg[cat] = total / monthCount
+        avg[cat] = total / resolvedMonthCount
       }
       setSpendingData(avg)
       const bMap = {}
@@ -221,7 +223,7 @@ export default function Recommendations({ onImportSignal = 0 }) {
       const res = await fetch('/.netlify/functions/get-recommendations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ answers: finalAnswers, spendingData, budgets }),
+        body: JSON.stringify({ answers: finalAnswers, spendingData, budgets, monthCount }),
       })
       const d = await res.json()
       if (!res.ok) throw new Error(d.error || 'Failed to get recommendations')

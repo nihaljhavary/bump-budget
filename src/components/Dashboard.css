@@ -362,6 +362,49 @@
   margin-top: 4px;
 }
 
+/* Row that holds section-head + budget mode toggle side by side */
+.section-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
+/* ── Budget mode toggle ── */
+.budget-mode-toggle {
+  display: flex;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.bmt-btn {
+  padding: 3px 10px;
+  background: none;
+  border: none;
+  font-size: 0.73rem;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.bmt-btn.active {
+  background: var(--coral);
+  color: #fff;
+  border-radius: 20px;
+}
+
+.bmt-hint {
+  font-size: 0.73rem;
+  color: var(--muted);
+  font-style: italic;
+  margin-top: -4px;
+}
+
 /* ── Category cards ── */
 .cats {
   display: flex;
@@ -884,6 +927,9 @@
     border-right: 1px solid var(--border);
     gap: 0;
     overflow-y: auto;
+    /* Must exceed .tabs (z-index: 11) so the profile dropdown clears the
+       tab strip stacking context and renders on top of it. */
+    z-index: 20;
   }
 
   .nav-logo {
@@ -898,6 +944,22 @@
     gap: 6px;
     margin-top: 12px;
     width: 100%;
+  }
+
+  /* On desktop the sidebar is 220px wide. The avatar-wrap takes full width
+     so the dropdown has a sensible reference rect to anchor from. */
+  .avatar-wrap {
+    width: 100%;
+  }
+
+  /* Desktop dropdown: opens downward, left-aligned within the sidebar.
+     This keeps it fully on-screen and avoids the right: 0 trick that causes
+     the dropdown to extend off-screen to the left on a 32px-wide avatar. */
+  .profile-dropdown {
+    left: 0;
+    right: auto;
+    top: calc(100% + 8px);
+    min-width: 188px;
   }
 
   .nav-month-picker {
@@ -974,6 +1036,7 @@
 
 /* ── Profile dropdown & modal ────────────────────────────────────────────── */
 .avatar-wrap { position: relative; }
+/* Mobile default: dropdown opens below the avatar, right-aligned */
 .profile-dropdown { position: absolute; right: 0; top: calc(100% + 8px); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 6px; min-width: 160px; z-index: 100; box-shadow: 0 4px 16px rgba(26,6,0,0.12); }
 .profile-dropdown-item { display: block; width: 100%; background: none; border: none; padding: 9px 12px; font-size: 13px; color: var(--text); text-align: left; cursor: pointer; border-radius: 8px; font-family: 'DM Sans', sans-serif; }
 .profile-dropdown-item:hover { background: var(--bg-alt); }
