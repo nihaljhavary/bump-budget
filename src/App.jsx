@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useVersionCheck } from './hooks/useVersionCheck'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import { supabase } from './supabase'
@@ -113,10 +114,45 @@ function AuthRoute() {
   return <Auth />
 }
 
+function UpdateBanner() {
+  const { updateAvailable } = useVersionCheck()
+  const [dismissed, setDismissed] = useState(false)
+  if (!updateAvailable || dismissed) return null
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+      background: '#e85d26', color: '#fff',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      gap: '12px', padding: '10px 16px',
+      fontFamily: 'DM Sans, sans-serif', fontSize: '14px', fontWeight: 500,
+    }}>
+      <span>A new version of bump. is available.</span>
+      <button
+        onClick={() => window.location.reload()}
+        style={{
+          background: '#fff', color: '#e85d26', border: 'none',
+          borderRadius: 6, padding: '4px 12px', fontWeight: 700,
+          fontSize: '13px', cursor: 'pointer',
+        }}
+      >Update now</button>
+      <button
+        onClick={() => setDismissed(true)}
+        style={{
+          background: 'transparent', color: 'rgba(255,255,255,0.7)',
+          border: 'none', fontSize: '18px', cursor: 'pointer',
+          lineHeight: 1, padding: '0 4px',
+        }}
+        aria-label="Dismiss"
+      >&#x2715;</button>
+    </div>
+  )
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <TierProvider>
+        <UpdateBanner />
         <BrowserRouter>
           <Routes>
             <Route path="/"    element={<LandingPage />} />

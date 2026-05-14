@@ -1,0 +1,21 @@
+# bump. — Netlify cache control headers
+# ─────────────────────────────────────────────────────────────────────────────
+# index.html must NEVER be cached. Browsers must always re-fetch it so they
+# pick up the new hashed JS/CSS filenames after each deploy.
+# Hashed assets (/assets/*) are safe to cache forever — Vite content-hashes
+# the filenames, so stale references are automatically invalidated on deploy.
+
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
+  Pragma: no-cache
+  Expires: 0
+
+/*
+  Cache-Control: no-cache
+  X-Content-Type-Options: nosniff
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/version.json
+  Cache-Control: no-cache, no-store, must-revalidate
