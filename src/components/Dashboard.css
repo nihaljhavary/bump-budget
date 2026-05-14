@@ -930,6 +930,15 @@
     /* Must exceed .tabs (z-index: 11) so the profile dropdown clears the
        tab strip stacking context and renders on top of it. */
     z-index: 20;
+    /* Nav spans the full sidebar height but its lower area (below nav content)
+       must not intercept clicks destined for the .tabs buttons below it.
+       pointer-events: none on the container + auto on children achieves this. */
+    pointer-events: none;
+  }
+
+  /* Restore interactivity for everything inside the nav */
+  .nav > * {
+    pointer-events: auto;
   }
 
   .nav-logo {
