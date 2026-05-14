@@ -917,28 +917,19 @@
     position: fixed;
     top: 0;
     left: 0;
-    bottom: 0;
     width: 220px;
     flex-direction: column;
     align-items: flex-start;
     justify-content: flex-start;
-    padding: 28px 20px;
+    padding: 28px 20px 20px;
     border-bottom: none;
     border-right: 1px solid var(--border);
     gap: 0;
-    overflow-y: auto;
-    /* Must exceed .tabs (z-index: 11) so the profile dropdown clears the
-       tab strip stacking context and renders on top of it. */
+    /* No bottom: 0 — nav is only as tall as its content (~180px).
+       This keeps the .tabs sidebar (top: 180px) fully visible below it.
+       z-index: 20 ensures the profile dropdown still renders above .tabs. */
     z-index: 20;
-    /* Nav spans the full sidebar height but its lower area (below nav content)
-       must not intercept clicks destined for the .tabs buttons below it.
-       pointer-events: none on the container + auto on children achieves this. */
-    pointer-events: none;
-  }
-
-  /* Restore interactivity for everything inside the nav */
-  .nav > * {
-    pointer-events: auto;
+    background: var(--surface);
   }
 
   .nav-logo {
