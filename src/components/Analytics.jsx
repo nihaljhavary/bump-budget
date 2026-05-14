@@ -317,7 +317,7 @@ export default function Analytics({ preferDeclared = true }) {
         </div>
       ) : !hasTxns ? (
         <div className="analytics-empty">
-          <div className="empty-icon">\U0001f4ca</div>
+          <div className="empty-icon">📊</div>
           <p>No spend transactions found for this period.<br />Import your bank statement to see analytics.</p>
         </div>
       ) : (

@@ -125,6 +125,7 @@ If the branch has diverged, user runs: `git push --force origin dev`
 - **AI FORMAT_RULES:** "Never use em dashes (—). Never use tilde (~). Never use markdown bold (**text**). Write in plain prose." — added to SYSTEM_PROMPT in analyse.js, budget-chat.js, support-chat.js
 - **Tier locking:** Analytics → starter+, Projections → growth+, Groceries → growth+, Consult → pro only
 - **Free plan limits:** 30 days history, 10 AI budget questions/month (tracked in `budget_chat_usage` table)
+- **Emoji in JSX:** always use the actual emoji character (paste it directly) or the JS escape `\u{1f9e0}`. Never use Python-style `\U0001f9e0` (uppercase U, 8 hex digits) — JavaScript treats this as a literal backslash + U + digits and renders broken text in the UI.
 
 ---
 

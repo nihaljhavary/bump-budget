@@ -286,7 +286,7 @@ export default function Recommendations({ onImportSignal = 0 }) {
     return (
       <div className="rec-shell">
         <div className="rec-intro-card">
-          <div className="rec-intro-icon">\U0001f9e0</div>
+          <div className="rec-intro-icon">🧠</div>
           <h2 className="rec-intro-title">Smart Money Analysis</h2>
           <p className="rec-intro-sub">
             Answer 7 quick questions and bump. will analyse your actual spending to give you a personalised plan.
@@ -294,7 +294,7 @@ export default function Recommendations({ onImportSignal = 0 }) {
 
           {totalSpend > 0 && (
             <div className="rec-data-badge">
-              \U0001f4ca Based on {fmt(totalSpend)}/mo avg spending across {Object.keys(spendingData).length} categories
+              📊 Based on {fmt(totalSpend)}/mo avg spending across {Object.keys(spendingData).length} categories
             </div>
           )}
 
@@ -471,7 +471,7 @@ export default function Recommendations({ onImportSignal = 0 }) {
                       style={{ width: `${Math.min(100, (cut.recommended / cut.currentAvg) * 100)}%` }}
                     />
                   </div>
-                  <div className="rec-cut-tip">\U0001f4a1 {cut.tip}</div>
+                  <div className="rec-cut-tip">💡 {cut.tip}</div>
                 </div>
               ))}
             </div>
@@ -489,7 +489,7 @@ export default function Recommendations({ onImportSignal = 0 }) {
               </div>
               <div className="rec-savings-meta">
                 <div>⏱ {result.savingsPlan.timeToGoal}</div>
-                <div>\U0001f4b0 {result.savingsPlan.fundedBy}</div>
+                <div>💰 {result.savingsPlan.fundedBy}</div>
               </div>
             </div>
           </div>
