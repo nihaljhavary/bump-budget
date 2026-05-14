@@ -375,8 +375,7 @@ export default function Dashboard({ onNavigate }) {
             </button>
             {showProfileMenu && (
               <div className="profile-dropdown">
-                <button className="profile-dropdown-item" onClick={() => { setShowProfileMenu(false); setShowAccountCentre(true) }}>Account Centre</button>
-                <button className="profile-dropdown-item" onClick={() => { setShowProfileMenu(false); setShowProfileModal(true) }}>My Profile</button>
+                <button className="profile-dropdown-item" onClick={() => { setShowProfileMenu(false); setShowAccountCentre(true) }}>My Profile</button>
                 <div className="profile-dropdown-divider" />
                 <button className="profile-dropdown-item" onClick={() => { setShowProfileMenu(false); setTab('support') }}>Support</button>
                 <button className="profile-dropdown-item" onClick={() => { setShowProfileMenu(false); setTab('faq') }}>FAQs</button>
@@ -936,7 +935,6 @@ export default function Dashboard({ onNavigate }) {
           }}
         />
       )}
-    {showProfileModal && <ProfileModal user={user} profile={profile} onClose={() => setShowProfileModal(false)} />}
     {showAccountCentre && <AccountCentreModal user={user} profile={profile} tier={tier} onClose={() => setShowAccountCentre(false)} onNavigate={onNavigate} />}
 
       {/* PRIVACY */}
