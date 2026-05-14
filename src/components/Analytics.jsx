@@ -120,6 +120,7 @@ export default function Analytics({ preferDeclared = true }) {
   const [aiText, setAiText]           = useState('')
   const [aiLoading, setAiLoading]     = useState(false)
   const [recat, setRecat]             = useState({ loading: false, result: null })
+  const [editBudget, setEditBudget]   = useState(null)   // { cat, value } when editing inline
   const [budgetMode, setBudgetMode]   = useState(() => {
     try { return localStorage.getItem('bumpBudgetMode') || 'my' } catch { return 'my' }
   })
@@ -145,6 +146,19 @@ export default function Analytics({ preferDeclared = true }) {
       }
     }).catch(console.error).finally(() => setLoading(false))
   }, [from, to, user, tier])
+
+  async function saveBudget(cat, rawValue) {
+    const amount = Math.round(parseFloat(rawValue) || 0)
+    setEditBudget(null)
+    if (amount <= 0) return
+    setUserBudgets(prev => ({ ...prev, [cat]: amount }))
+    try {
+      await supabase.from('budgets').upsert(
+        { user_id: user.id, category: cat, amount },
+        { onConflict: 'user_id,category' }
+      )
+    } catch (e) { console.error('[bump] budget save failed', e) }
+  }
 
   function handleBudgetModeChange(mode) {
     setBudgetMode(mode)
@@ -435,12 +449,35 @@ export default function Analytics({ preferDeclared = true }) {
                 {budgetRows.map(({ cat, budget, spent }) => {
                   const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0
                   const over = spent > budget
+                  const isEditing = editBudget?.cat === cat
                   return (
                     <div key={cat} className="bva-row">
                       <div className="bva-labels">
                         <span className="bva-cat">{cat}</span>
                         <span className={`bva-amt ${over ? 'over' : ''}`}>
-                          {fmt(spent)} / {fmt(budget)}
+                          {fmt(spent)}{' / '}
+                          {budgetMode === 'my' ? (
+                            isEditing ? (
+                              <input
+                                className="bva-budget-input"
+                                autoFocus
+                                defaultValue={Math.round(budget)}
+                                onBlur={e => saveBudget(cat, e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') e.target.blur()
+                                  if (e.key === 'Escape') setEditBudget(null)
+                                }}
+                              />
+                            ) : (
+                              <button
+                                className="bva-budget-btn"
+                                onClick={() => setEditBudget({ cat })}
+                                title="Click to set your budget for this category"
+                              >{fmt(budget)}</button>
+                            )
+                          ) : (
+                            fmt(budget)
+                          )}
                         </span>
                       </div>
                       <div className="bva-track">
@@ -457,6 +494,9 @@ export default function Analytics({ preferDeclared = true }) {
                   )
                 })}
               </div>
+              {budgetMode === 'my' && (
+                <p className="bva-edit-hint">Click any budget amount to edit it — changes save automatically.</p>
+              )}
             </div>
           )}
 

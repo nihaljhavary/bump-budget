@@ -430,3 +430,38 @@
   border-radius: var(--radius);
 }
 .a-section-toggle:hover { background: var(--hover-bg); }
+
+/* ── Inline budget editor ── */
+.bva-budget-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-bottom: 1px dashed var(--border);
+  transition: color 0.15s, border-color 0.15s;
+}
+.bva-budget-btn:hover {
+  color: var(--coral);
+  border-color: var(--coral);
+}
+.bva-budget-input {
+  width: 80px;
+  background: var(--input-bg);
+  border: 1px solid var(--coral);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font: inherit;
+  font-size: inherit;
+  color: var(--text);
+  text-align: right;
+}
+.bva-budget-input:focus { outline: none; }
+.bva-edit-hint {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin: 8px 0 0;
+  padding: 0 2px;
+}

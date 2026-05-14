@@ -40,3 +40,14 @@
 .is-loading { display: flex; justify-content: center; padding: 40px; }
 
 .is-income-hint { background: var(--bg-alt); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; margin: 8px 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+/* ── Income source toggle ── */
+.is-income-toggle {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+@media (max-width: 600px) {
+  .is-income-toggle { margin-left: 0; }
+}
