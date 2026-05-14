@@ -16,8 +16,8 @@
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
-  background: var(--card-bg, #1A1008);
-  border: 1px solid var(--border, #2C1F14);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 14px;
   padding: 16px;
 }
@@ -30,8 +30,8 @@
 
 .proj-input {
   width: 100%;
-  background: #120C07;
-  border: 1px solid var(--border, #2C1F14);
+  background: var(--input-bg);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px 10px 8px 22px;
   font-size: 14px;
@@ -40,7 +40,7 @@
   box-sizing: border-box;
   transition: border-color 0.2s;
 }
-.proj-input:focus { outline: none; border-color: #D85A30; }
+.proj-input:focus { outline: none; border-color: var(--coral); }
 
 /* Summary cards */
 .proj-cards {
@@ -50,8 +50,8 @@
 }
 
 .proj-card {
-  background: var(--card-bg, #1A1008);
-  border: 1px solid var(--border, #2C1F14);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 14px;
   padding: 14px;
 }
@@ -69,8 +69,8 @@
 
 /* Annual strip */
 .proj-annual-strip {
-  background: var(--card-bg, #1A1008);
-  border: 1px solid var(--border, #2C1F14);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 14px;
   padding: 14px 16px;
   display: flex;
@@ -92,8 +92,8 @@
 
 /* Chart card */
 .proj-chart-card {
-  background: var(--card-bg, #1A1008);
-  border: 1px solid var(--border, #2C1F14);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 14px;
   padding: 16px;
 }
@@ -118,7 +118,7 @@
   font-family: 'DM Sans', sans-serif;
   transition: all 0.15s;
 }
-.proj-view-btn.active { background: #D85A30; color: white; }
+.proj-view-btn.active { background: var(--coral); color: white; }
 
 .proj-chart-legend {
   display: flex;

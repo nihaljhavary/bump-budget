@@ -66,6 +66,7 @@ export default function Dashboard({ onNavigate }) {
   const [showProfileMenu, setShowProfileMenu] = useState(false)
   // Budget mode toggle: 'personal' = user-set budgets, 'ai' = AI-suggested (85% of recent avg)
   const [budgetMode, setBudgetMode] = useState('personal')
+  const [aiBudgets, setAiBudgets] = useState({})
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [showAccountCentre, setShowAccountCentre] = useState(false)
   // Real user-set budgets from Supabase (set in the Analytics tab).
@@ -95,6 +96,16 @@ export default function Dashboard({ onNavigate }) {
     loadConsultRequests()
     loadBudgets()
   }, [selectedMonth])
+
+  // Load AI budgets on mount (user login) — rolling 12-month history
+  useEffect(() => {
+    if (user?.id) loadAiBudgets()
+  }, [user?.id, profile?.net_income])
+
+  // Re-load AI budgets whenever new transactions are imported
+  useEffect(() => {
+    if (importSignal > 0 && user?.id) loadAiBudgets()
+  }, [importSignal])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -194,18 +205,28 @@ export default function Dashboard({ onNavigate }) {
   const catTotals = ledger.catTotals
   const maxCat = Math.max(...Object.values(catTotals), 1)
 
-  // AI-suggested budget: 85% of this month's actual spend per category.
-  // Used when budgetMode === 'ai'. Gives a realistic stretch target.
-  const aiSuggestedBudgets = useMemo(() => {
-    const suggested = {}
-    for (const [cat, total] of Object.entries(catTotals)) {
-      if (total > 0) suggested[cat] = Math.round(total * 0.85)
+  // AI-suggested budgets: 85% of rolling 12-month average per category.
+  // Loaded async on mount and re-loaded after each import. Far more accurate
+  // than a single-month snapshot because one exceptional month won't skew targets.
+  async function loadAiBudgets() {
+    if (!user) return
+    try {
+      const recentTxns = await fetchRecentMonths(user.id, 12)
+      const hist = buildLedgerSummary(recentTxns, profile, { preferDeclared: false, dedup: true })
+      const mc = Math.max(hist.monthCount, 1)
+      const suggested = {}
+      for (const [cat, total] of Object.entries(hist.catTotals)) {
+        const avgMonthly = total / mc
+        if (avgMonthly > 0) suggested[cat] = Math.round(avgMonthly * 0.85)
+      }
+      setAiBudgets(suggested)
+    } catch (e) {
+      console.error('[bump] AI budget load failed:', e)
     }
-    return suggested
-  }, [catTotals])
+  }
 
   // Active budgets depend on mode — personal (DB-set) or AI-suggested
-  const activeBudgets = budgetMode === 'ai' ? aiSuggestedBudgets : userBudgets
+  const activeBudgets = budgetMode === 'ai' ? aiBudgets : userBudgets
 
   // Savings drawdown detection
   const EXCEPTIONAL_CATS_OV = new Set(['Gifts', 'Travel', 'Entertainment', 'Clothing', 'Home & Garden'])
@@ -1084,14 +1105,14 @@ function ConsultRequestCard({ request, loading, onRespond }) {
       </label>
       <div className="consult-request-actions">
         <button
-          className="consult-btn-approve"
+          className="consult-approve-btn"
           disabled={loading}
           onClick={() => onRespond(request.id, 'approved', podcastConsent)}
         >
           {loading ? '...' : 'Approve access'}
         </button>
         <button
-          className="consult-btn-deny"
+          className="consult-deny-btn"
           disabled={loading}
           onClick={() => onRespond(request.id, 'denied')}
         >

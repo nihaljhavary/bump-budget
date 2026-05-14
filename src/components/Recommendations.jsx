@@ -4,6 +4,9 @@ import { useAuth } from '../context/AuthContext'
 import { fetchRecentMonths } from '../services/transactions'
 import { buildLedgerSummary } from '../utils/ledger'
 import './Recommendations.css'
+import Projections from './Projections'
+import { useTier } from '../context/TierContext'
+import LockedFeature from './LockedFeature'
 
 const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
 
@@ -121,6 +124,8 @@ export default function Recommendations({ onImportSignal = 0 }) {
   const [savedDate, setSavedDate] = useState(null)
   const [dataLoaded, setDataLoaded] = useState(false)
   const [monthCount, setMonthCount] = useState(1)
+  const [showProjections, setShowProjections] = useState(false)
+  const { canProjections } = useTier()
 
   // Load spending data (runs on mount and after each import signal)
   const loadData = useCallback(async () => {
@@ -502,6 +507,24 @@ export default function Recommendations({ onImportSignal = 0 }) {
             </div>
           </div>
         )}
+
+        {/* DCF Projections — expandable section */}
+        <div className="rec-section" style={{ padding: 0, overflow: 'hidden' }}>
+          <button
+            className="rec-section-toggle"
+            onClick={() => setShowProjections(v => !v)}
+          >
+            <span className="rec-section-toggle-title">Financial Projections</span>
+            <span style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 'auto' }}>
+              {showProjections ? '▲ Hide' : '▼ Show'}
+            </span>
+          </button>
+          {showProjections && (
+            canProjections
+              ? <div style={{ padding: '0 16px 16px' }}><Projections /></div>
+              : <LockedFeature locked feature="projections" message="Projections are available on the Growth plan and above." />
+          )}
+        </div>
       </div>
     )
   }

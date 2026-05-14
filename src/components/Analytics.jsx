@@ -7,6 +7,7 @@ import { buildAIPayload, buildTopMerchants } from '../utils/financials'
 import { analyseSpending, recategoriseAll } from '../services/ai'
 import { supabase } from '../supabase'
 import './Analytics.css'
+import IncomeStatement from './IncomeStatement'
 
 const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
 
@@ -110,6 +111,7 @@ export default function Analytics({ preferDeclared = true }) {
   const tier = useTier()
 
   const [period, setPeriod]           = useState('3m')
+  const [showIncomeStatement, setShowIncomeStatement] = useState(false)
   const [customFrom, setCustomFrom]   = useState('')
   const [customTo, setCustomTo]       = useState('')
   const [txns, setTxns]               = useState([])
@@ -470,6 +472,24 @@ export default function Analytics({ preferDeclared = true }) {
               ? <div className="suggest-msg">{aiText}</div>
               : <p className="ai-hint-text">Get a merchant-level AI read of your spending patterns, what changed, and what to act on.</p>
             }
+          </div>
+
+          {/* Income Statement — expandable section */}
+          <div className="a-card" style={{ padding: 0, overflow: 'hidden' }}>
+            <button
+              className="a-section-toggle"
+              onClick={() => setShowIncomeStatement(v => !v)}
+            >
+              <span className="a-card-title" style={{ fontSize: '14px' }}>Income Statement</span>
+              <span style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 'auto' }}>
+                {showIncomeStatement ? '▲ Hide' : '▼ Show'}
+              </span>
+            </button>
+            {showIncomeStatement && (
+              <div style={{ padding: '0 16px 16px' }}>
+                <IncomeStatement />
+              </div>
+            )}
           </div>
         </>
       )}

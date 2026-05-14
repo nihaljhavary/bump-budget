@@ -415,3 +415,18 @@
   border: 1px solid var(--border);
   line-height: 1.5;
 }
+
+/* ── Income Statement toggle ── */
+.a-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 14px 16px;
+  cursor: pointer;
+  text-align: left;
+  border-radius: var(--radius);
+}
+.a-section-toggle:hover { background: var(--hover-bg); }
