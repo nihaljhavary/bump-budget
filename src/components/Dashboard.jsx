@@ -6,6 +6,7 @@ import { fetchTransactions, fetchTransactionsByMonth, fetchRecentMonths, addTran
 import { buildAIPayload, buildTopMerchants } from '../utils/financials'
 import { buildLedgerSummary, getCalendarMonthRange } from '../utils/ledger'
 import { parseTransaction, analyseSpending, recategoriseAll } from '../services/ai'
+import { detectRecurring, recurringToContext } from '../utils/recurring'
 import ImportTransactions from './ImportTransactions'
 import Analytics from './Analytics'
 import Recommendations from './Recommendations'
@@ -348,13 +349,16 @@ export default function Dashboard({ onNavigate }) {
     setAiLoading(true)
     setAiText('')
     try {
-      // Build merchant summary from spend transactions for richer AI context
+      // Build merchant summary + recurring obligation context for richer AI analysis
       const topMerchants = buildTopMerchants(spendTxns, 15)
+      const recurring = detectRecurring(allowedTransactions)
+      const recurringContext = recurringToContext(recurring, { income: ledger.income })
       const payload = buildAIPayload(allowedTransactions, profile, 200, {
         mode: 'overview',
         budgets: activeBudgets,
         monthlyData: ledger.monthlyData,
         topMerchants,
+        recurringContext,
         effectiveIncome: ledger.income,
         incomeResolutionMode: ledger.incomeResolutionMode,
         periodLabel: monthDisplayLabel(),

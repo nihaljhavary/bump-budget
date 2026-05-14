@@ -38,10 +38,15 @@ export async function analyseSpending(payload) {
     declaredIncome:   payload.declaredIncome   || 0,
     profileContext:   payload.profileContext   || null,
   }
-  if (payload.budgets)          body.budgets          = payload.budgets
-  if (payload.recurringContext) body.recurringContext = payload.recurringContext
-  if (payload.monthlyData)      body.monthlyData      = payload.monthlyData
-  if (payload.mode)             body.mode             = payload.mode
+  if (payload.budgets)              body.budgets              = payload.budgets
+  if (payload.recurringContext)     body.recurringContext     = payload.recurringContext
+  if (payload.monthlyData)          body.monthlyData          = payload.monthlyData
+  if (payload.mode)                 body.mode                 = payload.mode
+  if (payload.topMerchants)         body.topMerchants         = payload.topMerchants
+  if (payload.incomeResolutionMode) body.incomeResolutionMode = payload.incomeResolutionMode
+  if (payload.effectiveIncome != null) body.effectiveIncome  = payload.effectiveIncome
+  if (payload.periodDays != null)   body.periodDays           = payload.periodDays
+  if (payload.periodLabel)          body.periodLabel          = payload.periodLabel
 
   const res = await fetch('/.netlify/functions/analyse', {
     method: 'POST',

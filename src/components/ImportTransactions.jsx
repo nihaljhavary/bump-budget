@@ -21,6 +21,7 @@ const BANKS = [
   { id: 'capitec',      label: 'Capitec',        logo: '🟣' },
   { id: 'discovery',    label: 'Discovery Bank', logo: '💎' },
   { id: 'tyme',         label: 'TymeBank',       logo: '🟡' },
+  { id: 'investec',     label: 'Investec',       logo: '🔷' },
   { id: 'generic',      label: 'Other / Generic',logo: '📄' },
 ]
 
@@ -136,13 +137,22 @@ function parseRows(rows, bankId) {
       debitCol = findCol(headers, 'debit')
       creditCol= findCol(headers, 'credit')
       break
+    case 'investec':
+      // Investec Private Bank: Date, Transaction Details, Amount (signed), Balance
+      // Also handles: Date, Narrative, Debit, Credit variants
+      dateCol  = findCol(headers, 'date', 'value date', 'transaction date')
+      descCol  = findCol(headers, 'transaction details', 'description', 'narrative', 'details', 'reference')
+      amtCol   = findCol(headers, 'amount', 'transaction amount')
+      debitCol = findCol(headers, 'debit', 'debit amount')
+      creditCol= findCol(headers, 'credit', 'credit amount')
+      break
     default:
-      // Auto-detect
-      dateCol  = findCol(headers, 'date', 'transaction date', 'txn date')
-      descCol  = findCol(headers, 'description', 'narrative', 'details', 'reference', 'transaction')
-      amtCol   = findCol(headers, 'amount')
-      debitCol = findCol(headers, 'debit')
-      creditCol= findCol(headers, 'credit')
+      // Auto-detect — try common SA bank column name variants
+      dateCol  = findCol(headers, 'date', 'transaction date', 'value date', 'txn date', 'posting date')
+      descCol  = findCol(headers, 'description', 'transaction details', 'narrative', 'details', 'reference', 'beneficiary', 'transaction description', 'transaction')
+      amtCol   = findCol(headers, 'amount', 'transaction amount', 'rand amount')
+      debitCol = findCol(headers, 'debit', 'debit amount', 'debits')
+      creditCol= findCol(headers, 'credit', 'credit amount', 'credits')
   }
 
   typeCol = typeCol || findCol(headers, 'type', 'transaction type', 'transaction code')
@@ -559,6 +569,7 @@ export default function ImportTransactions({ onImportComplete }) {
           {bank === 'absa'     && <p>Online Banking → My Accounts → Statement → Download Excel</p>}
           {bank === 'standard' && <p>Internet Banking → Accounts → Statement → Export</p>}
           {bank === 'capitec'  && <p>Capitec app → Transactions → Export → CSV</p>}
+          {bank === 'investec' && <p>Online Banking → Accounts → Transaction History → Export → CSV or Excel</p>}
           {bank === 'generic'  && <p>Any CSV with Date, Description, and Amount columns will work</p>}
         </div>
       </div>
