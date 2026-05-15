@@ -153,7 +153,7 @@ If the branch has diverged, user runs: `git push --force origin dev`
 - Admin Excel export of user data
 - Admin analytics dashboards (user growth, revenue, AI usage stats)
 - Free tier: more explicit upgrade prompts on budget/recommendations tabs
-- parse-bulk-transactions.js returns `{ transactions }` but ImportTransactions.jsx reads `data.results` — AI categorisation during import falls back to "Other" silently. Fix: change client to read `data.transactions`.
+- ~~parse-bulk-transactions.js / ImportTransactions.jsx data.results mismatch~~ — **Fixed**: client now reads `data.transactions`.
 
 ---
 
@@ -197,6 +197,12 @@ Both components are self-contained (load their own data). They are embedded as e
 
 ### AI prompt design (merchant-aware)
 `buildInsightPrompt` in `_context.js` now instructs the AI to name specific merchants and exact rand amounts. Generic statements ("you spent a lot on dining") are anti-patterns. The context string includes `MERCHANT BREAKDOWN BY CATEGORY` with per-merchant totals for Eating out, Groceries, Entertainment, Clothing, Transport, Health — so the AI can produce outputs like "Uber Eats at R1 200, Vida e Caffe at R800".
+---
+
+## Auth edge cases (2026-05)
+- **`acceptTerms` in Auth.jsx** uses `.upsert()` (not `.update()`) so new users with no profile row still get `terms_accepted_at` saved. `.update()` on a non-existent row is a silent no-op.
+- **Legacy user onboarding bypass in App.jsx** — `onboarding_complete` was added with `default false`, so all pre-migration profiles have it as false. `ProtectedApp` detects "legacy users" (has `terms_accepted_at` + `full_name` but `onboarding_complete = false`) and routes them straight to Dashboard, then silently calls `updateProfile({ onboarding_complete: true })` to heal the DB. Genuinely new users (no `full_name`) still go through Onboarding correctly.
+
 ---
 
 ## Account Centre architecture (2026-05)
