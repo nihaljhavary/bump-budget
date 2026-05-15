@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useVersionCheck } from './hooks/useVersionCheck'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
@@ -82,8 +82,17 @@ function ResetPassword({ onDone }) {
 }
 
 function ProtectedApp() {
-  const { user, profile, loading, recoveryMode, clearRecoveryMode } = useAuth()
+  const { user, profile, loading, recoveryMode, clearRecoveryMode, updateProfile } = useAuth()
   const [page, setPage] = useState('dashboard')
+
+  const isAdmin = profile?.is_admin === true || profile?.role === 'admin'
+  // Legacy user auto-heal: accounts created before onboarding_complete was tracked have
+  // full_name + terms_accepted_at set but onboarding_complete = false. Treat them as done
+  // and silently update the DB so they aren't stranded on the onboarding screen.
+  const isLegacyUser = !!(profile?.terms_accepted_at && profile?.full_name && !profile?.onboarding_complete)
+  useEffect(() => {
+    if (isLegacyUser && user?.id) updateProfile({ onboarding_complete: true })
+  }, [isLegacyUser, user?.id])
 
   if (loading) return <Loader />
   // Password recovery takes priority — user clicked reset link
@@ -91,8 +100,7 @@ function ProtectedApp() {
   if (!user) return <Navigate to="/" replace />
   if (!profile?.terms_accepted_at) return <Auth termsOnly />
 
-  const isAdmin = profile?.is_admin === true || profile?.role === 'admin'
-  if (profile && !profile.onboarding_complete && !isAdmin) {
+  if (profile && !profile.onboarding_complete && !isAdmin && !isLegacyUser) {
     return <Onboarding onComplete={() => {}} />
   }
 
