@@ -80,7 +80,8 @@ If the branch has diverged, user runs: `git push --force origin dev`
 | `LandingPage.jsx` | Public landing page with features + pricing |
 | `LockedFeature.jsx` | Blur + lock overlay for gated features. `<LockedFeature locked feature="analytics">` |
 | `Recommendations.jsx` | Budget recommendations |
-| `ImportTransactions.jsx` | CSV/Excel statement import |
+| `ImportTransactions.jsx` | CSV/Excel statement import. Banks: FNB, Nedbank, ABSA, Standard, Capitec, Discovery, TymeBank, Investec, Generic. |
+| `AccountCentre.jsx` | Account Centre modal (extracted from Dashboard.jsx). Sections: Profile, Subscription, Uploads, Export, Data/Account. Opened via avatar menu. |
 | `BookConsult.jsx` | Consultation booking |
 
 ### src/context/
@@ -92,6 +93,7 @@ If the branch has diverged, user runs: `git push --force origin dev`
 ### src/services/
 - `transactions.js` — `fetchTransactions`, `fetchTransactionsByMonth`, `fetchTransactionsByRange`, `addTransaction`, `updateTransaction`, `deleteTransaction`, `recategorizeMatchingTransactions`
 - `ai.js` — `parseTransaction`, `analyseSpending`, `recategoriseAll`, `enrichMerchant`
+- `src/utils/recurring.js` — `detectRecurring(transactions)`: finds recurring payments by merchant across 2+ months. `recurringToContext(recurring, {income})`: compact string for AI context.
 
 ### netlify/functions/
 | File | Purpose |
@@ -113,6 +115,9 @@ If the branch has diverged, user runs: `git push --force origin dev`
 | `sa-categorise.js` | Shared SA merchant rules + `saPreCategory()`, `cleanForAI()`, `isSpendTransaction()`. Imported by recategorise-all + parse functions. |
 | `_context.js` | Shared AI context builder. Imported by analyse.js. Prefixed `_` so Netlify ignores it as an endpoint. |
 | `enrich-merchant.js` | Single merchant AI enrichment fallback. |
+| `manage-uploads.js` | GET: list import batches grouped by import_batch_id. POST {action:'delete',batchId}: cascade-deletes all transactions for a batch. |
+| `manage-subscription.js` | POST {action:'cancel'\|'downgrade'\|'reactivate'}: self-service Paystack subscription management. Calls Paystack disable endpoint + writes cancel_at_period_end + scheduled_plan to profiles. |
+| `delete-account.js` | POST {confirmation:'DELETE'}: cascade-deletes all user data (transactions, rules, profile) then removes auth.users entry. Irreversible. |
 
 ---
 
@@ -136,6 +141,9 @@ If the branch has diverged, user runs: `git push --force origin dev`
 - `consultant_access` — id, user_id, status, granted_at, podcast_consent
 - `budget_chat_usage` — id, user_id, question_preview, created_at
 - `bookings` — consultation bookings
+- `transactions` columns that matter: `import_batch_id` (UUID, nullable) — links transactions to an upload batch; `raw_merchant` — original bank description; `transaction_hash` — dedup fingerprint.
+- `profiles` subscription columns: `paystack_sub_code`, `paystack_cust_code`, `next_billing_date`, `billing_cycle_start`, `billing_cycle_end`, `cancel_at_period_end` (bool), `scheduled_plan` (text) — plan to apply when current sub disables.
+- `subscription_events` — log of all Paystack events and manual subscription changes.
 
 ---
 
@@ -145,6 +153,7 @@ If the branch has diverged, user runs: `git push --force origin dev`
 - Admin Excel export of user data
 - Admin analytics dashboards (user growth, revenue, AI usage stats)
 - Free tier: more explicit upgrade prompts on budget/recommendations tabs
+- parse-bulk-transactions.js returns `{ transactions }` but ImportTransactions.jsx reads `data.results` — AI categorisation during import falls back to "Other" silently. Fix: change client to read `data.transactions`.
 
 ---
 
@@ -188,3 +197,35 @@ Both components are self-contained (load their own data). They are embedded as e
 
 ### AI prompt design (merchant-aware)
 `buildInsightPrompt` in `_context.js` now instructs the AI to name specific merchants and exact rand amounts. Generic statements ("you spent a lot on dining") are anti-patterns. The context string includes `MERCHANT BREAKDOWN BY CATEGORY` with per-merchant totals for Eating out, Groceries, Entertainment, Clothing, Transport, Health — so the AI can produce outputs like "Uber Eats at R1 200, Vida e Caffe at R800".
+---
+
+## Account Centre architecture (2026-05)
+
+### Navigation
+Avatar menu → `setShowAccountCentre(true)` → renders `<AccountCentre />` modal over content.
+AccountCentre is a standalone component (`src/components/AccountCentre.jsx`) — not inline in Dashboard.jsx.
+
+### Sections
+- **Profile** — financial profile fields (name, income, debit orders, savings goal, bank). Saves via `updateProfile()` from AuthContext.
+- **Subscription** — reads tier from TierContext. Paid users see self-service cancel/downgrade buttons that call `manage-subscription.js`. Free users see upgrade plan cards + "contact support".
+- **Uploads** — calls `manage-uploads.js` (GET) to list batches grouped by `import_batch_id`. Delete calls POST with `{action:'delete',batchId}`. Amounts stored as cents in DB — divide by 100 for display.
+- **Export** — client-side CSV and XLSX export using the xlsx library. Fetches transactions directly from Supabase with date/category filters. XLSX has two sheets: Transactions + Category Summary.
+- **Data/Account** — 3-step account deletion: warn → type "DELETE" → call `delete-account.js`.
+
+### Subscription lifecycle
+`manage-subscription.js` cancel/downgrade flow:
+1. Calls Paystack `/subscription/{code}` to get `email_token`
+2. Calls Paystack `POST /subscription/disable` with code + token
+3. Writes `cancel_at_period_end=true` + `scheduled_plan` to profiles
+4. TierContext reads `cancel_at_period_end` — keeps current plan active until billing cycle ends
+5. When Paystack fires `subscription.disable` webhook, `paystack-webhook.js` reads `scheduled_plan` from profiles: if set (downgrade), applies that plan; otherwise reverts to free.
+
+### Upload management
+`manage-uploads.js` groups transactions by `import_batch_id` in the function (Supabase REST lacks GROUP BY).
+Delete scopes to `user_id` + `import_batch_id` — safe, cannot delete other users' data.
+Manual transactions (no `import_batch_id`) are never affected.
+
+### Account deletion safety
+`delete-account.js` requires `{ confirmation: 'DELETE' }` in POST body.
+Deletes all tables in safe order, then `profiles`, then `auth.users`.
+Cancels active Paystack subscription before deletion (best-effort, non-fatal if fails).
