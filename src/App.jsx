@@ -89,7 +89,10 @@ function ProtectedApp() {
   // Legacy user auto-heal: accounts created before onboarding_complete was tracked have
   // full_name + terms_accepted_at set but onboarding_complete = false. Treat them as done
   // and silently update the DB so they aren't stranded on the onboarding screen.
-  const isLegacyUser = !!(profile?.terms_accepted_at && profile?.full_name && !profile?.onboarding_complete)
+  // Legacy user: accepted terms + has ANY profile data = they've already set up their account.
+  // full_name alone isn't reliable — some accounts were created before all fields were required.
+  const hasProfileData = !!(profile?.full_name || profile?.bank || profile?.usage_type || profile?.gross_income || profile?.net_income)
+  const isLegacyUser = !!(profile?.terms_accepted_at && !profile?.onboarding_complete && hasProfileData)
   useEffect(() => {
     if (isLegacyUser && user?.id) updateProfile({ onboarding_complete: true })
   }, [isLegacyUser, user?.id])
