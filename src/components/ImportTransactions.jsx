@@ -280,11 +280,11 @@ export default function ImportTransactions({ onImportComplete }) {
 
       const data = await res.json()
       // Backend returns { results: [...] } — guard against malformed/empty response
-      const rawResults = Array.isArray(data.results) ? data.results : []
+      const rawResults = Array.isArray(data.transactions) ? data.transactions : []
       if (rawResults.length === 0) {
         // Fallback: show parsed rows with Other so user can adjust manually
         setCategorised(txns.map((t, i) => ({ ...t, id: i, category: t.is_transfer ? 'Transfer' : t.is_income ? 'Income' : 'Other', include: true })))
-        if (!data.results) setError('Categorisation returned an unexpected response — categories set to Other. You can adjust before importing.')
+        if (!data.transactions) setError('Categorisation returned an unexpected response — categories set to Other. You can adjust before importing.')
         return
       }
       setCategorised(rawResults.map((t, i) => {
