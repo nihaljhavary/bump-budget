@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { CATEGORIES, SA_RULES, saPreCategory, normalizeDescription, cleanForAI } from './sa-categorise.js'
+import { CATEGORIES, SA_RULES, saPreCategory, normalizeDescription } from './sa-categorise.js'
 
 const SYSTEM_PROMPT = `You are a financial transaction categorisation engine for bump. (BumpBudget), a South African personal finance app. Your ONLY job is to assign categories to bank transactions. You must never do anything else.`
 
@@ -154,13 +154,7 @@ export async function handler(event) {
   let claudeCategorised = []
 
   if (needsClaude.length > 0) {
-    // Pre-clean descriptions: strip payment prefixes, phone numbers, location noise.
-    // Claude receives "Vida e Caffe" not "YOCO*VIDA E CAFFE 021555 CLAREMONT V&A".
-    const needsClaudeClean = needsClaude.map(t => ({
-      ...t,
-      _clean: cleanForAI(t.description),
-    }))
-    const chunks = chunk(needsClaudeClean, 150)
+    const chunks = chunk(needsClaude, 150)
 
     const buildPrompt = (chunkItems) => `You are categorising South African bank transactions for a personal budget app.
 
@@ -188,51 +182,40 @@ Rules:
 - Airbnb/hotel/flights/Kulula/FlySafair → "Travel"
 - Gift cards/flowers/charity donations → "Gifts"
 - Howler/Computicket/cinema/casino → "Entertainment"
-- Descriptions are pre-cleaned (prefixes/noise stripped) — categorise from the merchant name. Small businesses: infer from name (barber→Health, hardware→Home & Garden, boutique→Clothing etc.)
+- Yoco* payments are small businesses — infer from context if possible, else "Other"
 
 Respond with ONLY a raw JSON array — no markdown, no explanation:
 [{"idx": number, "category": "CategoryName"}, ...]
 
 Transactions:
-${JSON.stringify(chunkItems.map(t => ({ idx: t.idx, description: t._clean, amount: t.amount })))}`
-
-    const callClaude = async (items) => {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': process.env.ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 4000,
-          system: SYSTEM_PROMPT,
-          messages: [{ role: 'user', content: buildPrompt(items) }]
-        })
-      })
-      const data = await res.json()
-      const text = (data.content?.[0]?.text || '[]').trim()
-        .replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
-      return JSON.parse(text)
-    }
+${JSON.stringify(chunkItems.map(t => ({ idx: t.idx, description: t.description, amount: t.amount })))}`
 
     const processChunk = async (chunkItems) => {
       try {
-        return await callClaude(chunkItems)
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': process.env.ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 4000,
+            system: SYSTEM_PROMPT,
+            messages: [{ role: 'user', content: buildPrompt(chunkItems) }]
+          })
+        })
+        const data = await res.json()
+        const text = data.content?.[0]?.text || '[]'
+        try {
+          const clean = text.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+          return JSON.parse(clean)
+        } catch {
+          return chunkItems.map(t => ({ idx: t.idx, category: 'Other' }))
+        }
       } catch {
-        // Batch parse failed — retry each transaction individually to avoid
-        // bulk-assigning 'Other' to an entire chunk on one bad response.
-        console.error('[parse-bulk] Chunk parse failed, retrying individually')
-        const singles = await Promise.all(chunkItems.map(async (t) => {
-          try {
-            const result = await callClaude([t])
-            return result[0] || { idx: t.idx, category: 'Other' }
-          } catch {
-            return { idx: t.idx, category: 'Other' }
-          }
-        }))
-        return singles
+        return chunkItems.map(t => ({ idx: t.idx, category: 'Other' }))
       }
     }
 
@@ -275,6 +258,6 @@ ${JSON.stringify(chunkItems.map(t => ({ idx: t.idx, description: t._clean, amoun
   return {
     statusCode: 200,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ transactions: result }),
+    body: JSON.stringify({ results: result })
   }
 }

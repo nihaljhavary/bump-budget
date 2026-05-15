@@ -16,7 +16,7 @@ export async function handler(event) {
     return { statusCode: 400, body: JSON.stringify({ error: 'Invalid JSON' }) }
   }
 
-  const { answers, spendingData, budgets, monthCount = 1 } = body
+  const { answers, spendingData, budgets } = body
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   const authHeader = event.headers['authorization'] || event.headers['Authorization'] || ''
@@ -50,9 +50,6 @@ export async function handler(event) {
   const hasEmergencyFund = (answers.emergencyFund || '').includes('3+')
 
   // ── Build prompt ──────────────────────────────────────────────────────────
-  // Build human-readable label based on actual month count uploaded
-  const avgLabel = monthCount >= 12 ? '12-month rolling' : monthCount <= 1 ? '1-month' : `${monthCount}-month rolling`
-
   const spendLines = spendingData
     ? Object.entries(spendingData)
         .sort(([,a],[,b]) => b - a)
@@ -90,7 +87,7 @@ COMPUTED FINANCIAL SNAPSHOT:
 - Savings rate: ${savingsRate}%${savingsGoal > 0 ? (monthlySurplus >= savingsGoal ? ' (meeting goal)' : ` (short of R${savingsGoal.toLocaleString('en-ZA')} goal by R${Math.round(savingsGoal - monthlySurplus).toLocaleString('en-ZA')})`) : ''}
 - 3-month emergency fund target: ${emergencyFundTarget > 0 ? 'R' + emergencyFundTarget.toLocaleString('en-ZA') : 'unknown'}${!hasEmergencyFund && emergencyFundTarget > 0 && monthlySurplus > 0 ? ` (${Math.ceil(emergencyFundTarget / monthlySurplus)} months to build at current surplus)` : ''}
 
-ACTUAL MONTHLY SPENDING (${avgLabel} average, budget vs actual):
+ACTUAL MONTHLY SPENDING (3-month average, budget vs actual):
 ${spendLines}
 
 CURRENT BUDGETS SET:

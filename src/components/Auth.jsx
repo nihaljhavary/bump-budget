@@ -45,7 +45,8 @@ export default function Auth({ termsOnly = false }) {
     try {
       const { error: err } = await supabase
         .from('profiles')
-        .upsert({ id: user.id, terms_accepted_at: new Date().toISOString(), terms_version: TERMS_VERSION }, { onConflict: 'id' })
+        .update({ terms_accepted_at: new Date().toISOString(), terms_version: TERMS_VERSION })
+        .eq('id', user.id)
       if (err) throw err
       await refreshProfile()
     } catch {

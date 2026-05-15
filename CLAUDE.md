@@ -213,10 +213,10 @@ AccountCentre is a standalone component (`src/components/AccountCentre.jsx`) —
 
 ### Sections
 - **Profile** — financial profile fields (name, income, debit orders, savings goal, bank). Saves via `updateProfile()` from AuthContext.
-- **Subscription** — reads tier from TierContext. Paid users see self-service cancel/downgrade buttons that call `manage-subscription.js`. Free users see upgrade plan cards + "contact support".
-- **Uploads** — calls `manage-uploads.js` (GET) to list batches grouped by `import_batch_id`. Delete calls POST with `{action:'delete',batchId}`. Amounts stored as cents in DB — divide by 100 for display.
-- **Export** — client-side CSV and XLSX export using the xlsx library. Fetches transactions directly from Supabase with date/category filters. XLSX has two sheets: Transactions + Category Summary.
-- **Data/Account** — 3-step account deletion: warn → type "DELETE" → call `delete-account.js`.
+- **Subscription** — reads tier from TierContext. Shows billing cycle dates (`billingCycleStart`, `billingCycleEnd` from TierContext subscription object). Paid users see self-service cancel/downgrade buttons that call `manage-subscription.js`. Pending cancel shows "Undo cancellation" link. Pending downgrade shows "Undo downgrade" link. Both call `reactivate` action. Free users see upgrade plan cards + "contact support".
+- **Uploads** — calls `manage-uploads.js` (GET) to list batches grouped by `import_batch_id`. Delete calls POST with `{action:'delete',batchId}`. After delete, calls `onDataChange()` prop to reload Dashboard transactions + bump `importSignal`. Amounts stored as cents in DB — divide by 100 for display.
+- **Export** — client-side CSV and XLSX export using the xlsx library + `detectRecurring`. Fetches transactions directly from Supabase with date/category filters. XLSX has **three sheets**: Transactions, Category Summary, Recurring (from `detectRecurring(rows)` — no separate fetch needed, runs on the same rows).
+- **Data/Account** — 3-step account deletion: warn → I understand → type "DELETE" → call `delete-account.js`. Warning text explicitly mentions subscription cancellation and no refund.
 
 ### Subscription lifecycle
 `manage-subscription.js` cancel/downgrade flow:
@@ -230,6 +230,7 @@ AccountCentre is a standalone component (`src/components/AccountCentre.jsx`) —
 `manage-uploads.js` groups transactions by `import_batch_id` in the function (Supabase REST lacks GROUP BY).
 Delete scopes to `user_id` + `import_batch_id` — safe, cannot delete other users' data.
 Manual transactions (no `import_batch_id`) are never affected.
+`onDataChange` prop on `<AccountCentre>` (passed from Dashboard): called after batch delete → `loadTransactions() + setImportSignal(s => s+1)`. Without this, Dashboard analytics don't refresh after upload deletion.
 
 ### Account deletion safety
 `delete-account.js` requires `{ confirmation: 'DELETE' }` in POST body.
@@ -251,3 +252,49 @@ Patterns added this session — insert BEFORE running: online grocery ordering (
 
 ### Recurring obligations UI (2026-05)
 `recurring` is computed as a `useMemo` from `allowedTransactions` in Dashboard.jsx (not re-computed in `runAnalysis`). Overview tab shows a **Recurring Obligations panel** above the AI panel — top 6 recurring merchants with category badge, burden % of income, and /mo amount. `isObligation` items (Housing, Insurance, Utilities, Fees & Charges, Subscriptions) shown first; `habitual` items (Groceries, Fuel, Transport, Education, Health) shown with reduced opacity. Total burden % displayed in panel header when income > 0.
+
+---
+
+## Scenario Planning engine (2026-05)
+
+### Architecture overview
+`Projections.jsx` evolved from a 12-month cash-flow chart into a full Scenario Planning engine. Three modes: **Current Path** (existing behaviour), **Optimised Path** (10% variable reduction), **Custom Scenario** (user life events). All three modes share the same deterministic `buildYearModel()` function — only the inputs differ. No AI touches any financial calculation.
+
+### buildYearModel() — deterministic financial engine
+Pure function in `Projections.jsx`. Inputs: `netIncomeMonthly`, `fixedMonthly`, `variableMonthly`, `startingSavings`, `assumptions`, `events[]`, `varReduction`, `horizonYears`. Per-year arithmetic:
+- `annualIncome = netIncomeMonthly × 12 × (1 + salaryGrowth/100)^i`
+- `annualFixed = fixedMonthly × 12 × (1 + inflation/100)^i`
+- `annualVariable = variableMonthly × 12 × inflationFactor × varReduction`
+- `investmentGrowth = max(balance, 0) × investmentReturn/100` (compound on running balance)
+- `freeCashFlow = annualIncome + eventIncome − annualFixed − annualVariable − eventExpense`
+- `balance += freeCashFlow + investmentGrowth`
+
+Returns `rows[]` with: `year, annualIncome, eventIncome, investmentGrowth, annualFixed, annualVariable, eventExpense, freeCashFlow, netWorth`.
+
+**Critical rule:** Never replace this engine with AI-generated numbers. The comment `// No AI involved` at the top of the function is intentional.
+
+### Financial event architecture
+Events are plain objects: `{ type, year, amount, income: bool, monthly: bool, description, id }`. `income: true` = adds to cash flow; `false` = subtracts. `monthly: true` = amount × 12 for the year. Events are filtered by `Number(e.year) === year` in the engine loop — they apply once in the named year only. Supported types: `salary_change`, `bonus`, `vehicle`, `property`, `school_fees`, `debt_payoff`, `expense`, `income`. Carry-forward salary changes (permanent raises) would require mutating the base `netIncomeMonthly` across subsequent years — not yet implemented; model as recurring yearly events for now.
+
+### Assumption architecture
+State: `{ salaryGrowth: 5, inflation: 6, investmentReturn: 8 }` (all percentages). Defaults are conservative SA-realistic values. User can override via collapsible panel. All three year models recompute on any assumption change via `useMemo`.
+
+### What was preserved unchanged
+- `loadTransactions()`, tier filtering, `fetchTransactionsByRange` — unchanged.
+- `buildLedgerSummary` usage and `avgVariableSpend` / `monthlyIncome` derivation — unchanged.
+- 12-month monthly savings balance chart (`ProjectionChart`) — extended to accept optional `customPath` third line (purple, dashed), but existing two-path rendering logic is identical.
+- `projections.current` and `projections.optimised` monthly arrays — unchanged computation.
+- Annual strip (annual savings + months-to-goal) — unchanged.
+- `proj-cards`, `proj-annual-strip`, `proj-scenario-card` CSS classes — unchanged.
+
+### Year-by-year table
+`YearlyTable` component renders an 8-row × N-year table. Left column is `position: sticky; left: 0` so metric labels stay visible on horizontal scroll. Wrapper is `overflow-x: auto` with `-webkit-overflow-scrolling: touch` for mobile. `min-width: 560px` on the table forces scroll on narrow screens. Row types: `income` (no highlight), `expense` (faint red bg), `net` (faint green bg), `networth` (bold, faint coral bg). Zero-value income/expense rows show `—` to avoid noise.
+
+### Charts
+`YearChart` component: SVG line chart of net worth over years, same SVG rendering pattern as `ProjectionChart`. All three scenario paths rendered (current = coral solid, optimised = green dashed, custom = purple dashed). Labels use year integers not month strings.
+
+### Recommendations integration
+`Recommendations.jsx` now imports `detectRecurring` from `../utils/recurring`. After `buildLedgerSummary` in `loadData()`, it sums `isObligation` median amounts into `recurringMonthly` state. This is passed as `recurringMonthly` prop to `<Projections />`, which uses it to pre-fill the fixed obligations input (falls back to `profile.monthly_debit_orders` if no recurring detected). This wires real statement-detected obligations into the projection base.
+
+### Component prop
+`Projections` now accepts optional `recurringMonthly: number` prop (rands/month). When provided, it overrides the debit orders input pre-fill from profile. Backward-compatible — no prop = existing behaviour unchanged. Dashboard.jsx embeds `<Projections />` directly (no prop); Recommendations passes the detected obligation total.

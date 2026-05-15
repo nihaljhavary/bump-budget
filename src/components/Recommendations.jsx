@@ -3,6 +3,7 @@ import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { fetchRecentMonths } from '../services/transactions'
 import { buildLedgerSummary } from '../utils/ledger'
+import { detectRecurring } from '../utils/recurring'
 import './Recommendations.css'
 import Projections from './Projections'
 import { useTier } from '../context/TierContext'
@@ -124,6 +125,7 @@ export default function Recommendations({ onImportSignal = 0 }) {
   const [savedDate, setSavedDate] = useState(null)
   const [dataLoaded, setDataLoaded] = useState(false)
   const [monthCount, setMonthCount] = useState(1)
+  const [recurringMonthly, setRecurringMonthly] = useState(0)
   const [showProjections, setShowProjections] = useState(false)
   const { canProjections } = useTier()
 
@@ -142,6 +144,12 @@ export default function Recommendations({ onImportSignal = 0 }) {
       })
       const resolvedMonthCount = Math.max(ledger.monthCount, 1)
       setMonthCount(resolvedMonthCount)
+      // Compute total recurring obligation burden for Projections wiring
+      const recurring = detectRecurring(txns || [])
+      const obligationTotal = recurring
+        .filter(r => r.isObligation)
+        .reduce((sum, r) => sum + r.medianAmount, 0)
+      if (obligationTotal > 0) setRecurringMonthly(obligationTotal)
       const avg = {}
       for (const [cat, total] of Object.entries(ledger.catTotals)) {
         avg[cat] = total / resolvedMonthCount
@@ -521,7 +529,7 @@ export default function Recommendations({ onImportSignal = 0 }) {
           </button>
           {showProjections && (
             canProjections
-              ? <div style={{ padding: '0 16px 16px' }}><Projections /></div>
+              ? <div style={{ padding: '0 16px 16px' }}><Projections recurringMonthly={recurringMonthly} /></div>
               : <LockedFeature locked feature="projections" message="Projections are available on the Growth plan and above." />
           )}
         </div>

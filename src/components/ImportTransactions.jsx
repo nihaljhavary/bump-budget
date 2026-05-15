@@ -21,7 +21,6 @@ const BANKS = [
   { id: 'capitec',      label: 'Capitec',        logo: '🟣' },
   { id: 'discovery',    label: 'Discovery Bank', logo: '💎' },
   { id: 'tyme',         label: 'TymeBank',       logo: '🟡' },
-  { id: 'investec',     label: 'Investec',       logo: '🔷' },
   { id: 'generic',      label: 'Other / Generic',logo: '📄' },
 ]
 
@@ -37,27 +36,10 @@ const CAT_COLORS = {
 
 // ── Bank-specific column parsers ──────────────────────────────────────────────
 
-// Parse a potentially signed amount value: handles parentheses negatives (1,234.00),
-// thousand separators (commas / spaces), and standard minus signs.
-function parseSigned(val) {
-  if (val === undefined || val === null || val === '') return null
-  const s = String(val).trim()
-  if (s === '' || s === '-' || s === '0') return s === '0' ? 0 : null
-  // Accounting negative: (1,234.00) or (1 234.00)
-  const parens = s.match(/^\(([\d][\d .,]*)\)$/)
-  if (parens) {
-    const n = parseFloat(parens[1].replace(/[^0-9.]/g, ''))
-    return isNaN(n) ? null : -Math.abs(n)
-  }
-  // Strip currency symbols, spaces used as thousands seps, but keep minus and first decimal
-  const cleaned = s.replace(/[^0-9.\-]/g, '')
-  const n = parseFloat(cleaned)
-  return isNaN(n) ? null : n
-}
-
 function normaliseAmount(val) {
-  const n = parseSigned(val)
-  return n === null ? null : Math.abs(n)
+  if (val === undefined || val === null || val === '') return null
+  const n = parseFloat(String(val).replace(/[^0-9.\-]/g, ''))
+  return isNaN(n) ? null : Math.abs(n)
 }
 
 function normaliseDate(val) {
@@ -68,29 +50,14 @@ function normaliseDate(val) {
     if (d) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`
   }
   const s = String(val).trim()
-  // YYYY-MM-DD (ISO)
-  const ymd = s.match(/^(\d{4})[\/-](\d{2})[\/-](\d{2})/)
-  if (ymd) return `${ymd[1]}-${ymd[2]}-${ymd[3]}`
-  // DD/MM/YYYY or DD-MM-YYYY
+  // Try common SA formats: DD/MM/YYYY, YYYY-MM-DD, DD MMM YYYY
   const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/)
   if (dmy) {
     const y = dmy[3].length === 2 ? '20' + dmy[3] : dmy[3]
     return `${y}-${String(dmy[2]).padStart(2,'0')}-${String(dmy[1]).padStart(2,'0')}`
   }
-  // DD MMM YYYY or D MMM YYYY (e.g. "15 Jan 2024", "1 March 2024")
-  const dmy3 = s.match(/^(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})$/)
-  if (dmy3) {
-    const MONTHS = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 }
-    const m = MONTHS[dmy3[2].toLowerCase().slice(0, 3)]
-    if (m) return `${dmy3[3]}-${String(m).padStart(2,'0')}-${String(dmy3[1]).padStart(2,'0')}`
-  }
-  // MMM DD, YYYY (US format some banks export)
-  const mdy = s.match(/^([A-Za-z]{3,})\s+(\d{1,2}),?\s+(\d{4})$/)
-  if (mdy) {
-    const MONTHS = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 }
-    const m = MONTHS[mdy[1].toLowerCase().slice(0, 3)]
-    if (m) return `${mdy[3]}-${String(m).padStart(2,'0')}-${String(mdy[2]).padStart(2,'0')}`
-  }
+  const ymd = s.match(/^(\d{4})[\/\-](\d{2})[\/\-](\d{2})/)
+  if (ymd) return `${ymd[1]}-${ymd[2]}-${ymd[3]}`
   // Let JS parse the rest
   const d = new Date(s)
   if (!isNaN(d)) return formatLocalDate(d)
@@ -169,22 +136,13 @@ function parseRows(rows, bankId) {
       debitCol = findCol(headers, 'debit')
       creditCol= findCol(headers, 'credit')
       break
-    case 'investec':
-      // Investec Private Bank: Date, Transaction Details, Amount (signed), Balance
-      // Also handles: Date, Narrative, Debit, Credit variants
-      dateCol  = findCol(headers, 'date', 'value date', 'transaction date')
-      descCol  = findCol(headers, 'transaction details', 'description', 'narrative', 'details', 'reference')
-      amtCol   = findCol(headers, 'amount', 'transaction amount')
-      debitCol = findCol(headers, 'debit', 'debit amount')
-      creditCol= findCol(headers, 'credit', 'credit amount')
-      break
     default:
-      // Auto-detect — try common SA bank column name variants
-      dateCol  = findCol(headers, 'date', 'transaction date', 'value date', 'txn date', 'posting date')
-      descCol  = findCol(headers, 'description', 'transaction details', 'narrative', 'details', 'reference', 'beneficiary', 'transaction description', 'transaction')
-      amtCol   = findCol(headers, 'amount', 'transaction amount', 'rand amount')
-      debitCol = findCol(headers, 'debit', 'debit amount', 'debits')
-      creditCol= findCol(headers, 'credit', 'credit amount', 'credits')
+      // Auto-detect
+      dateCol  = findCol(headers, 'date', 'transaction date', 'txn date')
+      descCol  = findCol(headers, 'description', 'narrative', 'details', 'reference', 'transaction')
+      amtCol   = findCol(headers, 'amount')
+      debitCol = findCol(headers, 'debit')
+      creditCol= findCol(headers, 'credit')
   }
 
   typeCol = typeCol || findCol(headers, 'type', 'transaction type', 'transaction code')
@@ -200,8 +158,8 @@ function parseRows(rows, bankId) {
     const isTransfer = hasTransferHint(desc, txnType)
 
     if (amtCol && row[amtCol] !== undefined && row[amtCol] !== '') {
-      const raw = parseSigned(row[amtCol])
-      if (raw !== null) {
+      const raw = parseFloat(String(row[amtCol]).replace(/[^0-9.\-]/g, ''))
+      if (!isNaN(raw)) {
         isIncome = raw > 0
         amount = Math.abs(raw)
       }
@@ -312,11 +270,11 @@ export default function ImportTransactions({ onImportComplete }) {
 
       const data = await res.json()
       // Backend returns { results: [...] } — guard against malformed/empty response
-      const rawResults = Array.isArray(data.transactions) ? data.transactions : []
+      const rawResults = Array.isArray(data.results) ? data.results : []
       if (rawResults.length === 0) {
         // Fallback: show parsed rows with Other so user can adjust manually
         setCategorised(txns.map((t, i) => ({ ...t, id: i, category: t.is_transfer ? 'Transfer' : t.is_income ? 'Income' : 'Other', include: true })))
-        if (!data.transactions) setError('Categorisation returned an unexpected response — categories set to Other. You can adjust before importing.')
+        if (!data.results) setError('Categorisation returned an unexpected response — categories set to Other. You can adjust before importing.')
         return
       }
       setCategorised(rawResults.map((t, i) => {
@@ -417,7 +375,6 @@ export default function ImportTransactions({ onImportComplete }) {
             category:        t.category || 'Other',
             date:            t.date,
             raw_merchant:    t.raw_merchant || t.description,
-            detected_bank:   bank || null,
             import_batch_id: batchId,
             transaction_hash: fp,
           })
@@ -480,7 +437,6 @@ export default function ImportTransactions({ onImportComplete }) {
             category:        t.category || 'Other',
             date:            t.date,
             raw_merchant:    t.raw_merchant || t.description,
-            detected_bank:   bank || null,
             import_batch_id: batchId,
             transaction_hash: fp,
           })
@@ -603,7 +559,6 @@ export default function ImportTransactions({ onImportComplete }) {
           {bank === 'absa'     && <p>Online Banking → My Accounts → Statement → Download Excel</p>}
           {bank === 'standard' && <p>Internet Banking → Accounts → Statement → Export</p>}
           {bank === 'capitec'  && <p>Capitec app → Transactions → Export → CSV</p>}
-          {bank === 'investec' && <p>Online Banking → Accounts → Transaction History → Export → CSV or Excel</p>}
           {bank === 'generic'  && <p>Any CSV with Date, Description, and Amount columns will work</p>}
         </div>
       </div>

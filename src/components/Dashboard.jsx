@@ -2,13 +2,11 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { useTier, isDateAllowed, PLAN_PRICES } from '../context/TierContext'
-import { fetchTransactions, fetchTransactionsByMonth, fetchRecentMonths, addTransaction, updateTransaction, deleteTransaction } from '../services/transactions'
-import { buildAIPayload, buildTopMerchants } from '../utils/financials'
+import { fetchTransactions, fetchTransactionsByMonth, addTransaction, updateTransaction, deleteTransaction } from '../services/transactions'
+import { buildAIPayload } from '../utils/financials'
 import { buildLedgerSummary, getCalendarMonthRange } from '../utils/ledger'
-import { parseTransaction, analyseSpending, recategoriseAll } from '../services/ai'
-import { detectRecurring, recurringToContext } from '../utils/recurring'
+import { parseTransaction, analyseSpending } from '../services/ai'
 import ImportTransactions from './ImportTransactions'
-import AccountCentre from './AccountCentre'
 import Analytics from './Analytics'
 import Recommendations from './Recommendations'
 import Projections from './Projections'
@@ -49,7 +47,7 @@ const fmtDate = d => new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { day
 const monthLabel = () => new Date().toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })
 
 export default function Dashboard({ onNavigate }) {
-  const { user, profile, updateProfile } = useAuth()
+  const { user, profile } = useAuth()
   const tier = useTier()
   const [tab, setTab] = useState('overview')
   const [transactions, setTransactions] = useState([])
@@ -66,18 +64,10 @@ export default function Dashboard({ onNavigate }) {
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
-  // Budget mode toggle: 'personal' = user-set budgets, 'ai' = AI-suggested (85% of recent avg)
-  const [budgetMode, setBudgetMode] = useState('personal')
-  const [aiBudgets, setAiBudgets] = useState({})
   const [showProfileModal, setShowProfileModal] = useState(false)
-  const [showAccountCentre, setShowAccountCentre] = useState(false)
   // Real user-set budgets from Supabase (set in the Analytics tab).
   // Overrides DEFAULT_BUDGETS for the category cards in Overview.
   const [userBudgets, setUserBudgets] = useState(DEFAULT_BUDGETS)
-  // Increments each time an import completes — signals Recommendations to refresh.
-  const [importSignal, setImportSignal] = useState(0)
-  const [savingsBal, setSavingsBal]             = useState('')
-  const [savingsBalSaving, setSavingsBalSaving] = useState(false)
   const profileMenuRef = useRef(null)
   const chatEndRef = useRef(null)
   const textareaRef = useRef(null)
@@ -90,24 +80,12 @@ export default function Dashboard({ onNavigate }) {
   const [recatId, setRecatId] = useState(null)        // which txn is being edited
   const [recatSaving, setRecatSaving] = useState(false)
   const [recatPrompt, setRecatPrompt] = useState(null) // { id, name, category } - show "save as rule?" dialog
-  const [selectedCat, setSelectedCat] = useState(null)   // drill-down: which category card was tapped
-  const [recatAll, setRecatAll] = useState({ loading: false, result: null })
 
   useEffect(() => {
     loadTransactions()
     loadConsultRequests()
     loadBudgets()
   }, [selectedMonth])
-
-  // Load AI budgets on mount (user login) — rolling 12-month history
-  useEffect(() => {
-    if (user?.id) loadAiBudgets()
-  }, [user?.id, profile?.net_income])
-
-  // Re-load AI budgets whenever new transactions are imported
-  useEffect(() => {
-    if (importSignal > 0 && user?.id) loadAiBudgets()
-  }, [importSignal])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -206,52 +184,6 @@ export default function Dashboard({ onNavigate }) {
   const net = ledger.net
   const catTotals = ledger.catTotals
   const maxCat = Math.max(...Object.values(catTotals), 1)
-
-  // Recurring obligations detected from all allowed transaction history
-  const recurring = useMemo(() => detectRecurring(allowedTransactions), [allowedTransactions])
-
-  // AI-suggested budgets: 85% of rolling 12-month average per category.
-  // Loaded async on mount and re-loaded after each import. Far more accurate
-  // than a single-month snapshot because one exceptional month won't skew targets.
-  async function loadAiBudgets() {
-    if (!user) return
-    try {
-      const recentTxns = await fetchRecentMonths(user.id, 12)
-      const hist = buildLedgerSummary(recentTxns, profile, { preferDeclared: false, dedup: true })
-      const mc = Math.max(hist.monthCount, 1)
-      const suggested = {}
-      for (const [cat, total] of Object.entries(hist.catTotals)) {
-        const avgMonthly = total / mc
-        if (avgMonthly > 0) suggested[cat] = Math.round(avgMonthly * 0.85)
-      }
-      setAiBudgets(suggested)
-    } catch (e) {
-      console.error('[bump] AI budget load failed:', e)
-    }
-  }
-
-  // Active budgets depend on mode — personal (DB-set) or AI-suggested
-  const activeBudgets = budgetMode === 'ai' ? aiBudgets : userBudgets
-
-  // Savings drawdown detection
-  const EXCEPTIONAL_CATS_OV = new Set(['Gifts', 'Travel', 'Entertainment', 'Clothing', 'Home & Garden'])
-  const exceptionalSpendOV  = Object.entries(catTotals)
-    .filter(([cat]) => EXCEPTIONAL_CATS_OV.has(cat))
-    .reduce((s, [, v]) => s + v, 0)
-  const regularNet     = income - (totalSpend - exceptionalSpendOV)
-  const likelyDrawdown = net < 0 && exceptionalSpendOV > 0
-
-  // Bulk re-categorise all transactions via AI
-  async function handleRecatAll() {
-    setRecatAll({ loading: true, result: null })
-    try {
-      const r = await recategoriseAll()
-      setRecatAll({ loading: false, result: r })
-      await loadTransactions()
-    } catch (e) {
-      setRecatAll({ loading: false, result: { error: e.message || 'Failed — try again.' } })
-    }
-  }
 
   // Handle inline recategorisation
   async function handleRecat(txnId, txnName, newCategory) {
@@ -353,23 +285,15 @@ export default function Dashboard({ onNavigate }) {
     setAiLoading(true)
     setAiText('')
     try {
-      // Build merchant summary + recurring obligation context for richer AI analysis
-      const topMerchants = buildTopMerchants(spendTxns, 15)
-      const recurringContext = recurringToContext(recurring, { income: ledger.income })
       const payload = buildAIPayload(allowedTransactions, profile, 200, {
         mode: 'overview',
-        budgets: activeBudgets,
+        budgets: userBudgets,
         monthlyData: ledger.monthlyData,
-        topMerchants,
-        recurringContext,
-        effectiveIncome: ledger.income,
-        incomeResolutionMode: ledger.incomeResolutionMode,
-        periodLabel: monthDisplayLabel(),
       })
       const result = await analyseSpending(payload)
       setAiText(result.analysis)
-    } catch (e) {
-      setAiText(e.message || 'Analysis failed -- check your connection and try again.')
+    } catch {
+      setAiText('Analysis failed -- check your connection and try again.')
     }
     setAiLoading(false)
   }
@@ -424,12 +348,10 @@ export default function Dashboard({ onNavigate }) {
             </button>
             {showProfileMenu && (
               <div className="profile-dropdown">
-                <button className="profile-dropdown-item" onClick={() => { setShowProfileMenu(false); setShowAccountCentre(true) }}>My Profile</button>
-                <div className="profile-dropdown-divider" />
+                <button className="profile-dropdown-item" onClick={() => { setShowProfileMenu(false); setShowProfileModal(true) }}>My Profile</button>
                 <button className="profile-dropdown-item" onClick={() => { setShowProfileMenu(false); setTab('support') }}>Support</button>
                 <button className="profile-dropdown-item" onClick={() => { setShowProfileMenu(false); setTab('faq') }}>FAQs</button>
                 <div className="profile-dropdown-divider" />
-                <button className="profile-dropdown-item" onClick={() => { setShowProfileMenu(false); setTab('privacy') }}>Privacy</button>
                 <button className="profile-dropdown-item red" onClick={() => supabase.auth.signOut()}>Sign out</button>
               </div>
             )}
@@ -460,38 +382,18 @@ export default function Dashboard({ onNavigate }) {
         </div>
       )}
 
-      {/* DESKTOP TABS — scrollable horizontal strip, hidden on mobile */}
-      <div className="tabs desktop-tabs">
+      {/* TABS */}
+      <div className="tabs">
         {['overview', 'income statement', 'analytics', 'projections', 'groceries', 'budget', 'add spend', 'import', 'transactions'].map(t => (
           <button
             key={t}
             className={`tab ${tab === t ? 'active' : ''}`}
             onClick={() => setTab(t)}
           >
-            {t === 'import' ? '↑ import' : t === 'groceries' ? '🛒 groceries' : t === 'projections' ? '📈 projections' : t === 'income statement' ? '📋 income' : t === 'budget' ? '💡 budget' : t}
+            {t === 'import' ? '↑ import' : t === 'groceries' ? '🛒 groceries' : t === 'projections' ? '📈 projections' : t === 'income statement' ? '📋 income' : t}
           </button>
         ))}
       </div>
-
-      {/* MOBILE BOTTOM NAV — primary 5-tab navigation for small screens */}
-      <nav className="mobile-bottom-nav">
-        {[
-          { id: 'overview',      icon: '🏠', label: 'Overview' },
-          { id: 'analytics',     icon: '📊', label: 'Analytics' },
-          { id: 'groceries',     icon: '🛒', label: 'Groceries' },
-          { id: 'budget',        icon: '🧠', label: 'Budget' },
-          { id: 'transactions',  icon: '📋', label: 'Transactions' },
-        ].map(({ id, icon, label }) => (
-          <button
-            key={id}
-            className={`mbn-item ${tab === id ? 'active' : ''}`}
-            onClick={() => setTab(id)}
-          >
-            <span className="mbn-icon">{icon}</span>
-            <span className="mbn-label">{label}</span>
-          </button>
-        ))}
-      </nav>
 
       {/* OVERVIEW */}
       {tab === 'overview' && (
@@ -559,31 +461,14 @@ export default function Dashboard({ onNavigate }) {
           {/* Categories */}
           {Object.keys(catTotals).length > 0 && (
             <>
-              <div className="section-head-row">
-                <span className="section-head">Spend by category</span>
-                <div className="budget-mode-toggle">
-                  <button
-                    className={`bmt-btn ${budgetMode === 'personal' ? 'active' : ''}`}
-                    onClick={() => setBudgetMode('personal')}
-                    title="Use your manually-set budgets"
-                  >Personal</button>
-                  <button
-                    className={`bmt-btn ${budgetMode === 'ai' ? 'active' : ''}`}
-                    onClick={() => setBudgetMode('ai')}
-                    title="AI-suggested budgets: 85% of this month's actuals"
-                  >AI Suggested</button>
-                </div>
-              </div>
-              {budgetMode === 'ai' && (
-                <div className="bmt-hint">AI budgets target 85% of your current month spend per category.</div>
-              )}
+              <div className="section-head">Spend by category</div>
               <div className="cats">
                 {Object.entries(catTotals).sort((a, b) => b[1] - a[1]).map(([cat, amt]) => {
-                  const budget = activeBudgets[cat] || 1000
+                  const budget = userBudgets[cat] || 1000
                   const over = amt > budget
                   const near = !over && amt > budget * 0.8
                   return (
-                    <div className="cat-card" key={cat} onClick={() => setSelectedCat(cat)} style={{cursor:'pointer'}}>
+                    <div className="cat-card" key={cat}>
                       <div className="cat-top">
                         <span className="cat-name">{cat}</span>
                         <span className={`cat-badge ${over ? 'over' : near ? 'near' : 'ok'}`}>
@@ -610,56 +495,6 @@ export default function Dashboard({ onNavigate }) {
             </>
           )}
 
-          {/* Category drill-down drawer */}
-          {selectedCat && (
-            <div className="cat-drawer-overlay" onClick={() => setSelectedCat(null)}>
-              <div className="cat-drawer" onClick={e => e.stopPropagation()}>
-                <div className="cat-drawer-header">
-                  <div className="cat-drawer-title">
-                    <span style={{fontSize:'1.4rem'}}>{CAT_ICONS[selectedCat] || '📦'}</span>
-                    <span>{selectedCat}</span>
-                    <span className="cat-drawer-total">{fmt(catTotals[selectedCat] || 0)}</span>
-                  </div>
-                  <button className="cat-drawer-close" onClick={() => setSelectedCat(null)}>✕</button>
-                </div>
-                <div className="cat-drawer-list">
-                  {transactions
-                    .filter(t => t.category === selectedCat)
-                    .sort((a, b) => b.amount - a.amount)
-                    .map(t => (
-                      <div key={t.id} className="cat-drawer-row">
-                        <div className="cat-drawer-row-info">
-                          <span className="cat-drawer-row-name">{t.name || t.description}</span>
-                          <span className="cat-drawer-row-date">{fmtDate(t.date)}</span>
-                        </div>
-                        <div className="cat-drawer-row-right">
-                          <span className="cat-drawer-row-amt">{fmt(t.amount)}</span>
-                          <select
-                            className="cat-drawer-recat"
-                            value={t.category}
-                            onChange={e => {
-                              handleRecat(t.id, t.name, e.target.value)
-                              setTransactions(prev => prev.map(tx => tx.id === t.id ? {...tx, category: e.target.value} : tx))
-                            }}
-                          >
-                            {['Groceries','Eating out','Transport','Entertainment','Health','Clothing',
-                              'Subscriptions','Education','Insurance','Savings','Fuel','ATM / Cash',
-                              'Fees & Charges','Utilities','Travel','Gifts','Home & Garden','Housing',
-                              'Income','Transfer','Other'].map(c => (
-                              <option key={c} value={c}>{c}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                    ))}
-                  {transactions.filter(t => t.category === selectedCat).length === 0 && (
-                    <p style={{color:'var(--muted)',textAlign:'center',padding:'1rem'}}>No transactions in this category this month.</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Import CTA */}
           <button className="import-cta-btn" onClick={() => setTab('import')}>
             <span className="import-cta-icon">↑</span>
@@ -673,96 +508,6 @@ export default function Dashboard({ onNavigate }) {
             <div className="empty-state">
               <p>No transactions yet.</p>
               <p>Import a statement above or tap <strong>Add spend</strong> to log manually.</p>
-            </div>
-          )}
-
-          {/* Savings drawdown prompt */}
-          {likelyDrawdown && (
-            <div className="savings-drawdown-card">
-              <div className="sdc-header">
-                <span className="sdc-icon">💰</span>
-                <div>
-                  <div className="sdc-title">Looks like you dipped into savings this month</div>
-                  <div className="sdc-sub">
-                    You spent {fmt(exceptionalSpendOV)} on exceptional items (gifts, travel, entertainment)
-                    that likely came from savings. Strip those out and your underlying position is{' '}
-                    <strong className={regularNet >= 0 ? 'sdc-pos' : 'sdc-neg'}>
-                      {fmt(Math.abs(regularNet))} {regularNet >= 0 ? 'surplus' : 'deficit'}
-                    </strong> — {regularNet >= 0 ? 'your regular spending is healthy.' : 'worth keeping an eye on.'}
-                  </div>
-                </div>
-              </div>
-              {profile?.savings_balance > 0 && (
-                <div className="sdc-balance-row">
-                  <div>
-                    <span className="sdc-balance-label">Estimated savings balance after this month: </span>
-                    <strong>{fmt(Math.max(Math.round(profile.savings_balance / 100) + net, 0))}</strong>
-                    <span className="sdc-balance-was"> (was {fmt(Math.round(profile.savings_balance / 100))})</span>
-                  </div>
-                  <span className="sdc-balance-hint">Update below if this looks off</span>
-                </div>
-              )}
-              {!profile?.savings_balance && (
-                <div className="sdc-balance-hint sdc-balance-hint--nudge">
-                  Add your savings balance in Account Centre so bump. can track drawdowns accurately.
-                </div>
-              )}
-              <div className="sdc-edit-row">
-                <label className="sdc-edit-label">Update savings balance</label>
-                <div className="sdc-edit-wrap">
-                  <span className="sdc-prefix">R</span>
-                  <input
-                    className="sdc-input"
-                    type="number"
-                    placeholder={profile?.savings_balance ? String(Math.round(profile.savings_balance / 100)) : '0'}
-                    value={savingsBal}
-                    onChange={e => setSavingsBal(e.target.value)}
-                  />
-                  <button
-                    className="sdc-save-btn"
-                    disabled={!savingsBal || savingsBalSaving}
-                    onClick={async () => {
-                      if (!savingsBal) return
-                      setSavingsBalSaving(true)
-                      await updateProfile({ savings_balance: Math.round(parseFloat(savingsBal) * 100) })
-                      setSavingsBal('')
-                      setSavingsBalSaving(false)
-                    }}
-                  >{savingsBalSaving ? 'Saving...' : 'Save'}</button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Recurring Obligations */}
-          {recurring.length > 0 && (
-            <div className="recurring-panel">
-              <div className="recurring-head">
-                <span className="recurring-title">Recurring obligations</span>
-                {income > 0 && (() => {
-                  const obligations = recurring.filter(r => r.isObligation)
-                  if (obligations.length === 0) return null
-                  const totalObl = obligations.reduce((s, r) => s + r.medianAmount, 0)
-                  const pct = Math.round(totalObl / income * 100)
-                  return <span className="recurring-burden">{pct}% of income locked</span>
-                })()}
-              </div>
-              <div className="recurring-list">
-                {recurring.slice(0, 6).map((r, i) => {
-                  const amt = r.medianAmount
-                  const pct = income > 0 ? Math.round(amt / income * 100) : 0
-                  return (
-                    <div key={i} className={`recurring-row ${r.isObligation ? 'obligation' : 'habitual'}`}>
-                      <div className="recurring-merchant">{r.merchant}</div>
-                      <div className="recurring-meta">
-                        <span className="recurring-cat">{r.category}</span>
-                        {income > 0 && <span className="recurring-pct">{pct}%</span>}
-                      </div>
-                      <div className="recurring-amt">{'R' + Math.round(amt).toLocaleString('en-ZA')}<span className="recurring-freq">/mo</span></div>
-                    </div>
-                  )
-                })}
-              </div>
             </div>
           )}
 
@@ -787,23 +532,6 @@ export default function Dashboard({ onNavigate }) {
           <button className="analyse-btn" onClick={runAnalysis} disabled={aiLoading || transactions.length === 0}>
             {aiLoading ? 'bump. is working on it...' : aiText ? 'Re-analyse' : 'Analyse my spending'}
           </button>
-
-          {/* Re-categorise all transactions */}
-          <div className="recat-all-strip">
-            <div className="recat-all-text">
-              <strong>Transactions landing in Other?</strong>
-              <span> Re-run AI categorisation on all your transactions.</span>
-            </div>
-            {recatAll.result && !recatAll.result.error && (
-              <span className="recat-all-badge">✓ {recatAll.result.changed} updated</span>
-            )}
-            {recatAll.result?.error && (
-              <span className="recat-all-badge error">{recatAll.result.error}</span>
-            )}
-            <button className="recat-all-btn" onClick={handleRecatAll} disabled={recatAll.loading}>
-              {recatAll.loading ? 'Re-categorising...' : 'Re-categorise all'}
-            </button>
-          </div>
 
           {/* Book a Consultation CTA — Pro only */}
           <LockedFeature locked={!tier.canConsult} feature="consult" label="Upgrade to Pro — R199/mo">
@@ -832,7 +560,7 @@ export default function Dashboard({ onNavigate }) {
       {/* ANALYTICS */}
       {tab === 'analytics' && (
         tier.canAnalytics
-          ? <Analytics preferDeclared={excludeSalary} />
+          ? <Analytics selectedMonth={selectedMonth} preferDeclared={excludeSalary} />
           : <div className="tab-body">
               <LockedFeature locked feature="analytics">
                 <div className="locked-placeholder">
@@ -874,7 +602,7 @@ export default function Dashboard({ onNavigate }) {
       )}
 
       {/* BUDGET RECOMMENDATIONS */}
-      {tab === 'budget' && <Recommendations onImportSignal={importSignal} />}
+      {tab === 'budget' && <Recommendations />}
 
       {/* ADD SPEND */}
       {tab === 'add spend' && (
@@ -1028,24 +756,11 @@ export default function Dashboard({ onNavigate }) {
         <ImportTransactions
           onImportComplete={() => {
             loadTransactions()
-            setImportSignal(s => s + 1)
             setTab('overview')
           }}
         />
       )}
-    {showAccountCentre && <AccountCentre user={user} profile={profile} tier={tier} onClose={() => setShowAccountCentre(false)} onNavigate={onNavigate} />}
-
-      {/* PRIVACY */}
-      {tab === 'privacy' && (
-        <div className="tab-body">
-          <div className="privacy-shell">
-            <h2 className="privacy-title">Privacy &amp; Data</h2>
-            <p className="privacy-body">bump. stores your transaction data securely in Supabase. Your data is never shared with advertisers. AI analysis runs on anonymised summaries — your raw transactions are never sent to third parties in bulk.</p>
-            <p className="privacy-body">You can export or delete your data at any time from Account Centre.</p>
-            <button className="privacy-account-btn" onClick={() => { setTab('overview'); setShowAccountCentre(true) }}>Open Account Centre</button>
-          </div>
-        </div>
-      )}
+    {showProfileModal && <ProfileModal user={user} profile={profile} onClose={() => setShowProfileModal(false)} />}
     </div>
   )
 }
@@ -1092,7 +807,6 @@ function ProfileModal({ user, profile, onClose }) {
             { label: 'Full name', field: 'full_name', type: 'text', prefix: '' },
             { label: 'Gross monthly salary', field: 'gross_income', type: 'number', prefix: 'R' },
             { label: 'Net (take-home) salary', field: 'net_income', type: 'number', prefix: 'R' },
-
             { label: 'Fixed monthly debit orders', field: 'monthly_debit_orders', type: 'number', prefix: 'R' },
             { label: 'Monthly savings goal', field: 'savings_goal', type: 'number', prefix: 'R' },
           ].map(({ label, field, type, prefix }) => (
@@ -1144,14 +858,14 @@ function ConsultRequestCard({ request, loading, onRespond }) {
       </label>
       <div className="consult-request-actions">
         <button
-          className="consult-approve-btn"
+          className="consult-btn-approve"
           disabled={loading}
           onClick={() => onRespond(request.id, 'approved', podcastConsent)}
         >
           {loading ? '...' : 'Approve access'}
         </button>
         <button
-          className="consult-deny-btn"
+          className="consult-btn-deny"
           disabled={loading}
           onClick={() => onRespond(request.id, 'denied')}
         >
@@ -1161,4 +875,3 @@ function ConsultRequestCard({ request, loading, onRespond }) {
     </div>
   )
 }
-

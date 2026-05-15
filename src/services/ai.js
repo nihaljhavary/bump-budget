@@ -38,15 +38,10 @@ export async function analyseSpending(payload) {
     declaredIncome:   payload.declaredIncome   || 0,
     profileContext:   payload.profileContext   || null,
   }
-  if (payload.budgets)              body.budgets              = payload.budgets
-  if (payload.recurringContext)     body.recurringContext     = payload.recurringContext
-  if (payload.monthlyData)          body.monthlyData          = payload.monthlyData
-  if (payload.mode)                 body.mode                 = payload.mode
-  if (payload.topMerchants)         body.topMerchants         = payload.topMerchants
-  if (payload.incomeResolutionMode) body.incomeResolutionMode = payload.incomeResolutionMode
-  if (payload.effectiveIncome != null) body.effectiveIncome  = payload.effectiveIncome
-  if (payload.periodDays != null)   body.periodDays           = payload.periodDays
-  if (payload.periodLabel)          body.periodLabel          = payload.periodLabel
+  if (payload.budgets)          body.budgets          = payload.budgets
+  if (payload.recurringContext) body.recurringContext = payload.recurringContext
+  if (payload.monthlyData)      body.monthlyData      = payload.monthlyData
+  if (payload.mode)             body.mode             = payload.mode
 
   const res = await fetch('/.netlify/functions/analyse', {
     method: 'POST',
@@ -60,31 +55,7 @@ export async function analyseSpending(payload) {
     const data = await res.json().catch(() => ({}))
     throw new Error(data.error || 'Monthly AI limit reached. Upgrade to Budget Coach for 500 calls/month.')
   }
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.analysis || data.error || `Analysis failed (${res.status})`)
-  }
-  return res.json()
-}
-
-/**
- * Re-categorise all of the user's transactions using rules + Claude.
- * Returns { processed, changed, breakdown }.
- */
-export async function recategoriseAll() {
-  const token = await getToken()
-  const res = await fetch('/.netlify/functions/recategorise-all', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    },
-    body: JSON.stringify({})
-  })
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.error || `Recategorisation failed (${res.status})`)
-  }
+  if (!res.ok) throw new Error('Analysis request failed')
   return res.json()
 }
 

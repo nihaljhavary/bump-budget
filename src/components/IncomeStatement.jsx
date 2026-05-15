@@ -44,7 +44,7 @@ function getComparisonDates(period, fromDate, toDate) {
 // so the income statement reflects what was actually transacted.
 function buildStatement(txns, profile, meta = {}) {
   const s = buildLedgerSummary(txns, profile, {
-    preferDeclared: meta.preferDeclared ?? false,
+    preferDeclared: false,
     monthCount: countCalendarMonths(meta.from, meta.to) || undefined,
     dedup: true,
     debugLabel: meta.debugLabel,
@@ -73,7 +73,6 @@ export default function IncomeStatement() {
   const { user, profile } = useAuth()
   const tier = useTier()
   const [period, setPeriod] = useState('12m')
-  const [preferDeclared, setPreferDeclared] = useState(false)
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
   const [showComparison, setShowComparison] = useState(false)
@@ -103,12 +102,12 @@ export default function IncomeStatement() {
   }, [from, to, showComparison, compDates.from, compDates.to])
 
   const stmt = useMemo(
-    () => buildStatement(txns, profile, { from, to, preferDeclared, debugLabel: `IncomeStatement ${period} ${from}..${to}` }),
-    [txns, profile, from, to, period, preferDeclared]
+    () => buildStatement(txns, profile, { from, to, debugLabel: `IncomeStatement ${period} ${from}..${to}` }),
+    [txns, profile, from, to, period]
   )
   const compStmt = useMemo(
-    () => showComparison ? buildStatement(compTxns, profile, { from: compDates.from, to: compDates.to, preferDeclared, debugLabel: `IncomeStatement comparison ${compDates.from}..${compDates.to}` }) : null,
-    [compTxns, showComparison, profile, compDates.from, compDates.to, preferDeclared]
+    () => showComparison ? buildStatement(compTxns, profile, { from: compDates.from, to: compDates.to, debugLabel: `IncomeStatement comparison ${compDates.from}..${compDates.to}` }) : null,
+    [compTxns, showComparison, profile, compDates.from, compDates.to]
   )
 
   const PERIODS = [
@@ -163,18 +162,6 @@ export default function IncomeStatement() {
           <input type="checkbox" checked={showComparison} onChange={e => setShowComparison(e.target.checked)} />
           Compare to prior period
         </label>
-        <div className="is-income-toggle">
-          <button
-            className={`is-period-btn ${!preferDeclared ? 'active' : ''}`}
-            onClick={() => setPreferDeclared(false)}
-            title="Use income transactions from your bank statements"
-          >Statement income</button>
-          <button
-            className={`is-period-btn ${preferDeclared ? 'active' : ''}`}
-            onClick={() => setPreferDeclared(true)}
-            title="Use your declared take-home salary"
-          >Declared salary</button>
-        </div>
       </div>
 
       {loading ? (
@@ -236,9 +223,9 @@ export default function IncomeStatement() {
         </div>
       )}
 
-      {!loading && stmt.income === 0 && (profile?.net_income || 0) > 0 && !preferDeclared && (
+      {!loading && stmt.income === 0 && (profile?.net_income || 0) > 0 && (
         <div className="is-income-hint">
-          No income transactions found for this period. Your declared take-home salary is R{Math.round(profile.net_income / 100).toLocaleString('en-ZA')}/mo — switch to &quot;Declared salary&quot; to use it here, or log a transaction categorised as &quot;Income&quot; to include it in the statement income view.
+          No income transactions found for this period. Your declared take-home salary is R{Math.round(profile.net_income / 100).toLocaleString('en-ZA')}/mo — log a transaction categorised as &quot;Income&quot; to include it in this statement.
         </div>
       )}
 
