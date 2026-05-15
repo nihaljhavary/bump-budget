@@ -26,6 +26,11 @@ export default function Onboarding({ onComplete }) {
 
   function update(field, value) { setForm(prev => ({ ...prev, [field]: value })) }
 
+  async function signOut() {
+    await supabase.auth.signOut()
+    window.location.href = '/'
+  }
+
   function nextStep() {
     setError('')
     if (step === 1 && !form.usage_type) {
@@ -218,6 +223,14 @@ export default function Onboarding({ onComplete }) {
             </button>
           </div>
         )}
+      <div style={{ textAlign: 'center', marginTop: 16 }}>
+        <button onClick={signOut} style={{
+          background: 'none', border: 'none', color: 'var(--muted)',
+          fontSize: 13, cursor: 'pointer', textDecoration: 'underline', padding: 0,
+        }}>
+          Wrong account? Sign out
+        </button>
+      </div>
       </div>
     </div>
   )
