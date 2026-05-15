@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useVersionCheck } from './hooks/useVersionCheck'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import { supabase } from './supabase'
@@ -81,8 +82,20 @@ function ResetPassword({ onDone }) {
 }
 
 function ProtectedApp() {
-  const { user, profile, loading, recoveryMode, clearRecoveryMode } = useAuth()
+  const { user, profile, loading, recoveryMode, clearRecoveryMode, updateProfile } = useAuth()
   const [page, setPage] = useState('dashboard')
+
+  const isAdmin = profile?.is_admin === true || profile?.role === 'admin'
+  // Legacy user auto-heal: accounts created before onboarding_complete was tracked have
+  // full_name + terms_accepted_at set but onboarding_complete = false. Treat them as done
+  // and silently update the DB so they aren't stranded on the onboarding screen.
+  // Legacy user: accepted terms + has ANY profile data = they've already set up their account.
+  // full_name alone isn't reliable — some accounts were created before all fields were required.
+  const hasProfileData = !!(profile?.full_name || profile?.bank || profile?.usage_type || profile?.gross_income || profile?.net_income)
+  const isLegacyUser = !!(profile?.terms_accepted_at && !profile?.onboarding_complete && hasProfileData)
+  useEffect(() => {
+    if (isLegacyUser && user?.id) updateProfile({ onboarding_complete: true })
+  }, [isLegacyUser, user?.id])
 
   if (loading) return <Loader />
   // Password recovery takes priority — user clicked reset link
@@ -90,8 +103,7 @@ function ProtectedApp() {
   if (!user) return <Navigate to="/" replace />
   if (!profile?.terms_accepted_at) return <Auth termsOnly />
 
-  const isAdmin = profile?.is_admin === true || profile?.role === 'admin'
-  if (profile && !profile.onboarding_complete && !isAdmin) {
+  if (profile && !profile.onboarding_complete && !isAdmin && !isLegacyUser) {
     return <Onboarding onComplete={() => {}} />
   }
 
@@ -113,10 +125,45 @@ function AuthRoute() {
   return <Auth />
 }
 
+function UpdateBanner() {
+  const { updateAvailable } = useVersionCheck()
+  const [dismissed, setDismissed] = useState(false)
+  if (!updateAvailable || dismissed) return null
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+      background: '#e85d26', color: '#fff',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      gap: '12px', padding: '10px 16px',
+      fontFamily: 'DM Sans, sans-serif', fontSize: '14px', fontWeight: 500,
+    }}>
+      <span>A new version of bump. is available.</span>
+      <button
+        onClick={() => window.location.reload()}
+        style={{
+          background: '#fff', color: '#e85d26', border: 'none',
+          borderRadius: 6, padding: '4px 12px', fontWeight: 700,
+          fontSize: '13px', cursor: 'pointer',
+        }}
+      >Update now</button>
+      <button
+        onClick={() => setDismissed(true)}
+        style={{
+          background: 'transparent', color: 'rgba(255,255,255,0.7)',
+          border: 'none', fontSize: '18px', cursor: 'pointer',
+          lineHeight: 1, padding: '0 4px',
+        }}
+        aria-label="Dismiss"
+      >&#x2715;</button>
+    </div>
+  )
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <TierProvider>
+        <UpdateBanner />
         <BrowserRouter>
           <Routes>
             <Route path="/"    element={<LandingPage />} />

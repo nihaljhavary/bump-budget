@@ -298,3 +298,42 @@ State: `{ salaryGrowth: 5, inflation: 6, investmentReturn: 8 }` (all percentages
 
 ### Component prop
 `Projections` now accepts optional `recurringMonthly: number` prop (rands/month). When provided, it overrides the debit orders input pre-fill from profile. Backward-compatible — no prop = existing behaviour unchanged. Dashboard.jsx embeds `<Projections />` directly (no prop); Recommendations passes the detected obligation total.
+
+---
+
+## Grocery Intelligence (2026-05)
+
+### Architecture overview
+`GroceryComparison.jsx` evolved from a simple price comparison tool into a full grocery intelligence system. Three input modes: **Scan receipt** (photo upload → vision API), **Paste list** (text regex parser), **Enter items** (manual grid). Behavioural insights from transaction history are shown above the input tabs on every load.
+
+### Receipt image parsing
+`parse-grocery-receipt.js` (new Netlify function). POST `{ imageBase64, mediaType }` with Bearer token. Uses Claude Haiku vision API — multimodal message with base64-encoded image. Returns `{ store, items[], subtotal, discounts, deliveryFee, loyaltySavings }`. On success, items are populated into the manual grid and mode switches to 'manual' for review. Supports JPEG, PNG, WebP up to 10 MB. No OCR/technical language exposed to the user — loading state says "Reading your receipt...".
+
+### SA retailer coverage (2026-05)
+`STORES` array: Woolworths, Checkers, Checkers Sixty60, Pick n Pay, Pick n Pay ASAP, Shoprite, Spar, Clicks, Dis-Chem, Makro. `compare-groceries.js` has expanded knowledge: WRewards, Xtra Savings (up to 15%), Smart Shopper, Smart Price range (15-20% cheaper), Clicks ClubCard, Makro bulk pricing. Delivery fees: Sixty60 R25-35, Woolworths Dash R35-45, PnP ASAP R30, Spar2u R35.
+
+### Behavioural grocery insights
+`computeGroceryInsights(txns)` — pure client-side function, no AI. Runs on last 3 months of transactions from `fetchRecentMonths(user.id, 3)`. Computes: `monthlyAvg`, `deliveryPct`, `deliveryCount`, `deliveryPremiumPct`, `topRetailer`, `topRetailerPct`, `retailerTotals`. `InsightsPanel` component renders a 2-4 card grid above the input UI. Nudges fire when: delivery > 30% of grocery spend, or Woolworths > 60% of grocery spend.
+
+### Delivery detection patterns
+```js
+const DELIVERY_PATTERNS = [
+  'sixty60', 'sixty 60', 'checkers sixty', 'checkers online',
+  'woolworths dash', 'woolies dash', 'woolworths delivery', 'woolies delivery', 'woolworths online', 'woolies online',
+  'pick n pay asap', 'pnp asap', 'picknpay asap', 'pnp online', 'pick n pay online', 'picknpay online',
+  'spar online', 'spar deliver', 'spar2u',
+]
+```
+Same patterns used in both `GroceryComparison.jsx` (client-side `isDelivery()`) and `_context.js` (`GROCERY_DELIVERY_KW` array for AI context).
+
+### AI context integration (_context.js)
+After eating-out delivery split detection, `_context.js` now detects grocery delivery split: filters `merchantsToUse` by `category === 'Groceries'`, checks against `GROCERY_DELIVERY_KW`, outputs `"Grocery split: X% delivery services (Sixty60/Dash/ASAP) vs Y% in-store"` when delivery > 0.
+
+### compare-groceries.js response schema
+Now includes `groceryInsights: { loyaltyTip, savingsTip, deliveryNote }` — three optional AI-generated tips shown in the results area. `FORMAT_RULES` added (no em dashes, tilde, markdown bold). `max_tokens` bumped to 2500.
+
+### CSS variables (GroceryComparison.css)
+All hardcoded dark colors replaced with CSS variables. No `#1A1008`, `#120C07`, `#2C1F14`, `#5A3020`, `rgba(255,255,255,0.03)` anywhere. Uses `var(--surface)`, `var(--input-bg)`, `var(--border)`, `var(--coral)`, `var(--hover-bg)`, `var(--card-bg)`, `var(--bg-alt)`.
+
+### Emoji in JSX (critical)
+All emoji in JSX text content must be actual characters (paste directly). `\u{1f4f7}` syntax fails in JSX — esbuild throws "Syntax error". Valid: paste 📷 directly. Invalid: `\u{1f4f7}` in JSX text.

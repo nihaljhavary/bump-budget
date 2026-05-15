@@ -134,12 +134,22 @@ export async function handler(event) {
 
     case 'subscription.disable':
     case 'subscription.not_renew': {
-      // Cancelled or not renewing — downgrade to free
+      // Cancelled or not renewing — apply scheduled_plan if set, otherwise free
+      // scheduled_plan is written by manage-subscription.js when a user downgrades
+      const { data: profileRow } = await adminClient
+        .from('profiles')
+        .select('scheduled_plan')
+        .eq('id', userId)
+        .single()
+      const targetPlan = profileRow?.scheduled_plan || 'free'
+
       await adminClient.from('profiles').update({
-        subscription_status: 'cancelled',
-        subscription_plan:   'free',
-        paystack_sub_code:   null,
-        next_billing_date:   null,
+        subscription_status:  targetPlan === 'free' ? 'cancelled' : 'active',
+        subscription_plan:    targetPlan,
+        scheduled_plan:       null,   // clear once applied
+        cancel_at_period_end: false,
+        paystack_sub_code:    null,
+        next_billing_date:    null,
       }).eq('id', userId)
       break
     }

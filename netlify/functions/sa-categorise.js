@@ -51,7 +51,38 @@ export const SA_RULES = [
     'payment received', 'dividend', 'interest credit', 'interest earned',
   ], category: 'Income' },
 
-  // ── Fuel ── (before groceries/transport — "total " fuel vs other)
+  // ── Contextual merchants — BEFORE broad category rules ────────────────────
+  // Delivery grocery services and petrol-station convenience stores that would
+  // otherwise be swallowed by the broader Fuel / Clothing / Other patterns.
+  { patterns: [
+    // Woolworths grocery delivery (must precede woolworths→Clothing below)
+    'woolworths dash', 'woolies dash', 'woolworths delivery', 'woolies delivery',
+    // Checkers grocery delivery app
+    'checkers sixty60', 'sixty60', 'sixty 60', 'checkers 6060',
+    // Pick n Pay rapid delivery + online ordering
+    'pick n pay asap', 'pnp asap', 'picknpay asap',
+    'pnp online', 'pick n pay online', 'picknpay online',
+    // Spar online ordering / delivery
+    'spar online', 'spar deliver', 'spar2u',
+    // Checkers online (non-Sixty60)
+    'checkers online',
+    // Woolworths online food ordering
+    'woolworths online', 'woolies online',
+    // Shoprite online / Usave delivery
+    'shoprite online', 'shoprite usave delivery', 'usave online',
+    // Engen Quickshop — convenience store at petrol station (not a fuel purchase)
+    'engen quickshop',
+    // Shell Select — convenience store at Shell (not a fuel purchase)
+    'shell select',
+    // BP convenience (Wild Bean Cafe food items)
+    'wild bean cafe',
+    // Caltex with Shoprite concession
+    'caltex shoprite',
+    // Other petrol-station convenience patterns
+    'freshstop at caltex', 'freshstop caltex',
+  ], category: 'Groceries' },
+
+  // ── Fuel ── (after contextual merchants — "engen quickshop" caught above)
   { patterns: [
     'engen', 'bp ', 'bp/', 'bpexpress',
     'shell ', 'shell/', 'shellultraCity',
@@ -91,12 +122,33 @@ export const SA_RULES = [
     'salt restaurant', 'the grillhouse', 'le coin',
     'pigalle', 'the palms',
     'wiesenhof', 'signature restaurant',
+    'turn n tender', 'turn and tender',
+    'roco mamas', "roco mama's",
+    'chefs table', "chef's table",
+    'karibu', 'col cacchio',
+    'jason bakery', 'knead bakery', 'bottomless coffee',
+    'terbodore', 'craft coffee',
+    'truth coffee', 'origin coffee',
+    'glory days', 'lucky bean',
     // Delivery
     'uber eats', 'ubereats', 'flw*uber eats', 'uber *eats',
-    'mr d food', 'mrd food', 'mrdfood',
+    'mr d food', 'mrd food', 'mrdfood', 'mr d app',
     'bolt food',
     'deliveroo',
+    // More SA fast food / QSR
+    'kfc ', 'kfc/', 'kentucky fried',
+    'chicken licken', 'steers ', 'steers/',
+    'wimpy ', 'wimpy/', "roman's pizza", 'romans pizza',
+    "jason's bakery", 'jasons bakery',
+    'panarottis', 'ocean basket', 'spur ', 'spur/',
+    'john dory', 'john dorys',
+    'doppio zero', 'tashas ', "tasha's",
+    'cafe neo', 'bootlegger', 'truth coffee', 'coffee on',
     'dineplan',
+    'order in', 'orderin',
+    // In-store hot food counters (must come after grocery-specific patterns)
+    'woolworths hot food', 'woolies hot food',
+    'checkers kitchen',
     // Generic descriptors
     'bakery', 'bagel', 'deli ',
     'coffee shop', 'roastery',
@@ -104,6 +156,7 @@ export const SA_RULES = [
     'braai', 'chesa nyama',
     'restaurant', 'cafe ', 'bistro', 'eatery',
     'grill ', 'kitchen ', 'food bar',
+    'burger ', 'wings ', 'shawarma', 'kebab', 'bunny chow',
     // Yoco-prefixed eating out
     'yoco*cafe', 'yoco*coffee', 'yoco*restaurant', 'yoco*bar',
     'yoco*grill', 'yoco*bistro', 'yoco*eatery', 'yoco*food',
@@ -126,6 +179,11 @@ export const SA_RULES = [
     'cambridge food',
     'fruit & veg city', 'fruit and veg city', 'freshmarket',
     'montagu', 'montagu nuts',
+    // Wholesale / bulk
+    'makro', 'game food',
+    // Organic / health food
+    'wellness warehouse', 'faithful to nature',
+    'organic zone', 'the health store',
     // Liquor (linked to grocery shops)
     'tops ', 'tops/', 'liquorland', 'discount liquors',
     'makro deli',
@@ -143,10 +201,15 @@ export const SA_RULES = [
     'parking', 'interpark', 'wilson parking', 'ace parking',
     'quick park', 'str parking', 'pay&go parking',
     'ncr parking', 'global parking',
+    'parkhands', 'parkrite',
     // Road / vehicle
     'e-natis', 'enatis', 'aarto', 'traffic fine',
     'licensing fee', 'motor vehicle reg', 'motor vehicle',
     'roadworthy', 'e-toll', 'sanral',
+    // Vehicle services
+    'midas ', 'automotion', 'autozone ', 'supaquick',
+    'tiger wheel', 'supa quick',
+    'car wash', 'auto care',
     // Admyt
     'admyt',
   ], category: 'Transport' },
@@ -164,6 +227,12 @@ export const SA_RULES = [
     'nintendo eshop', 'steam games',
     // Productivity / software / AI
     'google one', 'google play',
+    'amazon prime', 'amzn prime', 'amazon*',
+    'disney+', 'disney plus',
+    'apple.com/bill', 'itunes', 'apple sub',
+    'youtube premium', 'youtube music',
+    'canva ', 'canva/',
+    'adobe ',
     'microsoft 365', 'office 365', 'ms365',
     'adobe ', 'adobe*',
     'dropbox', 'icloud',
@@ -180,6 +249,7 @@ export const SA_RULES = [
     // Fitness / gym
     'planet fitness', 'virgin active', 'la fitness',
     'anytime fitness', 'gym ', 'fitness club', 'gymnasium',
+    'crossfit ', '1life fit',
     // News / reading
     'talk360',
     // Cloud / domain / hosting
@@ -189,6 +259,7 @@ export const SA_RULES = [
     'absolute pets',
     'youtube premium',
     'skillshare', 'masterclass',
+    'duolingo',
   ], category: 'Subscriptions' },
 
   // ── Insurance ──
@@ -210,6 +281,8 @@ export const SA_RULES = [
     'absa insurance', 'standard bank insur',
     'capitec funeral', 'funeral cover',
     'credit life',
+    'bidvest life',
+    '1life insur', 'aar insur',
   ], category: 'Insurance' },
 
   // ── Health ──
@@ -224,20 +297,26 @@ export const SA_RULES = [
     // Practitioners / services
     'dr ', 'doctor ', 'medical centre', 'medical center',
     'dentist', 'dental ',
-    'optometrist', 'optics', 'spec-savers',
+    'optometrist', 'optics', 'spec-savers', 'specsavers',
     'physiotherap', 'physio ',
     'psycholog', 'therapist', 'counsell',
     'audiolog', 'podiatrist',
+    'chiropract',
     // Facilities
     'hospital', 'clinic ',
     'mediclinic', 'netcare', 'life healthcare',
     'intercare', 'medicross',
-    // Wellness
+    // Wellness / beauty
     'health4me',
+    'wellness ',
+    'spa ', 'nail bar', 'nail salon',
+    'beauty salon', 'hair salon', 'hairdress',
+    'barber',
     // Veterinary
     'vet clinic', 'veterinar', 'animal hospital',
     'animal welfare', 'newlands blue cross',
     'dogzone', 'petzone',
+    'pet store', 'petshop',
   ], category: 'Health' },
 
   // ── Entertainment ──
@@ -252,6 +331,7 @@ export const SA_RULES = [
     // Betting / gambling
     'sunbet', 'hollywoodbets', 'betway', 'sportingbet',
     'supabets', 'gbets', 'tab ', 'pari-mutuel',
+    'world sports betting', 'wsb ',
     // Gaming / events
     'truworthsgames',
     // Fashion (online, not clothing store)
@@ -260,6 +340,10 @@ export const SA_RULES = [
     'bowling', 'laser tag', 'paintball',
     'escape room', 'trampoline',
     'miniature golf', 'indoor go-kart',
+    'axe throwing', 'archery',
+    'theme park', 'amusement',
+    // Sports
+    'supersport', 'golf round', 'golf club membership',
   ], category: 'Entertainment' },
 
   // ── Travel ──
@@ -268,6 +352,7 @@ export const SA_RULES = [
     'airbnb', 'booking.com', 'expedia', 'hotels.com',
     'hotel ', 'lodge ', 'guesthouse', 'backpackers',
     'lekkeslaap',
+    'protea hotel', 'tsogo sun', 'sun international',
     // Airlines
     'kulula', 'flysafair', 'safair', 'mango air',
     'ba comair', 'british airways', 'comair',
@@ -278,8 +363,12 @@ export const SA_RULES = [
     'global travel', 'airport tax', 'departure tax',
     'rennies travel', 'flight centre', 'club travel',
     'thompsons holidays', 'sure travel',
+    'travelstart',
     // Airport related
     'acsa parking', 'airport park',
+    // Car hire
+    'avis ', 'budget car', 'hertz ', 'enterprise rent',
+    'europcar', 'tempest car',
   ], category: 'Travel' },
 
   // ── Fees & Charges ──
@@ -301,6 +390,7 @@ export const SA_RULES = [
     'card fee', 'replacement card fee',
     'sms notification fee', 'notification fee',
     'subscription fee debit',   // bank subscription fees
+    'dishonour fee', 'dishonoured',
   ], category: 'Fees & Charges' },
 
   // ── ATM / Cash ──
@@ -321,6 +411,7 @@ export const SA_RULES = [
     're/max', 'pam golding', 'seeff', 'leapfrog',
     'property practitioners',
     'property management co',
+    'semigration', 'estate agent fee',
   ], category: 'Housing' },
 
   // ── Utilities ──
@@ -342,6 +433,7 @@ export const SA_RULES = [
     'fibre', 'openserve', 'vumatel', 'metrofibre',
     'frogfoot', 'linkup ', 'afrihost', 'webafrica',
     'rsaweb', 'axxess', 'herotel', 'cybersmart',
+    'cool ideas', 'octotel',
     // Water / waste
     'water & sanitation', 'water and sanitation',
     'refuse removal',
@@ -358,6 +450,8 @@ export const SA_RULES = [
     'matric', 'extra lessons',
     'daycare', 'creche', 'aftercare',
     'pre-school', 'preschool',
+    'private school', 'christian school', 'montessori',
+    'driving school', 'learner licence', 'driver licence',
   ], category: 'Education' },
 
   // ── Gifts ──
@@ -367,6 +461,8 @@ export const SA_RULES = [
     'gifts ', 'gift card', 'gift voucher',
     'woolworths gift', 'takealot gift',
     'heartfelt', 'interflora',
+    'charity', 'donation', 'npo ', 'welfare',
+    'birthday flowers',
   ], category: 'Gifts' },
 
   // ── Clothing ──
@@ -388,6 +484,9 @@ export const SA_RULES = [
     'relay jeans', 'relay/',
     'shein', 'supabalist',
     'markham', 'YDE ',
+    'bash.com', 'bash ',
+    'levi', 'g-star', 'polo clothing',
+    'la senza', 'bras and things',
   ], category: 'Clothing' },
 
   // ── Savings / Investment ──
@@ -405,6 +504,8 @@ export const SA_RULES = [
     'stanlib', 'momentum invest',
     'discovery invest',
     'stash savings',
+    'franc app', 'franc invest',
+    'ovex ', 'luno ', 'valr ',   // crypto
   ], category: 'Savings' },
 
   // ── Home & Garden ── (DIY / hardware / furniture / home)
@@ -426,17 +527,16 @@ export const SA_RULES = [
     'plumbmaster',
     'electro depot',
     'game store',    // Game SA sells electronics & hardware
+    'incredible connection', 'incredible conn',
+    'hi-fi corp', 'hifi corporation',
+    'loot.co.za', 'loot ',
+    'furniture ', 'beds online', 'mattress',
+    'solar system', 'solar panel',
   ], category: 'Home & Garden' },
 
-  // ── Online retail / general shopping (before Woolworths catch-all) ──
-  // NOTE: payfast* and paygate* removed from here — after wrapper stripping in
-  // saPreCategory(), these wrappers are already gone, so residual "payfast*" in
-  // a description would be an actual merchant called that. Don't swallow them.
-  { patterns: [
-    'takealot', 'amazon.co.za', 'loot.co.za',
-    'bash.com', 'superbalist',
-    'bidorbuy', 'gumtree',
-  ], category: 'Other' },
+  // ── Online retail — removed hard-coded 'Other' mapping ──
+  // Takealot, Amazon etc. are passed to Claude for category inference
+  // (Electronics, Books, Home & Garden, Clothing etc.) rather than bulk-assigning Other.
 
   // ── Woolworths general — after food-specific rule above catches food ──
   { patterns: ['woolworths ', 'woolworths', 'woolies ', 'woolies'], category: 'Clothing' },
@@ -472,18 +572,45 @@ export function normalizeDescription(description) {
 export function saPreCategory(description) {
   if (!description) return null
   // CRITICAL: normalize BEFORE matching — strips wrappers like PAYFAST*, FLW*, etc.
-  // so "PAYFAST*NETFLIX" matches 'netflix' → Subscriptions, not 'payfast*' → Other
+  // so "PAYFAST*NETFLIX" matches 'netflix' -> Subscriptions, not 'payfast*' -> Other
   const normalized = normalizeDescription(description)
   const lower = normalized.toLowerCase()
-  const rawLower = description.toLowerCase()
   for (const rule of SA_RULES) {
     for (const pattern of rule.patterns) {
       if (lower.includes(pattern)) return rule.category
     }
   }
-  // Yoco wildcard: if wrapper is still present in raw, it's a small business → Other
-  if (rawLower.startsWith('yoco*') || lower.startsWith('yoco*')) return 'Other'
+  // Yoco: the prefix is already stripped by normalizeDescription(), so by this
+  // point `lower` contains the merchant name only. If SA_RULES didn't match,
+  // return null and let Claude categorise from the clean merchant name.
   return null
+}
+
+/**
+ * Aggressively clean a description down to just the merchant name.
+ * Used when sending descriptions to Claude -- removes location tags,
+ * phone numbers, and trailing noise so the AI sees "Vida e Caffe" not
+ * "YOCO*VIDA E CAFFE 021 555 1234 CLAREMONT V&A".
+ *
+ * @param {string} description
+ * @returns {string}
+ */
+export function cleanForAI(description) {
+  if (!description) return ''
+  let s = normalizeDescription(description)  // strips payment prefixes + long refs
+  s = s
+    // Strip SA phone numbers (landline + mobile patterns)
+    .replace(/0\d{2}[\s-]?\d{3}[\s-]?\d{4}/g, '')
+    // Strip short numeric tokens (branch codes, store numbers)
+    .replace(/\d{1,5}/g, '')
+    // Strip common trailing location noise
+    .replace(/(jhb|cpt|dbn|pta|centurion|sandton|rosebank|waterfront|mall|centre|plaza|square|park|lifestyle|shopping)/gi, '')
+    // Strip trailing separators left after removals
+    .replace(/[-–|,]+$/, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+  // If cleaning left an empty string, fall back to the normalized form
+  return s || normalizeDescription(description)
 }
 
 /**
