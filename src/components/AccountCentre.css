@@ -282,7 +282,9 @@
   border-radius: 8px;
 }
 .acc-upload-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.acc-upload-header { display: flex; align-items: center; gap: 8px; }
 .acc-upload-range { font-size: 0.88rem; font-weight: 600; color: var(--text); }
+.acc-upload-bank  { font-size: 0.68rem; font-weight: 700; color: var(--coral); background: color-mix(in srgb, var(--coral) 12%, transparent); border-radius: 4px; padding: 1px 6px; letter-spacing: 0.04em; flex-shrink: 0; }
 .acc-upload-meta  { font-size: 0.78rem; color: var(--muted); }
 .acc-upload-when  { font-size: 0.73rem; color: var(--muted); }
 .acc-upload-actions { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }

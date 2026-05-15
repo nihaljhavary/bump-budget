@@ -333,7 +333,10 @@ function UploadsSection({ user }) {
           {batches.map(b => (
             <div key={b.batchId} className="acc-upload-row">
               <div className="acc-upload-info">
-                <div className="acc-upload-range">{fmtD(b.fromDate)} – {fmtD(b.toDate)}</div>
+                <div className="acc-upload-header">
+                  <div className="acc-upload-range">{fmtD(b.fromDate)} – {fmtD(b.toDate)}</div>
+                  {b.detectedBank && <span className="acc-upload-bank">{b.detectedBank.toUpperCase()}</span>}
+                </div>
                 <div className="acc-upload-meta">{b.count} transactions &nbsp;·&nbsp; {fmt(b.totalAmount / 100)}</div>
                 <div className="acc-upload-when">Uploaded {fmtDate(new Date(b.createdAt))}</div>
               </div>

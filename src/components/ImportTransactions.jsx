@@ -37,10 +37,27 @@ const CAT_COLORS = {
 
 // ── Bank-specific column parsers ──────────────────────────────────────────────
 
-function normaliseAmount(val) {
+// Parse a potentially signed amount value: handles parentheses negatives (1,234.00),
+// thousand separators (commas / spaces), and standard minus signs.
+function parseSigned(val) {
   if (val === undefined || val === null || val === '') return null
-  const n = parseFloat(String(val).replace(/[^0-9.\-]/g, ''))
-  return isNaN(n) ? null : Math.abs(n)
+  const s = String(val).trim()
+  if (s === '' || s === '-' || s === '0') return s === '0' ? 0 : null
+  // Accounting negative: (1,234.00) or (1 234.00)
+  const parens = s.match(/^\(([\d][\d .,]*)\)$/)
+  if (parens) {
+    const n = parseFloat(parens[1].replace(/[^0-9.]/g, ''))
+    return isNaN(n) ? null : -Math.abs(n)
+  }
+  // Strip currency symbols, spaces used as thousands seps, but keep minus and first decimal
+  const cleaned = s.replace(/[^0-9.\-]/g, '')
+  const n = parseFloat(cleaned)
+  return isNaN(n) ? null : n
+}
+
+function normaliseAmount(val) {
+  const n = parseSigned(val)
+  return n === null ? null : Math.abs(n)
 }
 
 function normaliseDate(val) {
@@ -51,14 +68,29 @@ function normaliseDate(val) {
     if (d) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`
   }
   const s = String(val).trim()
-  // Try common SA formats: DD/MM/YYYY, YYYY-MM-DD, DD MMM YYYY
+  // YYYY-MM-DD (ISO)
+  const ymd = s.match(/^(\d{4})[\/-](\d{2})[\/-](\d{2})/)
+  if (ymd) return `${ymd[1]}-${ymd[2]}-${ymd[3]}`
+  // DD/MM/YYYY or DD-MM-YYYY
   const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/)
   if (dmy) {
     const y = dmy[3].length === 2 ? '20' + dmy[3] : dmy[3]
     return `${y}-${String(dmy[2]).padStart(2,'0')}-${String(dmy[1]).padStart(2,'0')}`
   }
-  const ymd = s.match(/^(\d{4})[\/\-](\d{2})[\/\-](\d{2})/)
-  if (ymd) return `${ymd[1]}-${ymd[2]}-${ymd[3]}`
+  // DD MMM YYYY or D MMM YYYY (e.g. "15 Jan 2024", "1 March 2024")
+  const dmy3 = s.match(/^(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})$/)
+  if (dmy3) {
+    const MONTHS = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 }
+    const m = MONTHS[dmy3[2].toLowerCase().slice(0, 3)]
+    if (m) return `${dmy3[3]}-${String(m).padStart(2,'0')}-${String(dmy3[1]).padStart(2,'0')}`
+  }
+  // MMM DD, YYYY (US format some banks export)
+  const mdy = s.match(/^([A-Za-z]{3,})\s+(\d{1,2}),?\s+(\d{4})$/)
+  if (mdy) {
+    const MONTHS = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 }
+    const m = MONTHS[mdy[1].toLowerCase().slice(0, 3)]
+    if (m) return `${mdy[3]}-${String(m).padStart(2,'0')}-${String(mdy[2]).padStart(2,'0')}`
+  }
   // Let JS parse the rest
   const d = new Date(s)
   if (!isNaN(d)) return formatLocalDate(d)
@@ -168,8 +200,8 @@ function parseRows(rows, bankId) {
     const isTransfer = hasTransferHint(desc, txnType)
 
     if (amtCol && row[amtCol] !== undefined && row[amtCol] !== '') {
-      const raw = parseFloat(String(row[amtCol]).replace(/[^0-9.\-]/g, ''))
-      if (!isNaN(raw)) {
+      const raw = parseSigned(row[amtCol])
+      if (raw !== null) {
         isIncome = raw > 0
         amount = Math.abs(raw)
       }
@@ -385,6 +417,7 @@ export default function ImportTransactions({ onImportComplete }) {
             category:        t.category || 'Other',
             date:            t.date,
             raw_merchant:    t.raw_merchant || t.description,
+            detected_bank:   bank || null,
             import_batch_id: batchId,
             transaction_hash: fp,
           })
@@ -447,6 +480,7 @@ export default function ImportTransactions({ onImportComplete }) {
             category:        t.category || 'Other',
             date:            t.date,
             raw_merchant:    t.raw_merchant || t.description,
+            detected_bank:   bank || null,
             import_batch_id: batchId,
             transaction_hash: fp,
           })

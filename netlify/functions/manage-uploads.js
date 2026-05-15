@@ -55,7 +55,7 @@ async function _handler(event) {
     for (;;) {
       const { data, error } = await adminClient
         .from('transactions')
-        .select('id, import_batch_id, date, amount, name, created_at')
+        .select('id, import_batch_id, date, amount, name, created_at, detected_bank')
         .eq('user_id', user.id)
         .not('import_batch_id', 'is', null)
         .order('created_at', { ascending: false })
@@ -71,7 +71,7 @@ async function _handler(event) {
     for (const t of all) {
       const id = t.import_batch_id
       if (!groups[id]) {
-        groups[id] = { batchId: id, fromDate: t.date, toDate: t.date, count: 0, totalAmount: 0, createdAt: t.created_at }
+        groups[id] = { batchId: id, fromDate: t.date, toDate: t.date, count: 0, totalAmount: 0, createdAt: t.created_at, detectedBank: t.detected_bank || null }
       }
       const g = groups[id]
       g.count++

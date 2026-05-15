@@ -59,10 +59,17 @@ export const SA_RULES = [
     'woolworths dash', 'woolies dash', 'woolworths delivery', 'woolies delivery',
     // Checkers grocery delivery app
     'checkers sixty60', 'sixty60', 'sixty 60', 'checkers 6060',
-    // Pick n Pay rapid delivery
+    // Pick n Pay rapid delivery + online ordering
     'pick n pay asap', 'pnp asap', 'picknpay asap',
-    // Shoprite Usave delivery
-    'shoprite usave delivery',
+    'pnp online', 'pick n pay online', 'picknpay online',
+    // Spar online ordering / delivery
+    'spar online', 'spar deliver', 'spar2u',
+    // Checkers online (non-Sixty60)
+    'checkers online',
+    // Woolworths online food ordering
+    'woolworths online', 'woolies online',
+    // Shoprite online / Usave delivery
+    'shoprite online', 'shoprite usave delivery', 'usave online',
     // Engen Quickshop — convenience store at petrol station (not a fuel purchase)
     'engen quickshop',
     // Shell Select — convenience store at Shell (not a fuel purchase)
@@ -128,6 +135,15 @@ export const SA_RULES = [
     'mr d food', 'mrd food', 'mrdfood', 'mr d app',
     'bolt food',
     'deliveroo',
+    // More SA fast food / QSR
+    'kfc ', 'kfc/', 'kentucky fried',
+    'chicken licken', 'steers ', 'steers/',
+    'wimpy ', 'wimpy/', "roman's pizza", 'romans pizza',
+    "jason's bakery", 'jasons bakery',
+    'panarottis', 'ocean basket', 'spur ', 'spur/',
+    'john dory', 'john dorys',
+    'doppio zero', 'tashas ', "tasha's",
+    'cafe neo', 'bootlegger', 'truth coffee', 'coffee on',
     'dineplan',
     'order in', 'orderin',
     // In-store hot food counters (must come after grocery-specific patterns)
@@ -211,6 +227,12 @@ export const SA_RULES = [
     'nintendo eshop', 'steam games',
     // Productivity / software / AI
     'google one', 'google play',
+    'amazon prime', 'amzn prime', 'amazon*',
+    'disney+', 'disney plus',
+    'apple.com/bill', 'itunes', 'apple sub',
+    'youtube premium', 'youtube music',
+    'canva ', 'canva/',
+    'adobe ',
     'microsoft 365', 'office 365', 'ms365',
     'adobe ', 'adobe*',
     'dropbox', 'icloud',

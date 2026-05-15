@@ -207,6 +207,9 @@ export default function Dashboard({ onNavigate }) {
   const catTotals = ledger.catTotals
   const maxCat = Math.max(...Object.values(catTotals), 1)
 
+  // Recurring obligations detected from all allowed transaction history
+  const recurring = useMemo(() => detectRecurring(allowedTransactions), [allowedTransactions])
+
   // AI-suggested budgets: 85% of rolling 12-month average per category.
   // Loaded async on mount and re-loaded after each import. Far more accurate
   // than a single-month snapshot because one exceptional month won't skew targets.
@@ -352,7 +355,6 @@ export default function Dashboard({ onNavigate }) {
     try {
       // Build merchant summary + recurring obligation context for richer AI analysis
       const topMerchants = buildTopMerchants(spendTxns, 15)
-      const recurring = detectRecurring(allowedTransactions)
       const recurringContext = recurringToContext(recurring, { income: ledger.income })
       const payload = buildAIPayload(allowedTransactions, profile, 200, {
         mode: 'overview',
@@ -728,6 +730,38 @@ export default function Dashboard({ onNavigate }) {
                     }}
                   >{savingsBalSaving ? 'Saving...' : 'Save'}</button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Recurring Obligations */}
+          {recurring.length > 0 && (
+            <div className="recurring-panel">
+              <div className="recurring-head">
+                <span className="recurring-title">Recurring obligations</span>
+                {income > 0 && (() => {
+                  const obligations = recurring.filter(r => r.isObligation)
+                  if (obligations.length === 0) return null
+                  const totalObl = obligations.reduce((s, r) => s + r.medianAmount, 0)
+                  const pct = Math.round(totalObl / income * 100)
+                  return <span className="recurring-burden">{pct}% of income locked</span>
+                })()}
+              </div>
+              <div className="recurring-list">
+                {recurring.slice(0, 6).map((r, i) => {
+                  const amt = r.medianAmount
+                  const pct = income > 0 ? Math.round(amt / income * 100) : 0
+                  return (
+                    <div key={i} className={`recurring-row ${r.isObligation ? 'obligation' : 'habitual'}`}>
+                      <div className="recurring-merchant">{r.merchant}</div>
+                      <div className="recurring-meta">
+                        <span className="recurring-cat">{r.category}</span>
+                        {income > 0 && <span className="recurring-pct">{pct}%</span>}
+                      </div>
+                      <div className="recurring-amt">{'R' + Math.round(amt).toLocaleString('en-ZA')}<span className="recurring-freq">/mo</span></div>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           )}
