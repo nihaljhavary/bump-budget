@@ -28,14 +28,18 @@ create table if not exists error_logs (
 alter table error_logs enable row level security;
 
 -- Anyone (including anonymous) can insert (errors happen before auth sometimes)
-create policy if not exists "Anyone can log errors"
-  on error_logs for insert
-  with check (true);
+do $$ begin
+  create policy "Anyone can log errors"
+    on error_logs for insert with check (true);
+exception when duplicate_object then null;
+end $$;
 
 -- Users can view their own error logs
-create policy if not exists "Users can view own error logs"
-  on error_logs for select
-  using (auth.uid() = user_id);
+do $$ begin
+  create policy "Users can view own error logs"
+    on error_logs for select using (auth.uid() = user_id);
+exception when duplicate_object then null;
+end $$;
 
 -- Index for fast admin queries
 create index if not exists idx_error_logs_created on error_logs(created_at desc);
