@@ -1,9 +1,9 @@
 import './_ws-polyfill.js'
 import { createClient } from '@supabase/supabase-js'
 
-const FORMAT_RULES = `Never use em dashes (—). Never use the tilde symbol (~). Never use markdown bold (**text**). Write in plain prose.`
+const FORMAT_RULES = `Never use em dashes. Never use the tilde symbol (~). Never use markdown bold (**text**). Write in plain prose.`
 
-const SYSTEM_PROMPT = `You are bump.'s personal finance advisor -- a warm, direct, South African money coach. You give practical, specific, actionable financial advice based on real spending data. You speak plainly, avoid jargon, and always give specific Rand amounts. Never be vague. Your tone is encouraging but honest. ${FORMAT_RULES}`
+const SYSTEM_PROMPT = `You are bump.'s personal finance advisor -- a warm, direct, South African money coach. You give practical, specific, actionable financial advice based on real spending data. You speak plainly, avoid jargon, and always give specific Rand amounts. Never be vague. Your tone is encouraging but honest. ` + FORMAT_RULES
 
 export async function handler(event) {
   if (event.httpMethod !== 'POST') {
@@ -17,9 +17,9 @@ export async function handler(event) {
     return { statusCode: 400, body: JSON.stringify({ error: 'Invalid JSON' }) }
   }
 
-  const { answers, spendingData, budgets, monthCount = 1 } = body
+  const { answers, spendingData, budgets, monthCount = 1, recurringMonthly = 0, projectionContext = null } = body
 
-  // ── Auth ──────────────────────────────────────────────────────────────────
+  // Auth
   const authHeader = event.headers['authorization'] || event.headers['Authorization'] || ''
   if (!authHeader.startsWith('Bearer ')) {
     return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized' }) }
@@ -36,7 +36,7 @@ export async function handler(event) {
     return { statusCode: 401, body: JSON.stringify({ error: 'Invalid or expired session' }) }
   }
 
-  // ── Pre-compute key financials for richer prompt context ─────────────────
+  // Pre-compute key financials
   const monthlyIncome = parseFloat(answers.income) || 0
   const totalMonthlySpend = spendingData
     ? Object.values(spendingData).reduce((s, v) => s + v, 0)
@@ -45,13 +45,9 @@ export async function handler(event) {
   const savingsGoal = parseFloat(answers.savingsGoal) || 0
   const savingsRate = monthlyIncome > 0 ? Math.round((monthlySurplus / monthlyIncome) * 100) : 0
 
-  // Months of expenses in emergency fund
-  const monthsExpenses = totalMonthlySpend > 0 ? 3 : 0 // target = 3 months
   const emergencyFundTarget = Math.round(totalMonthlySpend * 3)
   const hasEmergencyFund = (answers.emergencyFund || '').includes('3+')
 
-  // ── Build prompt ──────────────────────────────────────────────────────────
-  // Build human-readable label based on actual month count uploaded
   const avgLabel = monthCount >= 12 ? '12-month rolling' : monthCount <= 1 ? '1-month' : `${monthCount}-month rolling`
 
   const spendLines = spendingData
@@ -74,6 +70,27 @@ export async function handler(event) {
         .join('\n')
     : 'No budgets set'
 
+  // Recurring obligations context
+  const recurringLine = recurringMonthly > 0
+    ? `\nRECURRING OBLIGATIONS: R${Math.round(recurringMonthly).toLocaleString('en-ZA')}/mo (${monthlyIncome > 0 ? Math.round(recurringMonthly / monthlyIncome * 100) : 0}% of income)`
+    : ''
+
+  // Long-term projection context (from deterministic engine -- not AI-generated)
+  let projectionLine = ''
+  if (projectionContext) {
+    const { monthlyFreeCashFlow, netWorth1yr, netWorth5yr, netWorth10yr,
+            optimisedNetWorth10yr, salaryGrowth, investmentReturn } = projectionContext
+    projectionLine = `\nLONG-TERM PROJECTIONS (deterministic, ${salaryGrowth || 5}% salary growth, ${investmentReturn || 8}% returns):`
+    if (monthlyFreeCashFlow != null) projectionLine += `\n  Monthly free cash flow (income - fixed - variable): R${Math.round(monthlyFreeCashFlow).toLocaleString('en-ZA')}`
+    if (netWorth1yr != null)  projectionLine += `\n  Projected net worth in 1 year (current path): R${Math.round(netWorth1yr).toLocaleString('en-ZA')}`
+    if (netWorth5yr != null)  projectionLine += `\n  Projected net worth in 5 years (current path): R${Math.round(netWorth5yr).toLocaleString('en-ZA')}`
+    if (netWorth10yr != null) projectionLine += `\n  Projected net worth in 10 years (current path): R${Math.round(netWorth10yr).toLocaleString('en-ZA')}`
+    if (optimisedNetWorth10yr != null) {
+      const uplift = optimisedNetWorth10yr - (netWorth10yr || 0)
+      projectionLine += `\n  Optimised path (10% variable cut) 10yr net worth: R${Math.round(optimisedNetWorth10yr).toLocaleString('en-ZA')} (R${Math.round(uplift).toLocaleString('en-ZA')} more)`
+    }
+  }
+
   const prompt = `Here is the user's financial profile:
 
 QUESTIONNAIRE ANSWERS:
@@ -87,9 +104,9 @@ QUESTIONNAIRE ANSWERS:
 
 COMPUTED FINANCIAL SNAPSHOT:
 - Total monthly spend: R${Math.round(totalMonthlySpend).toLocaleString('en-ZA')}/mo
-- Monthly surplus (income minus spend): ${monthlySurplus >= 0 ? 'R' + Math.round(monthlySurplus).toLocaleString('en-ZA') + ' surplus' : 'R' + Math.abs(Math.round(monthlySurplus)).toLocaleString('en-ZA') + ' DEFICIT'}
-- Savings rate: ${savingsRate}%${savingsGoal > 0 ? (monthlySurplus >= savingsGoal ? ' (meeting goal)' : ` (short of R${savingsGoal.toLocaleString('en-ZA')} goal by R${Math.round(savingsGoal - monthlySurplus).toLocaleString('en-ZA')})`) : ''}
-- 3-month emergency fund target: ${emergencyFundTarget > 0 ? 'R' + emergencyFundTarget.toLocaleString('en-ZA') : 'unknown'}${!hasEmergencyFund && emergencyFundTarget > 0 && monthlySurplus > 0 ? ` (${Math.ceil(emergencyFundTarget / monthlySurplus)} months to build at current surplus)` : ''}
+- Monthly surplus: ${monthlySurplus >= 0 ? 'R' + Math.round(monthlySurplus).toLocaleString('en-ZA') + ' surplus' : 'R' + Math.abs(Math.round(monthlySurplus)).toLocaleString('en-ZA') + ' DEFICIT'}
+- Savings rate: ${savingsRate}%${savingsGoal > 0 ? (monthlySurplus >= savingsGoal ? ' (meeting goal)' : ` (short by R${Math.round(savingsGoal - monthlySurplus).toLocaleString('en-ZA')})`) : ''}
+- 3-month emergency fund target: ${emergencyFundTarget > 0 ? 'R' + emergencyFundTarget.toLocaleString('en-ZA') : 'unknown'}${!hasEmergencyFund && emergencyFundTarget > 0 && monthlySurplus > 0 ? ` (${Math.ceil(emergencyFundTarget / monthlySurplus)} months to build)` : ''}${recurringLine}${projectionLine}
 
 ACTUAL MONTHLY SPENDING (${avgLabel} average, budget vs actual):
 ${spendLines}
@@ -97,47 +114,33 @@ ${spendLines}
 CURRENT BUDGETS SET:
 ${budgetLines}
 
-Please provide a personalised financial health report. Be specific -- reference actual rand amounts from the spending data above. Anchor insights to real behaviour, not generic advice.
+Provide a personalised financial health report. Be specific -- use actual rand amounts. Where projection data is available, use it to frame the long-term impact (what does the current trajectory mean in 5-10 years?). Anchor insights to real behaviour.
 
-1. FINANCIAL HEALTH SCORE -- Give a score out of 10 based on: savings rate, surplus/deficit position, emergency fund status, spending vs income ratio.
+1. FINANCIAL HEALTH SCORE -- Score 1-10 based on: savings rate, surplus/deficit, emergency fund, spending/income ratio, and long-term trajectory.
 
-2. KEY INSIGHTS -- 3 specific behavioural observations with Rand amounts (e.g. "Your eating out spend of R2 400/mo is 12% of your income").
+2. KEY INSIGHTS -- 3 specific observations with Rand amounts. If projections are available, one insight should reference the long-term outlook.
 
-3. WHERE TO CUT -- 3-5 categories with over-budget or high spend. For each:
+3. WHERE TO CUT -- 3-5 categories with over-budget or high spend:
    - Category name and current monthly average
    - Recommended target
    - Potential monthly saving
    - One concrete tip
 
-4. SAVINGS PLAN -- Based on their declared income, goal, and actual surplus:
+4. SAVINGS PLAN -- Based on income, goal, and actual surplus:
    - Realistic monthly savings target
    - Time to reach their stated goal
    - Which category cuts fund it
 
 5. ONE QUICK WIN -- The single highest-impact change they can make this month.
 
-Respond with ONLY this exact JSON structure, no markdown, no explanation:
+Respond with ONLY this JSON, no markdown:
 {
   "healthScore": number (1-10),
-  "healthLabel": "string (e.g. 'Getting there')",
-  "healthSummary": "string (1 sentence, plain prose)",
-  "insights": [
-    { "title": "string", "body": "string", "type": "warning|positive|neutral" }
-  ],
-  "cuts": [
-    {
-      "category": "string",
-      "currentAvg": number,
-      "recommended": number,
-      "saving": number,
-      "tip": "string"
-    }
-  ],
-  "savingsPlan": {
-    "monthlyTarget": number,
-    "timeToGoal": "string",
-    "fundedBy": "string"
-  },
+  "healthLabel": "string",
+  "healthSummary": "string (1 sentence)",
+  "insights": [{ "title": "string", "body": "string", "type": "warning|positive|neutral" }],
+  "cuts": [{ "category": "string", "currentAvg": number, "recommended": number, "saving": number, "tip": "string" }],
+  "savingsPlan": { "monthlyTarget": number, "timeToGoal": "string", "fundedBy": "string" },
   "quickWin": "string"
 }`
 

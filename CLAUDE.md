@@ -423,3 +423,48 @@ New CSS classes added in Session 2:
 - `.acc-preset-btn.active` — coral highlight for the currently selected preset
 
 **CSS rewrite rule for AccountCentre.css**: This file must be written via Python (`open(path, 'w').write(content)`) not the Edit tool. The Edit tool truncates it at the Linux side, causing build CSS syntax errors. Always verify with `python3 -c "... brace depth check ..."` after writing.
+
+---
+
+## Scenario Planning v2 (2026-05 Session 3)
+
+### Architecture overview
+`Projections.jsx` is now a full interactive Scenario Planning engine with AI-assisted event extraction.
+
+### buildYearModel() — granular field expansion
+The deterministic engine now tracks 12 row fields per year beyond the original aggregates:
+- Income: `bonusIncome`, `salaryEventIncome`, `vehicleSaleIncome`, `debtPayoffSaving`, `otherEventIncome`
+- Expense: `vehicleCosts`, `schoolFees`, `childCosts`, `investmentContrib`, `bondPayments`, `otherEventExpense`
+- Aggregate fields preserved for compatibility: `eventIncome`, `eventExpense`, `freeCashFlow`, `netWorth`
+- **No AI involved** comment at top of function is intentional and permanent.
+
+### YearlyTable -- dynamic row rendering
+`ALL_TABLE_ROWS` defines all 16 possible rows. `ALWAYS_SHOW` set marks 6 core rows that always render. All other rows render only when at least one year has a non-zero value. This keeps the table clean for users with no custom events and detailed for those who do.
+
+### EVENT_TEMPLATES expanded
+New types: `vehicle_sell` (income), `bond_payment` (monthly expense), `children` (monthly expense), `investment` (monthly expense). Total: 12 event types. Each has `icon`, `income`, `monthly` fields. Icons use actual emoji characters (not Python \U escapes — CLAUDE.md rule).
+
+### scenario-interpret.js (NEW netlify function)
+- Endpoint: `POST /.netlify/functions/scenario-interpret`
+- Accepts: `{ prompt, currentYear, netIncome, debitOrders, variableSpend }`
+- Returns: `{ events: [...], explanation: "..." }`
+- Uses Haiku. Validates + sanitises all returned events before sending to client.
+- System prompt forbids inventing financial math — extracts structured intent only.
+- `validTypes` set server-side rejects any unknown event type.
+
+### AI interpretation flow in Projections.jsx
+1. User types natural language in `proj-ai-prompt-input` (inside Custom Scenario panel)
+2. `interpretScenario()` calls `scenario-interpret.js` with user context (income, debitOrders, variableSpend)
+3. Returned events are merged into `customEvents` state with random IDs
+4. `aiExplanation` state shows what was extracted (green confirmation box)
+5. `forecastMode` switches to 'custom' automatically
+6. All calculations remain deterministic — AI only shapes the event list
+
+### ScenarioComparisonPanel
+Collapsible panel (`.proj-compare-section`) below the net worth chart. Shows Current/Optimised/Custom side by side. Metrics: net worth at horizon, yr-1 free cash flow, yr-1 investment growth, yr-5 net worth. Uses `fmtK()` for compact display. Mobile: columns stack vertically, metrics wrap in flex row.
+
+### Recommendations integration
+`Recommendations.jsx` now computes `projectionContext` via a lightweight inline `computeProjectionContext()` function (mirrors `buildYearModel` arithmetic without importing it). Passes to `get-recommendations.js` as: `{ monthlyFreeCashFlow, netWorth1yr, netWorth5yr, netWorth10yr, optimisedNetWorth10yr, salaryGrowth, investmentReturn }`. Also passes `recurringMonthly`. The function injects a LONG-TERM PROJECTIONS block into the AI prompt so recommendations are forward-looking.
+
+### git commit workaround (2026-05 Session 3)
+The `/tmp` git index files from prior sessions are owned by `nobody` (different user). Use `/sessions/blissful-compassionate-cray/git_idx_*` paths instead of `/tmp/git_idx_*` for `GIT_INDEX_FILE`. HEAD.lock and index.lock owned by `nobody` cannot be removed — must ask user to `git add` and `git push` manually from Git Bash.

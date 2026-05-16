@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { supabase } from '../supabase'
 import { fetchTransactionsByRange } from '../services/transactions'
 import { buildLedgerSummary, countCalendarMonths, formatLocalDate, validateProjectionInputs } from '../utils/ledger'
 import { useTier, isDateAllowed } from '../context/TierContext'
@@ -41,13 +42,32 @@ function buildYearModel({ netIncomeMonthly, fixedMonthly, variableMonthly,
     const annualFixed    = Math.round(fixedMonthly      * 12 * inf)
     const annualVariable = Math.round(variableMonthly   * 12 * inf * varReduction)
 
-    // Events for this year
+    // Events for this year -- granular tracking by type
     const yearEvents = (events || []).filter(e => Number(e.year) === year)
     let eventIncome = 0, eventExpense = 0
+    let bonusIncome = 0, salaryEventIncome = 0
+    let vehicleCosts = 0, schoolFees = 0, childCosts = 0
+    let investmentContrib = 0, bondPayments = 0, otherEventExpense = 0
+    let vehicleSaleIncome = 0, debtPayoffSaving = 0, otherEventIncome = 0
+
     for (const ev of yearEvents) {
       const amt = ev.monthly ? Number(ev.amount) * 12 : Number(ev.amount)
-      if (ev.income) eventIncome  += amt
-      else           eventExpense += amt
+      if (ev.income) {
+        eventIncome += amt
+        if (ev.type === 'bonus' || ev.type === 'income')       bonusIncome       += amt
+        else if (ev.type === 'vehicle_sell')                    vehicleSaleIncome += amt
+        else if (ev.type === 'salary_change')                   salaryEventIncome += amt
+        else if (ev.type === 'debt_payoff')                     debtPayoffSaving  += amt
+        else                                                     otherEventIncome  += amt
+      } else {
+        eventExpense += amt
+        if (ev.type === 'vehicle_buy')                          vehicleCosts      += amt
+        else if (ev.type === 'school_fees')                     schoolFees        += amt
+        else if (ev.type === 'children')                        childCosts        += amt
+        else if (ev.type === 'investment')                      investmentContrib += amt
+        else if (ev.type === 'bond_payment')                    bondPayments      += amt
+        else                                                     otherEventExpense += amt
+      }
     }
 
     // Investment growth on existing balance (compound annually)
@@ -58,13 +78,25 @@ function buildYearModel({ netIncomeMonthly, fixedMonthly, variableMonthly,
     rows.push({
       year,
       annualIncome,
-      eventIncome:     Math.round(eventIncome),
+      bonusIncome:        Math.round(bonusIncome),
+      salaryEventIncome:  Math.round(salaryEventIncome),
+      vehicleSaleIncome:  Math.round(vehicleSaleIncome),
+      debtPayoffSaving:   Math.round(debtPayoffSaving),
+      otherEventIncome:   Math.round(otherEventIncome),
       investmentGrowth,
       annualFixed,
       annualVariable,
-      eventExpense:    Math.round(eventExpense),
-      freeCashFlow:    Math.round(freeCashFlow),
-      netWorth:        Math.round(balance),
+      vehicleCosts:       Math.round(vehicleCosts),
+      schoolFees:         Math.round(schoolFees),
+      childCosts:         Math.round(childCosts),
+      investmentContrib:  Math.round(investmentContrib),
+      bondPayments:       Math.round(bondPayments),
+      otherEventExpense:  Math.round(otherEventExpense),
+      // Aggregates (preserved for compatibility)
+      eventIncome:        Math.round(eventIncome),
+      eventExpense:       Math.round(eventExpense),
+      freeCashFlow:       Math.round(freeCashFlow),
+      netWorth:           Math.round(balance),
     })
   }
   return rows
@@ -99,7 +131,7 @@ function ProjectionChart({ currentPath, optimisedPath, customPath, view }) {
   const yPos = v => PAD.top  + innerH - ((v - minVal) / range) * innerH
   const linePath = key => data.reduce((acc, d, i) => {
     if (d[key] == null) return acc
-    return acc + `${acc === '' ? 'M' : 'L'} ${xPos(i).toFixed(1)} ${yPos(d[key]).toFixed(1)} `
+    return acc + (acc === '' ? 'M' : 'L') + ' ' + xPos(i).toFixed(1) + ' ' + yPos(d[key]).toFixed(1) + ' '
   }, '').trim()
 
   const yTicks = [0, 0.5, 1].map(f => ({ val: minVal + f * range, y: yPos(minVal + f * range) }))
@@ -115,7 +147,7 @@ function ProjectionChart({ currentPath, optimisedPath, customPath, view }) {
         <g key={i}>
           <line x1={PAD.left} y1={t.y} x2={W - PAD.right} y2={t.y} stroke="var(--border)" strokeWidth="0.6" />
           <text x={PAD.left - 4} y={t.y + 3} textAnchor="end" fontSize="7.5" fill="var(--muted)">
-            {Math.abs(t.val) >= 1000 ? `${t.val < 0 ? '-' : ''}${Math.round(Math.abs(t.val) / 1000)}k` : Math.round(t.val)}
+            {Math.abs(t.val) >= 1000 ? (t.val < 0 ? '-' : '') + Math.round(Math.abs(t.val) / 1000) + 'k' : Math.round(t.val)}
           </text>
         </g>
       ))}
@@ -162,7 +194,7 @@ function YearChart({ models }) {
 
   const xPos = i => PAD.left + (n > 1 ? (i / (n - 1)) * innerW : innerW / 2)
   const yPos = v => PAD.top  + innerH - ((v - minVal) / range) * innerH
-  const linePath = rows => rows.map((r, i) => `${i === 0 ? 'M' : 'L'} ${xPos(i).toFixed(1)} ${yPos(r.netWorth).toFixed(1)}`).join(' ')
+  const linePath = rows => rows.map((r, i) => (i === 0 ? 'M' : 'L') + ' ' + xPos(i).toFixed(1) + ' ' + yPos(r.netWorth).toFixed(1)).join(' ')
 
   const yTicks = [0, 0.5, 1].map(f => ({ val: minVal + f * range, y: yPos(minVal + f * range) }))
   const zeroY  = yPos(0)
@@ -198,21 +230,81 @@ function YearChart({ models }) {
 }
 
 // ---------------------------------------------------------------------------
-// Year-by-year financial table (sticky left col, horizontal scroll on mobile)
+// Multi-scenario comparison panel
 // ---------------------------------------------------------------------------
-const TABLE_ROWS = [
-  { key: 'annualIncome',    label: 'Salary income',     type: 'income'   },
-  { key: 'eventIncome',     label: 'Bonus / events',    type: 'income'   },
-  { key: 'investmentGrowth',label: 'Investment growth', type: 'income'   },
-  { key: 'annualFixed',     label: 'Fixed obligations', type: 'expense'  },
-  { key: 'annualVariable',  label: 'Living expenses',   type: 'expense'  },
-  { key: 'eventExpense',    label: 'Event costs',       type: 'expense'  },
-  { key: 'freeCashFlow',    label: 'Free cash flow',    type: 'net'      },
-  { key: 'netWorth',        label: 'Net worth',         type: 'networth' },
+function ScenarioComparisonPanel({ models, horizonYears }) {
+  const scenarios = [
+    { key: 'current',   label: 'Current Path', color: 'var(--coral)' },
+    { key: 'optimised', label: 'Optimised',    color: '#1D9E75'      },
+    { key: 'custom',    label: 'Custom',        color: '#7F77DD'      },
+  ]
+
+  const metrics = [
+    { label: 'Net worth (' + horizonYears + 'yr)', getVal: rows => rows[rows.length - 1]?.netWorth ?? 0 },
+    { label: 'Free cash flow (yr 1)',               getVal: rows => rows[0]?.freeCashFlow ?? 0 },
+    { label: 'Investment growth (yr 1)',             getVal: rows => rows[0]?.investmentGrowth ?? 0 },
+    { label: 'Yr 5 net worth',                      getVal: rows => rows[Math.min(4, rows.length - 1)]?.netWorth ?? 0 },
+  ]
+
+  return (
+    <div className="proj-compare-body">
+      <div className="proj-compare-grid">
+        {scenarios.map(sc => {
+          const rows = models[sc.key]
+          if (!rows?.length) return null
+          return (
+            <div key={sc.key} className="proj-compare-col">
+              <div className="proj-compare-col-label" style={{ color: sc.color }}>{sc.label}</div>
+              {metrics.map(m => {
+                const val = m.getVal(rows)
+                return (
+                  <div key={m.label} className="proj-compare-metric">
+                    <div className="proj-compare-metric-label">{m.label}</div>
+                    <div className={'proj-compare-metric-value' + (val < 0 ? ' red' : '')}>{fmtK(val)}</div>
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Year-by-year financial table (sticky left col, horizontal scroll on mobile)
+// Shows only rows with non-zero values across any year.
+// ---------------------------------------------------------------------------
+const ALL_TABLE_ROWS = [
+  { key: 'annualIncome',       label: 'Salary income',           type: 'income'   },
+  { key: 'bonusIncome',        label: 'Bonuses / windfalls',     type: 'income'   },
+  { key: 'salaryEventIncome',  label: 'Salary increase gains',   type: 'income'   },
+  { key: 'vehicleSaleIncome',  label: 'Vehicle sale proceeds',   type: 'income'   },
+  { key: 'debtPayoffSaving',   label: 'Debt cleared (saving)',   type: 'income'   },
+  { key: 'investmentGrowth',   label: 'Investment growth',       type: 'income'   },
+  { key: 'annualFixed',        label: 'Fixed obligations',       type: 'expense'  },
+  { key: 'annualVariable',     label: 'Living expenses',         type: 'expense'  },
+  { key: 'vehicleCosts',       label: 'Vehicle costs',           type: 'expense'  },
+  { key: 'schoolFees',         label: 'School fees',             type: 'expense'  },
+  { key: 'childCosts',         label: 'Child / childcare',       type: 'expense'  },
+  { key: 'investmentContrib',  label: 'Investment contributions',type: 'expense'  },
+  { key: 'bondPayments',       label: 'Bond repayments',         type: 'expense'  },
+  { key: 'otherEventExpense',  label: 'Other event costs',       type: 'expense'  },
+  { key: 'freeCashFlow',       label: 'Free cash flow',          type: 'net'      },
+  { key: 'netWorth',           label: 'Net worth',               type: 'networth' },
 ]
+
+const ALWAYS_SHOW = new Set(['annualIncome','annualFixed','annualVariable','investmentGrowth','freeCashFlow','netWorth'])
 
 function YearlyTable({ model }) {
   if (!model?.length) return null
+
+  const activeRows = ALL_TABLE_ROWS.filter(row => {
+    if (ALWAYS_SHOW.has(row.key)) return true
+    return model.some(r => (r[row.key] || 0) !== 0)
+  })
+
   return (
     <div className="proj-table-wrap">
       <table className="proj-year-table">
@@ -223,18 +315,17 @@ function YearlyTable({ model }) {
           </tr>
         </thead>
         <tbody>
-          {TABLE_ROWS.map(row => (
-            <tr key={row.key} className={`proj-table-row proj-tr-${row.type}`}>
+          {activeRows.map(row => (
+            <tr key={row.key} className={'proj-table-row proj-tr-' + row.type}>
               <td className="proj-table-sticky proj-table-label">{row.label}</td>
               {model.map(r => {
-                const val = r[row.key]
-                const zero = val === 0
-                if (zero && (row.type === 'income' || row.type === 'expense')) {
-                  return <td key={r.year} className="proj-table-cell proj-cell-muted">—</td>
+                const val = r[row.key] || 0
+                if (val === 0 && !ALWAYS_SHOW.has(row.key)) {
+                  return <td key={r.year} className="proj-table-cell proj-cell-muted">-</td>
                 }
                 const colorCls = (row.type === 'net' || row.type === 'networth')
                   ? (val < 0 ? 'proj-cell-red' : 'proj-cell-green') : ''
-                return <td key={r.year} className={`proj-table-cell ${colorCls}`}>{fmt(val)}</td>
+                return <td key={r.year} className={'proj-table-cell ' + colorCls}>{fmt(val)}</td>
               })}
             </tr>
           ))}
@@ -250,14 +341,18 @@ function YearlyTable({ model }) {
 const DEFAULT_ASSUMPTIONS = { salaryGrowth: 5, inflation: 6, investmentReturn: 8 }
 
 const EVENT_TEMPLATES = [
-  { type: 'salary_change', label: 'Salary increase (net/mo)', income: true,  monthly: true  },
-  { type: 'bonus',         label: 'Bonus / lump sum income',  income: true,  monthly: false },
-  { type: 'vehicle',       label: 'Vehicle purchase',         income: false, monthly: false },
-  { type: 'property',      label: 'Property deposit',         income: false, monthly: false },
-  { type: 'school_fees',   label: 'School fees (annual)',     income: false, monthly: false },
-  { type: 'debt_payoff',   label: 'Debt payoff saving (mo)',  income: true,  monthly: true  },
-  { type: 'expense',       label: 'One-off expense',          income: false, monthly: false },
-  { type: 'income',        label: 'One-off income',           income: true,  monthly: false },
+  { type: 'bonus',         label: 'Bonus / windfall',             income: true,  monthly: false, icon: '💰' },
+  { type: 'salary_change', label: 'Salary increase (net/mo)',     income: true,  monthly: true,  icon: '📈' },
+  { type: 'vehicle_buy',   label: 'Vehicle purchase',             income: false, monthly: false, icon: '🚗' },
+  { type: 'vehicle_sell',  label: 'Vehicle sale proceeds',        income: true,  monthly: false, icon: '🚗' },
+  { type: 'property',      label: 'Property deposit / costs',     income: false, monthly: false, icon: '🏠' },
+  { type: 'bond_payment',  label: 'Bond repayment (mo)',          income: false, monthly: true,  icon: '🏠' },
+  { type: 'children',      label: 'Child costs (mo)',             income: false, monthly: true,  icon: '👶' },
+  { type: 'school_fees',   label: 'School fees (annual)',         income: false, monthly: false, icon: '📚' },
+  { type: 'debt_payoff',   label: 'Debt cleared - saves (mo)',    income: true,  monthly: true,  icon: '✂' },
+  { type: 'investment',    label: 'Investment contribution (mo)', income: false, monthly: true,  icon: '📊' },
+  { type: 'expense',       label: 'One-off expense',              income: false, monthly: false, icon: '💸' },
+  { type: 'income',        label: 'One-off income',               income: true,  monthly: false, icon: '💰' },
 ]
 
 // ---------------------------------------------------------------------------
@@ -267,21 +362,19 @@ export default function Projections({ recurringMonthly }) {
   const { user, profile } = useAuth()
   const tier = useTier()
   const [loading, setLoading]   = useState(true)
-  const [projIntegrityIssues, setProjIntegrityIssues] = useState([])  // reconciliation issues
   const [txns, setTxns]         = useState([])
   const [view, setView]         = useState('monthly')
   const [range, setRange]       = useState({ from: '', to: '' })
 
-  // Input overrides (existing)
   const [netIncomeInput,     setNetIncomeInput]     = useState('')
   const [debitOrdersInput,   setDebitOrdersInput]   = useState('')
   const [currentSavingsInput,setCurrentSavingsInput]= useState('')
 
-  // New state
   const [forecastMode,     setForecastMode]    = useState('current')
   const [assumptions,      setAssumptions]     = useState(DEFAULT_ASSUMPTIONS)
   const [showAssumptions,  setShowAssumptions] = useState(false)
   const [showYearTable,    setShowYearTable]   = useState(false)
+  const [showCompare,      setShowCompare]     = useState(false)
   const [horizonYears,     setHorizonYears]    = useState(10)
   const [customEvents,     setCustomEvents]    = useState([])
   const [showEventForm,    setShowEventForm]   = useState(false)
@@ -289,7 +382,11 @@ export default function Projections({ recurringMonthly }) {
     type: 'bonus', year: new Date().getFullYear() + 1, amount: '', description: '',
   })
 
-  // Pre-fill from profile (existing behaviour) + recurringMonthly prop
+  const [aiPrompt,       setAiPrompt]       = useState('')
+  const [aiLoading,      setAiLoading]      = useState(false)
+  const [aiError,        setAiError]        = useState('')
+  const [aiExplanation,  setAiExplanation]  = useState('')
+
   useEffect(() => {
     if (!profile) return
     if (profile.net_income) setNetIncomeInput(String(Math.round(profile.net_income / 100)))
@@ -315,13 +412,12 @@ export default function Projections({ recurringMonthly }) {
     }
   }
 
-  // UNCHANGED: canonical ledger averages
   const { avgVariableSpend, topVariableCategory, monthlyIncome } = useMemo(() => {
     const ledger = buildLedgerSummary(txns, profile, {
       preferDeclared: false,
       monthCount: countCalendarMonths(range.from, range.to) || undefined,
       dedup: true,
-      debugLabel: `Projections ${range.from}..${range.to}`,
+      debugLabel: 'Projections ' + range.from + '..' + range.to,
       from: range.from, to: range.to,
     })
     const VARIABLE_CATS = new Set(['Groceries','Eating out','Entertainment','Clothing','Health','Transport','Fuel','Other'])
@@ -336,22 +432,14 @@ export default function Projections({ recurringMonthly }) {
     return { avgVariableSpend: avgVar, topVariableCategory: topCat, monthlyIncome: ledger.avgMonthlyIncome }
   }, [txns, profile, range.from, range.to])
 
-  // Derived values (existing)
   const netIncome     = parseFloat(netIncomeInput)     || monthlyIncome || (profile?.net_income     ? profile.net_income / 100     : 0)
   const debitOrders   = parseFloat(debitOrdersInput)   || (profile?.monthly_debit_orders             ? profile.monthly_debit_orders / 100 : 0)
   const currentSavings= parseFloat(currentSavingsInput)|| 0
 
-  // Reconciliation check: validate projection inputs against canonical ledger
-  // Uses validateProjectionInputs from integrity.js (pure, no side effects)
-  // Runs synchronously so yearModels always reflect any detected drift
   const _projIssues = useMemo(() => {
     if (!netIncome || !avgVariableSpend) return []
-    // Build a minimal ledger-compatible object from the useMemo output
-    const approxLedger = { resolvedMonthlyIncome: monthlyIncome || 0 }
-    return validateProjectionInputs(approxLedger, {
-      netIncomeMonthly: netIncome,
-      fixedMonthly: debitOrders,
-      variableMonthly: avgVariableSpend,
+    return validateProjectionInputs({ resolvedMonthlyIncome: monthlyIncome || 0 }, {
+      netIncomeMonthly: netIncome, fixedMonthly: debitOrders, variableMonthly: avgVariableSpend,
     })
   }, [netIncome, debitOrders, avgVariableSpend, monthlyIncome])
 
@@ -359,7 +447,6 @@ export default function Projections({ recurringMonthly }) {
   const optimisedVariableSpend= avgVariableSpend * 0.9
   const optimisedFreeCashFlow = netIncome - debitOrders - optimisedVariableSpend
 
-  // UNCHANGED: 12-month monthly savings projection
   const projections = useMemo(() => {
     const current   = [currentSavings]
     const optimised = [currentSavings]
@@ -370,7 +457,6 @@ export default function Projections({ recurringMonthly }) {
     return { current, optimised }
   }, [monthlyFreeCashFlow, optimisedFreeCashFlow, currentSavings])
 
-  // NEW: year-by-year models (deterministic, all 3 scenarios)
   const yearModels = useMemo(() => {
     const base = { netIncomeMonthly: netIncome, fixedMonthly: debitOrders,
                    variableMonthly: avgVariableSpend, startingSavings: currentSavings,
@@ -382,12 +468,11 @@ export default function Projections({ recurringMonthly }) {
     }
   }, [netIncome, debitOrders, avgVariableSpend, currentSavings, assumptions, horizonYears, customEvents])
 
-  // Custom monthly projection for 12-month chart (spread events across months)
   const customMonthlyProjection = useMemo(() => {
     if (customEvents.length === 0) return null
-    const currentYear = new Date().getFullYear()
+    const cy = new Date().getFullYear()
     let bonus = 0, extra = 0
-    for (const ev of customEvents.filter(e => Number(e.year) === currentYear || Number(e.year) === currentYear + 1)) {
+    for (const ev of customEvents.filter(e => Number(e.year) === cy || Number(e.year) === cy + 1)) {
       const mo = ev.monthly ? Number(ev.amount) : Number(ev.amount) / 12
       if (ev.income) bonus += mo; else extra += mo
     }
@@ -402,54 +487,76 @@ export default function Projections({ recurringMonthly }) {
   const monthsToSavingsGoal    = profile?.savings_goal && monthlyFreeCashFlow > 0
     ? Math.ceil((profile.savings_goal / 100) / monthlyFreeCashFlow) : null
 
-  const activeModel = yearModels[forecastMode] || yearModels.current
+  const activeModel   = yearModels[forecastMode] || yearModels.current
   const finalNetWorth = activeModel[activeModel.length - 1]?.netWorth || 0
+  const currentNW10   = yearModels.current[yearModels.current.length - 1]?.netWorth || 0
 
   const currentYear = new Date().getFullYear()
   const yearOptions = Array.from({ length: 15 }, (_, i) => currentYear + i)
 
+  async function interpretScenario() {
+    if (!aiPrompt.trim() || aiLoading) return
+    setAiLoading(true)
+    setAiError('')
+    setAiExplanation('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/.netlify/functions/scenario-interpret', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token },
+        body: JSON.stringify({ prompt: aiPrompt, currentYear, netIncome, debitOrders, variableSpend: avgVariableSpend }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to interpret scenario')
+      const newEvents = (data.events || []).map(ev => ({ ...ev, id: Date.now() + Math.random() }))
+      if (newEvents.length === 0) {
+        setAiError('No events could be extracted. Try rephrasing -- e.g. "R600k bonus in 2027" or "buy a car for R400k in 2026".')
+        return
+      }
+      setCustomEvents(prev => [...prev, ...newEvents])
+      setAiExplanation(data.explanation || '')
+      setAiPrompt('')
+      setForecastMode('custom')
+    } catch (err) {
+      setAiError(err.message)
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
   function addEvent() {
     const tmpl = EVENT_TEMPLATES.find(t => t.type === eventDraft.type) || EVENT_TEMPLATES[0]
-    setCustomEvents(prev => [...prev, {
-      ...eventDraft, income: tmpl.income, monthly: tmpl.monthly, id: Date.now(),
-    }])
+    setCustomEvents(prev => [...prev, { ...eventDraft, income: tmpl.income, monthly: tmpl.monthly, id: Date.now() }])
     setShowEventForm(false)
     setEventDraft({ type: 'bonus', year: currentYear + 1, amount: '', description: '' })
   }
 
-  // ---- Render ----------------------------------------------------------------
   return (
     <div className="proj-shell">
       <div className="proj-header">
         <h2 className="proj-title">Scenario Planning</h2>
-        <p className="proj-sub">Model your financial future. All calculations are deterministic — no AI maths.</p>
+        <p className="proj-sub">Model your financial future. All calculations are deterministic -- no AI maths.</p>
       </div>
 
-      {/* Integrity notice: shown only when projection inputs drift from canonical ledger */}
       {_projIssues.length > 0 && (
         <div className="proj-integrity-notice">
-          {_projIssues.map((issue, i) => (
-            <div key={i} className="proj-integrity-item">⚠ {issue}</div>
-          ))}
+          {_projIssues.map((issue, i) => <div key={i} className="proj-integrity-item">&#x26A0; {issue}</div>)}
         </div>
       )}
 
-      {/* Forecast mode tabs */}
       <div className="proj-mode-tabs">
         {[['current','Current Path'],['optimised','Optimised Path'],['custom','Custom Scenario']].map(([mode, label]) => (
-          <button key={mode} className={`proj-mode-tab ${forecastMode === mode ? 'active' : ''}`}
+          <button key={mode} className={'proj-mode-tab' + (forecastMode === mode ? ' active' : '')}
             onClick={() => setForecastMode(mode)}>{label}</button>
         ))}
       </div>
 
-      {/* Mode description */}
       <p className="proj-mode-desc">
-        {forecastMode === 'current'   && 'Your current spending trajectory — no behaviour changes assumed.'}
+        {forecastMode === 'current'   && 'Your current spending trajectory -- no behaviour changes assumed.'}
         {forecastMode === 'optimised' && 'Applies bump. optimisation: 10% variable spend reduction, boosting free cash flow.'}
-        {forecastMode === 'custom'    && 'Add life events — bonuses, salary changes, purchases, school fees — to build your own scenario.'}
+        {forecastMode === 'custom'    && 'Add life events -- bonuses, salary changes, purchases, school fees -- to build your own scenario.'}
       </p>
 
-      {/* Input overrides */}
       <div className="proj-inputs">
         <div className="proj-input-group">
           <label className="proj-input-lbl">Net monthly income</label>
@@ -477,7 +584,6 @@ export default function Projections({ recurringMonthly }) {
         </div>
       </div>
 
-      {/* Summary cards */}
       <div className="proj-cards">
         <div className="proj-card">
           <div className="proj-card-lbl">Avg variable spend/mo</div>
@@ -486,23 +592,22 @@ export default function Projections({ recurringMonthly }) {
         </div>
         <div className="proj-card">
           <div className="proj-card-lbl">Free cash flow</div>
-          <div className={`proj-card-val ${monthlyFreeCashFlow >= 0 ? 'green' : 'red'}`}>
+          <div className={'proj-card-val ' + (monthlyFreeCashFlow >= 0 ? 'green' : 'red')}>
             {fmt(forecastMode === 'optimised' ? optimisedFreeCashFlow : monthlyFreeCashFlow)}/mo
           </div>
-          <div className="proj-card-sub">income − fixed − variable</div>
+          <div className="proj-card-sub">income - fixed - variable</div>
         </div>
         <div className="proj-card proj-card-highlight">
           <div className="proj-card-lbl">{horizonYears}yr net worth</div>
-          <div className={`proj-card-val ${finalNetWorth >= 0 ? 'green' : 'red'}`}>{fmt(finalNetWorth)}</div>
+          <div className={'proj-card-val ' + (finalNetWorth >= 0 ? 'green' : 'red')}>{fmt(finalNetWorth)}</div>
           <div className="proj-card-sub">{forecastMode} path</div>
         </div>
       </div>
 
-      {/* Annual strip (existing) */}
       <div className="proj-annual-strip">
         <div className="proj-annual-item">
           <span className="proj-annual-lbl">Annual savings (current path)</span>
-          <span className={`proj-annual-val ${annualSavingsCurrent >= 0 ? 'green' : 'red'}`}>{fmt(annualSavingsCurrent)}</span>
+          <span className={'proj-annual-val ' + (annualSavingsCurrent >= 0 ? 'green' : 'red')}>{fmt(annualSavingsCurrent)}</span>
         </div>
         <div className="proj-annual-item">
           <span className="proj-annual-lbl">Annual savings (optimised)</span>
@@ -516,20 +621,19 @@ export default function Projections({ recurringMonthly }) {
         )}
       </div>
 
-      {/* 12-month savings chart (existing + extended) */}
       <div className="proj-chart-card">
         <div className="proj-chart-head">
           <span className="proj-chart-title">12-month savings balance</span>
           <div className="proj-view-toggle">
-            <button className={`proj-view-btn ${view === 'monthly' ? 'active' : ''}`} onClick={() => setView('monthly')}>Monthly</button>
-            <button className={`proj-view-btn ${view === 'annual'  ? 'active' : ''}`} onClick={() => setView('annual')}>Quarterly</button>
+            <button className={'proj-view-btn ' + (view === 'monthly' ? 'active' : '')} onClick={() => setView('monthly')}>Monthly</button>
+            <button className={'proj-view-btn ' + (view === 'annual'  ? 'active' : '')} onClick={() => setView('annual')}>Quarterly</button>
           </div>
         </div>
         <div className="proj-chart-legend">
           <span className="proj-legend-dot" style={{ background: 'var(--coral)' }} /> Current
           <span className="proj-legend-dot" style={{ background: '#1D9E75', marginLeft: 12 }} /> Optimised
           {customMonthlyProjection && (
-            <><span className="proj-legend-dot" style={{ background: '#7F77DD', marginLeft: 12 }} /> Custom</>
+            <span><span className="proj-legend-dot" style={{ background: '#7F77DD', marginLeft: 12 }} /> Custom</span>
           )}
         </div>
         {loading ? (
@@ -540,13 +644,12 @@ export default function Projections({ recurringMonthly }) {
         )}
       </div>
 
-      {/* Net worth trajectory chart */}
       <div className="proj-chart-card">
         <div className="proj-chart-head">
           <span className="proj-chart-title">Net worth trajectory</span>
           <div className="proj-view-toggle">
             {[5, 10, 15].map(y => (
-              <button key={y} className={`proj-view-btn ${horizonYears === y ? 'active' : ''}`}
+              <button key={y} className={'proj-view-btn ' + (horizonYears === y ? 'active' : '')}
                 onClick={() => setHorizonYears(y)}>{y}yr</button>
             ))}
           </div>
@@ -555,13 +658,23 @@ export default function Projections({ recurringMonthly }) {
           <span className="proj-legend-dot" style={{ background: 'var(--coral)' }} /> Current
           <span className="proj-legend-dot" style={{ background: '#1D9E75', marginLeft: 12 }} /> Optimised
           {customEvents.length > 0 && (
-            <><span className="proj-legend-dot" style={{ background: '#7F77DD', marginLeft: 12 }} /> Custom</>
+            <span><span className="proj-legend-dot" style={{ background: '#7F77DD', marginLeft: 12 }} /> Custom</span>
           )}
         </div>
         <YearChart models={yearModels} />
       </div>
 
-      {/* Assumptions panel */}
+      <div className="proj-compare-section">
+        <button className="proj-compare-toggle" onClick={() => setShowCompare(v => !v)}>
+          <span className="proj-compare-toggle-title">Scenario comparison</span>
+          <span className="proj-compare-toggle-hint">
+            current vs optimised{customEvents.length > 0 ? ' vs custom' : ''}
+          </span>
+          <span className="proj-toggle-arrow">{showCompare ? '▲' : '▼'}</span>
+        </button>
+        {showCompare && <ScenarioComparisonPanel models={yearModels} horizonYears={horizonYears} />}
+      </div>
+
       <div className="proj-assumptions-panel">
         <button className="proj-assumptions-toggle" onClick={() => setShowAssumptions(v => !v)}>
           <span className="proj-assumptions-toggle-title">Growth assumptions</span>
@@ -573,9 +686,9 @@ export default function Projections({ recurringMonthly }) {
         {showAssumptions && (
           <div className="proj-assumptions-body">
             {[
-              { key: 'salaryGrowth',    label: 'Annual salary growth (%)',      hint: 'Expected net income increase per year' },
-              { key: 'inflation',       label: 'Inflation / cost of living (%)', hint: 'How fast your expenses grow annually' },
-              { key: 'investmentReturn',label: 'Investment return (%)',          hint: 'Annual return on savings balance' },
+              { key: 'salaryGrowth',    label: 'Annual salary growth (%)',       hint: 'Expected net income increase per year' },
+              { key: 'inflation',       label: 'Inflation / cost of living (%)', hint: 'How fast your expenses grow annually'  },
+              { key: 'investmentReturn',label: 'Investment return (%)',           hint: 'Annual return on savings balance'      },
             ].map(({ key, label, hint }) => (
               <div key={key} className="proj-assumption-row">
                 <div className="proj-assumption-text">
@@ -599,12 +712,36 @@ export default function Projections({ recurringMonthly }) {
         )}
       </div>
 
-      {/* Custom scenario events (only in custom mode) */}
       {forecastMode === 'custom' && (
         <div className="proj-events-panel">
           <div className="proj-events-head">
             <span className="proj-events-title">Life events</span>
-            <button className="proj-add-event-btn" onClick={() => setShowEventForm(v => !v)}>+ Add event</button>
+            <button className="proj-add-event-btn" onClick={() => setShowEventForm(v => !v)}>+ Add manually</button>
+          </div>
+
+          <div className="proj-ai-prompt-section">
+            <div className="proj-ai-prompt-label">Describe a scenario in plain English</div>
+            <div className="proj-ai-prompt-row">
+              <input
+                className="proj-ai-prompt-input"
+                placeholder='e.g. "R600k bonus in 2027" or "buy a car for R400k, sell current for R200k in 2026"'
+                value={aiPrompt}
+                onChange={e => setAiPrompt(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && interpretScenario()}
+              />
+              <button
+                className={'proj-ai-prompt-btn' + (aiLoading ? ' loading' : '')}
+                onClick={interpretScenario}
+                disabled={!aiPrompt.trim() || aiLoading}
+              >
+                {aiLoading ? '...' : 'Interpret'}
+              </button>
+            </div>
+            {aiError && <div className="proj-ai-prompt-error">{aiError}</div>}
+            {aiExplanation && !aiError && (
+              <div className="proj-ai-prompt-explanation">{aiExplanation}</div>
+            )}
+            <div className="proj-ai-prompt-hint">AI extracts structured events. All calculations stay deterministic.</div>
           </div>
 
           {showEventForm && (
@@ -612,7 +749,7 @@ export default function Projections({ recurringMonthly }) {
               <div className="proj-event-form-row">
                 <select className="proj-event-select" value={eventDraft.type}
                   onChange={e => setEventDraft(d => ({ ...d, type: e.target.value }))}>
-                  {EVENT_TEMPLATES.map(t => <option key={t.type} value={t.type}>{t.label}</option>)}
+                  {EVENT_TEMPLATES.map(t => <option key={t.type} value={t.type}>{t.icon} {t.label}</option>)}
                 </select>
                 <select className="proj-event-select" value={eventDraft.year}
                   onChange={e => setEventDraft(d => ({ ...d, year: Number(e.target.value) }))}>
@@ -639,7 +776,7 @@ export default function Projections({ recurringMonthly }) {
 
           {customEvents.length === 0 && !showEventForm && (
             <p className="proj-events-empty">
-              No events added yet. Model bonuses, salary changes, vehicle purchases, school fees, and more.
+              No events yet. Use the interpreter above or add manually. Try: "salary increase of R5k/mo in 2026" or "school fees start 2028".
             </p>
           )}
 
@@ -648,7 +785,8 @@ export default function Projections({ recurringMonthly }) {
             return (
               <div key={ev.id} className="proj-event-item">
                 <div className="proj-event-item-info">
-                  <span className={`proj-event-year-badge ${ev.income ? 'income' : 'expense'}`}>{ev.year}</span>
+                  <span className={'proj-event-year-badge ' + (ev.income ? 'income' : 'expense')}>{ev.year}</span>
+                  <span className="proj-event-type-icon" aria-hidden="true">{tmpl.icon}</span>
                   <span className="proj-event-item-label">{ev.description || tmpl.label}</span>
                   <span className="proj-event-item-amount">
                     {ev.income ? '+' : '-'}{fmt(Number(ev.amount))}{ev.monthly ? '/mo' : ''}
@@ -656,15 +794,21 @@ export default function Projections({ recurringMonthly }) {
                 </div>
                 <button className="proj-event-remove-btn"
                   onClick={() => setCustomEvents(prev => prev.filter(e => e.id !== ev.id))}>
-                  ×
+                  \xd7
                 </button>
               </div>
             )
           })}
+
+          {customEvents.length > 0 && (
+            <button className="proj-events-clear-btn"
+              onClick={() => { setCustomEvents([]); setAiExplanation('') }}>
+              Clear all events
+            </button>
+          )}
         </div>
       )}
 
-      {/* Year-by-year table (expandable) */}
       <div className="proj-table-section">
         <button className="proj-table-toggle" onClick={() => setShowYearTable(v => !v)}>
           <span className="proj-table-toggle-title">Year-by-year financial model</span>
@@ -674,26 +818,21 @@ export default function Projections({ recurringMonthly }) {
         {showYearTable && <YearlyTable model={activeModel} />}
       </div>
 
-      {/* Scenario explanation (existing, evolved) */}
       <div className="proj-scenario-card">
         <div className="proj-scenario-title">
-          {forecastMode === 'current'   ? '\u{1F4C9}' : forecastMode === 'optimised' ? '\u{1F4C8}' : '\u{1F527}'}{' '}
-          {forecastMode === 'current'   ? 'Current path' : forecastMode === 'optimised' ? 'Optimised path' : 'Custom scenario'}
+          {forecastMode === 'current' ? '\u{1F4C9}' : forecastMode === 'optimised' ? '\u{1F4C8}' : '\u{1F527}'}{' '}
+          {forecastMode === 'current' ? 'Current path' : forecastMode === 'optimised' ? 'Optimised path' : 'Custom scenario'}
         </div>
         <p className="proj-scenario-text">
           {forecastMode === 'current' && (
-            <>Your current trajectory projects <strong>{fmt(annualSavingsCurrent)}</strong> saved per year.
-            Variable spend averages <strong>{fmt(avgVariableSpend)}/mo</strong>, led by <strong>{topVariableCategory}</strong>.</>
+            'Your current trajectory projects ' + fmt(annualSavingsCurrent) + ' saved per year. Variable spend averages ' + fmt(avgVariableSpend) + '/mo, led by ' + topVariableCategory + '. Over ' + horizonYears + ' years at ' + assumptions.salaryGrowth + '% salary growth and ' + assumptions.investmentReturn + '% investment returns, your net worth reaches ' + fmt(currentNW10) + '.'
           )}
           {forecastMode === 'optimised' && (
-            <>A 10% reduction in <strong>{topVariableCategory}</strong> saves <strong>{fmt((avgVariableSpend - optimisedVariableSpend) * 12)}</strong> per year.
-            Over {horizonYears} years ({assumptions.salaryGrowth}% salary growth, {assumptions.investmentReturn}% returns),
-            your net worth reaches <strong>{fmt(yearModels.optimised[yearModels.optimised.length - 1]?.netWorth || 0)}</strong>.</>
+            'A 10% reduction in ' + topVariableCategory + ' saves ' + fmt((avgVariableSpend - optimisedVariableSpend) * 12) + ' per year. Over ' + horizonYears + ' years (' + assumptions.salaryGrowth + '% salary growth, ' + assumptions.investmentReturn + '% returns), your net worth reaches ' + fmt(yearModels.optimised[yearModels.optimised.length - 1]?.netWorth || 0) + ' -- ' + fmt(Math.abs((yearModels.optimised[yearModels.optimised.length - 1]?.netWorth || 0) - currentNW10)) + ' more than the current path.'
           )}
           {forecastMode === 'custom' && (customEvents.length === 0
             ? 'Add life events above to build your custom scenario.'
-            : <>You have <strong>{customEvents.length} event(s)</strong> modelled.
-              Your custom path projects a net worth of <strong>{fmt(yearModels.custom[yearModels.custom.length - 1]?.netWorth || 0)}</strong> in {horizonYears} years.</>
+            : 'You have ' + customEvents.length + ' event(s) modelled. Your custom path projects a net worth of ' + fmt(yearModels.custom[yearModels.custom.length - 1]?.netWorth || 0) + ' in ' + horizonYears + ' years.'
           )}
         </p>
       </div>

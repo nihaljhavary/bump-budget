@@ -11,10 +11,41 @@ import LockedFeature from './LockedFeature'
 
 const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
 
-// localStorage key prefix -- per user so multi-account devices work correctly.
 const LS_KEY = uid => `bump_rec_v2_${uid}`
-// Persist recommendations for 30 days (was 7).
 const MAX_AGE_DAYS = 30
+
+const DEFAULT_ASSUMPTIONS = { salaryGrowth: 5, inflation: 6, investmentReturn: 8 }
+
+// Lightweight deterministic projection for forward-looking recommendation context.
+// Mirrors buildYearModel in Projections.jsx. No AI. Returns net worth at 1/5/10 years.
+function computeProjectionContext(netIncome, fixedMonthly, variableMonthly, startingSavings = 0) {
+  if (!netIncome || netIncome <= 0) return null
+  const { salaryGrowth, inflation, investmentReturn } = DEFAULT_ASSUMPTIONS
+  let bal = startingSavings
+  let optBal = startingSavings
+  const years = 10
+  const results = {}
+  for (let i = 0; i < years; i++) {
+    const gf  = Math.pow(1 + salaryGrowth  / 100, i)
+    const inf = Math.pow(1 + inflation     / 100, i)
+    const income   = netIncome  * 12 * gf
+    const fixed    = fixedMonthly   * 12 * inf
+    const variable = variableMonthly * 12 * inf
+    const optVar   = variable * 0.9
+    const growth     = Math.max(bal,    0) * (investmentReturn / 100)
+    const optGrowth  = Math.max(optBal, 0) * (investmentReturn / 100)
+    bal    += (income - fixed - variable) + growth
+    optBal += (income - fixed - optVar)  + optGrowth
+    if (i === 0) { results.netWorth1yr = Math.round(bal); results.optimisedNetWorth1yr = Math.round(optBal) }
+    if (i === 4) { results.netWorth5yr = Math.round(bal); results.optimisedNetWorth5yr = Math.round(optBal) }
+  }
+  results.netWorth10yr = Math.round(bal)
+  results.optimisedNetWorth10yr = Math.round(optBal)
+  results.monthlyFreeCashFlow = Math.round(netIncome - fixedMonthly - variableMonthly)
+  results.salaryGrowth = DEFAULT_ASSUMPTIONS.salaryGrowth
+  results.investmentReturn = DEFAULT_ASSUMPTIONS.investmentReturn
+  return results
+}
 
 const QUESTIONS = [
   {
@@ -85,8 +116,6 @@ const QUESTIONS = [
   },
 ]
 
-// -- Persistence helpers -------------------------------------------------------
-
 function loadSaved(uid) {
   try {
     const raw = localStorage.getItem(LS_KEY(uid))
@@ -108,12 +137,9 @@ function clearSaved(uid) {
   try { localStorage.removeItem(LS_KEY(uid)) } catch {}
 }
 
-// ---------------------------------------------------------------------------
-
 export default function Recommendations({ onImportSignal = 0 }) {
   const { user, profile } = useAuth()
 
-  // step: 'intro' | 'quiz' | 'loading' | 'results'
   const [step, setStep]           = useState('intro')
   const [qIndex, setQIndex]       = useState(0)
   const [answers, setAnswers]     = useState({})
@@ -126,35 +152,40 @@ export default function Recommendations({ onImportSignal = 0 }) {
   const [dataLoaded, setDataLoaded] = useState(false)
   const [monthCount, setMonthCount] = useState(1)
   const [recurringMonthly, setRecurringMonthly] = useState(0)
+  const [fixedMonthly, setFixedMonthly] = useState(0)
   const [showProjections, setShowProjections] = useState(false)
   const { canProjections } = useTier()
 
-  // Load spending data (runs on mount and after each import signal)
   const loadData = useCallback(async () => {
     if (!user) return
     try {
       const [txns, { data: budgetRows }] = await Promise.all([
-        fetchRecentMonths(user.id, 12),   // up to 12 months for better averages
+        fetchRecentMonths(user.id, 12),
         supabase.from('budgets').select('category, amount').eq('user_id', user.id),
       ])
-      // Use canonical ledger for averages -- divide by month count
-      const ledger = buildLedgerSummary(txns || [], profile, {
-        preferDeclared: false,
-        dedup: true,
-      })
+      const ledger = buildLedgerSummary(txns || [], profile, { preferDeclared: false, dedup: true })
       const resolvedMonthCount = Math.max(ledger.monthCount, 1)
       setMonthCount(resolvedMonthCount)
-      // Compute total recurring obligation burden for Projections wiring
+
       const recurring = detectRecurring(txns || [])
       const obligationTotal = recurring
         .filter(r => r.isObligation)
         .reduce((sum, r) => sum + r.medianAmount, 0)
       if (obligationTotal > 0) setRecurringMonthly(obligationTotal)
+
+      // Track fixed monthly for projection context
+      const FIXED_CATS = new Set(['Housing','Insurance','Utilities','Fees & Charges'])
+      const fixedSpend = Object.entries(ledger.catTotals)
+        .filter(([cat]) => FIXED_CATS.has(cat))
+        .reduce((sum, [, v]) => sum + v, 0)
+      setFixedMonthly(Math.round(fixedSpend / resolvedMonthCount))
+
       const avg = {}
       for (const [cat, total] of Object.entries(ledger.catTotals)) {
         avg[cat] = total / resolvedMonthCount
       }
       setSpendingData(avg)
+
       const bMap = {}
       for (const b of (budgetRows || [])) bMap[b.category] = b.amount
       setBudgets(bMap)
@@ -165,13 +196,8 @@ export default function Recommendations({ onImportSignal = 0 }) {
   }, [user, profile])
 
   useEffect(() => { loadData() }, [loadData])
+  useEffect(() => { if (onImportSignal > 0) loadData() }, [onImportSignal, loadData])
 
-  // Auto-refresh spending data after import (signal increments)
-  useEffect(() => {
-    if (onImportSignal > 0) loadData()
-  }, [onImportSignal, loadData])
-
-  // Restore saved results -- but if results exist AND data just refreshed, re-run
   useEffect(() => {
     if (!user) return
     const saved = loadSaved(user.id)
@@ -182,7 +208,6 @@ export default function Recommendations({ onImportSignal = 0 }) {
     setSavedDate(new Date(saved.savedAt))
   }, [user])
 
-  // Pre-fill from profile (income + savings goal)
   useEffect(() => {
     if (!profile) return
     setAnswers(prev => {
@@ -194,6 +219,18 @@ export default function Recommendations({ onImportSignal = 0 }) {
       return next
     })
   }, [profile])
+
+  // Deterministic projection context -- wired into get-recommendations for forward-looking advice
+  const projectionContext = useMemo(() => {
+    const netIncome = parseFloat(answers.income) || (profile?.net_income ? profile.net_income / 100 : 0)
+    if (!netIncome || !spendingData) return null
+    const VARIABLE_CATS = new Set(['Groceries','Eating out','Entertainment','Clothing','Health','Transport','Fuel','Other'])
+    const varSpend = Object.entries(spendingData)
+      .filter(([cat]) => VARIABLE_CATS.has(cat))
+      .reduce((s, [, v]) => s + v, 0)
+    const debitOrders = recurringMonthly || fixedMonthly || (profile?.monthly_debit_orders ? profile.monthly_debit_orders / 100 : 0)
+    return computeProjectionContext(netIncome, debitOrders, varSpend, 0)
+  }, [answers.income, spendingData, recurringMonthly, fixedMonthly, profile])
 
   const currentQ = QUESTIONS[qIndex]
 
@@ -236,11 +273,17 @@ export default function Recommendations({ onImportSignal = 0 }) {
       const res = await fetch('/.netlify/functions/get-recommendations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ answers: finalAnswers, spendingData, budgets, monthCount }),
+        body: JSON.stringify({
+          answers: finalAnswers,
+          spendingData,
+          budgets,
+          monthCount,
+          recurringMonthly,
+          projectionContext,
+        }),
       })
       const d = await res.json()
       if (!res.ok) throw new Error(d.error || 'Failed to get recommendations')
-
       setResult(d.result)
       setStep('results')
       setSavedDate(new Date())
@@ -252,11 +295,9 @@ export default function Recommendations({ onImportSignal = 0 }) {
   }
 
   function handleReAnalyze() {
-    // Keep answers, clear result, run fresh analysis with current spending data
     setResult(null)
     clearSaved(user?.id)
     setSavedDate(null)
-    // Re-load spending data then re-run
     loadData().then(() => {
       if (Object.keys(answers).length >= QUESTIONS.length) {
         getRecommendations(answers)
@@ -286,11 +327,9 @@ export default function Recommendations({ onImportSignal = 0 }) {
     setStep('intro')
   }
 
-  // -- Intro --
   if (step === 'intro') {
     const totalSpend = spendingData ? Object.values(spendingData).reduce((a, b) => a + b, 0) : 0
     const hasSaved = result != null
-
     return (
       <div className="rec-shell">
         <div className="rec-intro-card">
@@ -299,26 +338,22 @@ export default function Recommendations({ onImportSignal = 0 }) {
           <p className="rec-intro-sub">
             Answer 7 quick questions and bump. will analyse your actual spending to give you a personalised plan.
           </p>
-
           {totalSpend > 0 && (
             <div className="rec-data-badge">
               📊 Based on {fmt(totalSpend)}/mo avg spending across {Object.keys(spendingData).length} categories
             </div>
           )}
-
           {!dataLoaded && (
             <div className="rec-no-data">
               ℹ️ Import your bank statement first for the best recommendations. You can still get general advice without it.
             </div>
           )}
-
           {hasSaved && savedDate && (
             <div className="rec-saved-notice">
               You have results from {savedDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}.{' '}
               <button className="rec-link-btn" onClick={() => setStep('results')}>View them</button> or start a new analysis below.
             </div>
           )}
-
           <button className="rec-start-btn" onClick={startQuiz}>
             {hasSaved ? 'Start new analysis →' : 'Start analysis →'}
           </button>
@@ -327,7 +362,6 @@ export default function Recommendations({ onImportSignal = 0 }) {
     )
   }
 
-  // -- Loading --
   if (step === 'loading') {
     return (
       <div className="rec-shell rec-loading-shell">
@@ -338,7 +372,6 @@ export default function Recommendations({ onImportSignal = 0 }) {
     )
   }
 
-  // -- Quiz --
   if (step === 'quiz') {
     const progress = (qIndex / QUESTIONS.length) * 100
     return (
@@ -346,13 +379,11 @@ export default function Recommendations({ onImportSignal = 0 }) {
         <div className="rec-progress-track">
           <div className="rec-progress-fill" style={{ width: `${progress}%` }} />
         </div>
-
         <div className="rec-q-card">
           <div className="rec-q-counter">{qIndex + 1} of {QUESTIONS.length}</div>
           <h3 className="rec-q-label">{currentQ.label}</h3>
           {currentQ.hint && <p className="rec-q-hint">{currentQ.hint}</p>}
           {error && <div className="rec-error">{error}</div>}
-
           {currentQ.type === 'number' && (
             <div className="rec-input-wrap">
               {currentQ.prefix && <span className="rec-input-prefix">{currentQ.prefix}</span>}
@@ -367,7 +398,6 @@ export default function Recommendations({ onImportSignal = 0 }) {
               />
             </div>
           )}
-
           {currentQ.type === 'select' && (
             <div className="rec-options">
               {currentQ.options.map(opt => (
@@ -381,7 +411,6 @@ export default function Recommendations({ onImportSignal = 0 }) {
               ))}
             </div>
           )}
-
           <div className="rec-q-actions">
             <button className="rec-back-btn" onClick={handleBack}>← Back</button>
             <button
@@ -397,14 +426,10 @@ export default function Recommendations({ onImportSignal = 0 }) {
     )
   }
 
-  // -- Results --
   if (step === 'results' && result) {
     const scoreColor = result.healthScore >= 7 ? 'var(--success)' : result.healthScore >= 4 ? 'var(--amber)' : 'var(--coral)'
-
     return (
       <div className="rec-shell rec-results-shell">
-
-        {/* Persistence header */}
         <div className="rec-persistence-bar">
           {savedDate && (
             <span className="rec-saved-date">
@@ -412,19 +437,12 @@ export default function Recommendations({ onImportSignal = 0 }) {
             </span>
           )}
           <div className="rec-persistence-actions">
-            <button className="rec-action-btn" onClick={handleReAnalyze} title="Refresh analysis with your latest spending data">
-              ↻ Re-analyze
-            </button>
-            <button className="rec-action-btn" onClick={handleEditAnswers} title="Change your answers and re-run">
-              ✎ Edit answers
-            </button>
-            <button className="rec-action-btn secondary" onClick={handleStartFresh} title="Clear results and start over">
-              Start fresh
-            </button>
+            <button className="rec-action-btn" onClick={handleReAnalyze}>↻ Re-analyze</button>
+            <button className="rec-action-btn" onClick={handleEditAnswers}>✎ Edit answers</button>
+            <button className="rec-action-btn secondary" onClick={handleStartFresh}>Start fresh</button>
           </div>
         </div>
 
-        {/* Health score */}
         <div className="rec-score-card">
           <div className="rec-score-ring" style={{ '--score-color': scoreColor }}>
             <span className="rec-score-num">{result.healthScore}</span>
@@ -436,7 +454,6 @@ export default function Recommendations({ onImportSignal = 0 }) {
           </div>
         </div>
 
-        {/* Key insights */}
         {result.insights?.length > 0 && (
           <div className="rec-section">
             <h3 className="rec-section-title">Key Insights</h3>
@@ -451,7 +468,6 @@ export default function Recommendations({ onImportSignal = 0 }) {
           </div>
         )}
 
-        {/* Where to cut */}
         {result.cuts?.length > 0 && (
           <div className="rec-section">
             <h3 className="rec-section-title">Where to Cut</h3>
@@ -486,7 +502,6 @@ export default function Recommendations({ onImportSignal = 0 }) {
           </div>
         )}
 
-        {/* Savings plan */}
         {result.savingsPlan && (
           <div className="rec-section">
             <h3 className="rec-section-title">Your Savings Plan</h3>
@@ -503,7 +518,6 @@ export default function Recommendations({ onImportSignal = 0 }) {
           </div>
         )}
 
-        {/* Quick win */}
         {result.quickWin && (
           <div className="rec-section">
             <div className="rec-quickwin">
@@ -516,7 +530,7 @@ export default function Recommendations({ onImportSignal = 0 }) {
           </div>
         )}
 
-        {/* DCF Projections — expandable section */}
+        {/* DCF Projections -- expandable section */}
         <div className="rec-section" style={{ padding: 0, overflow: 'hidden' }}>
           <button
             className="rec-section-toggle"
