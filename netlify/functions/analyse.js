@@ -1,3 +1,4 @@
+import './_ws-polyfill.js'
 import { createClient } from '@supabase/supabase-js'
 import { buildInsightContext, buildInsightPrompt } from './_context.js'
 

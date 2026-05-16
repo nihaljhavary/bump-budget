@@ -13,6 +13,7 @@
  *   subscription.not_renew   → scheduled not to renew (pre-warning)
  */
 
+import './_ws-polyfill.js'
 import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 

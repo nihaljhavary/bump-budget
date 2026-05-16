@@ -9,6 +9,7 @@
  * Auth: Bearer token required (user can only touch their own data).
  */
 
+import './_ws-polyfill.js'
 import { createClient } from '@supabase/supabase-js'
 
 function authClients(token) {

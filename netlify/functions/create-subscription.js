@@ -10,6 +10,7 @@
  *   → verifies payment and activates subscription in Supabase
  */
 
+import './_ws-polyfill.js'
 import { createClient } from '@supabase/supabase-js'
 
 const PLAN_DEFINITIONS = {

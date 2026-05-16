@@ -12,6 +12,7 @@
  * Returns { processed, changed, breakdown }.
  */
 
+import './_ws-polyfill.js'
 import { createClient } from '@supabase/supabase-js'
 import { saPreCategory, cleanForAI } from './sa-categorise.js'
 

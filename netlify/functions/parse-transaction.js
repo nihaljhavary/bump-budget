@@ -1,3 +1,4 @@
+import './_ws-polyfill.js'
 import { createClient } from '@supabase/supabase-js'
 import { saPreCategory, normalizeDescription, CATEGORIES } from './sa-categorise.js'
 

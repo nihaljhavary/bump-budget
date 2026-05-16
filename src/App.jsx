@@ -9,6 +9,9 @@ import AdminDashboard from './components/AdminDashboard'
 import BookConsult from './components/BookConsult'
 import LandingPage from './components/LandingPage'
 import Onboarding from './components/Onboarding'
+import FAQ from './components/FAQ'
+import SupportChat from './components/SupportChat'
+import ErrorBoundary from './components/ErrorBoundary'
 import { AuthProvider } from './context/AuthContext'
 import { TierProvider } from './context/TierContext'
 
@@ -165,12 +168,16 @@ export default function App() {
       <TierProvider>
         <UpdateBanner />
         <BrowserRouter>
-          <Routes>
-            <Route path="/"    element={<LandingPage />} />
-            <Route path="/auth" element={<AuthRoute />} />
-            <Route path="/app"  element={<ProtectedApp />} />
-            <Route path="*"     element={<Navigate to="/" replace />} />
-          </Routes>
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/"    element={<LandingPage />} />
+              <Route path="/auth" element={<AuthRoute />} />
+              <Route path="/app"  element={<ProtectedApp />} />
+              <Route path="/faq"  element={<FAQ />} />
+              <Route path="*"     element={<Navigate to="/" replace />} />
+            </Routes>
+            <SupportChat />
+          </ErrorBoundary>
         </BrowserRouter>
       </TierProvider>
     </AuthProvider>

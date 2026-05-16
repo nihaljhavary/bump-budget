@@ -1,3 +1,4 @@
+import './_ws-polyfill.js'
 // Temporary diagnostic — DELETE after debugging
 import { createClient } from '@supabase/supabase-js'
 

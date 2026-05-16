@@ -17,6 +17,7 @@
  * Auth: Bearer token required.
  */
 
+import './_ws-polyfill.js'
 import { createClient } from '@supabase/supabase-js'
 
 const ALLOWED_ACTIONS = new Set(['cancel', 'downgrade', 'reactivate'])

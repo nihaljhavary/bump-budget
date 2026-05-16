@@ -1,3 +1,4 @@
+import './_ws-polyfill.js'
 import { createClient } from '@supabase/supabase-js'
 
 const SYSTEM_PROMPT = `You are a grocery receipt parser for South African retailers.

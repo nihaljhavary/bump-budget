@@ -18,6 +18,7 @@
  * This operation is IRREVERSIBLE.
  */
 
+import './_ws-polyfill.js'
 import { createClient } from '@supabase/supabase-js'
 
 async function getUser(anonClient, token) {

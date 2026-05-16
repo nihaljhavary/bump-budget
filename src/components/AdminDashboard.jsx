@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import * as XLSX from 'xlsx'
 import { supabase } from '../supabase'
 import { useTier } from '../context/TierContext'
 import './AdminDashboard.css'
@@ -77,6 +78,36 @@ export default function AdminDashboard({ onBack }) {
       console.error('Failed to load user budget:', err)
     }
     setViewLoading(false)
+  }
+
+  function exportUserTransactions(user) {
+    if (!user?.transactions?.length) return
+    const txns = user.transactions
+
+    // Sheet 1: raw transactions
+    const txnRows = txns.map(t => ({
+      Date: t.date,
+      Description: t.name,
+      Category: t.category,
+      Amount: (t.amount / 100).toFixed(2),
+    }))
+
+    // Sheet 2: category summary
+    const catMap = {}
+    for (const t of txns) {
+      if (t.category === 'Income') continue
+      catMap[t.category] = (catMap[t.category] || 0) + t.amount
+    }
+    const catRows = Object.entries(catMap)
+      .sort((a, b) => b[1] - a[1])
+      .map(([cat, cents]) => ({ Category: cat, Total: (cents / 100).toFixed(2) }))
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(txnRows), 'Transactions')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(catRows), 'Category Summary')
+
+    const safeName = (user.name || 'user').replace(/[^a-z0-9]/gi, '_').toLowerCase()
+    XLSX.writeFile(wb, `bump_${safeName}_transactions.xlsx`)
   }
 
   const pending  = (data.requests || []).filter(r => r.status === 'pending')
@@ -247,7 +278,19 @@ export default function AdminDashboard({ onBack }) {
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div className="modal-head">
               <div className="modal-title">{viewingUser.name}'s Budget</div>
-              <button className="modal-close" onClick={() => setViewingUser(null)}>×</button>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {viewingUser.transactions.length > 0 && (
+                  <button
+                    className="btn-ghost-sm"
+    
+                    onClick={() => exportUserTransactions(viewingUser)}
+                    title="Export transactions to Excel"
+                  >
+                    ↓ Excel
+                  </button>
+                )}
+                <button className="modal-close" onClick={() => setViewingUser(null)}>×</button>
+              </div>
             </div>
             <div className="modal-badge">Read-only view</div>
             <div className="modal-body">

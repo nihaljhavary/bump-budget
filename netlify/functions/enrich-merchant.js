@@ -15,6 +15,7 @@
  * Auth required. Rate-limited to same pool as parse-transaction (claude_usage table).
  */
 
+import './_ws-polyfill.js'
 import { createClient } from '@supabase/supabase-js'
 import { saPreCategory, normalizeDescription } from './sa-categorise.js'
 
