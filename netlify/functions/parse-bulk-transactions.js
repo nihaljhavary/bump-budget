@@ -32,6 +32,50 @@ function chunk(arr, n) {
   return out
 }
 
+// ── Server-side anomaly detection (mirrors integrity.js / anomalyFlags) ──────
+function detectIngestionAnomalies(transactions) {
+  const warnings = []
+  if (!Array.isArray(transactions) || transactions.length === 0) return warnings
+
+  const amounts = transactions.map(t => t.amount).filter(a => typeof a === 'number' && a > 0)
+  if (amounts.length > 0) {
+    const maxAmt = Math.max(...amounts)
+    if (maxAmt > 500000) {
+      warnings.push(`Unusually large transaction: R${Math.round(maxAmt).toLocaleString('en-ZA')}. Verify this is not a parsing error.`)
+    }
+    if (amounts.length >= 3) {
+      const firstAmt = amounts[0]
+      const identicalCount = amounts.filter(a => a === firstAmt).length
+      if (identicalCount / amounts.length >= 0.90) {
+        warnings.push(`${identicalCount}/${amounts.length} transactions have identical amounts (R${Math.round(firstAmt).toLocaleString('en-ZA')}). Possible column mapping error.`)
+      }
+    }
+  }
+
+  const dates = transactions.map(t => t.date).filter(Boolean)
+  if (dates.length >= 3) {
+    const uniqueDates = new Set(dates)
+    if (uniqueDates.size === 1) {
+      warnings.push(`All ${dates.length} transactions share the same date (${dates[0]}). Date column may not be mapped correctly.`)
+    }
+    const now = Date.now()
+    const futureDates = dates.filter(d => new Date(d + 'T12:00:00').getTime() > now)
+    if (futureDates.length > 0) {
+      warnings.push(`${futureDates.length} transaction(s) have future dates. Verify date format.`)
+    }
+  }
+
+  const descs = transactions.map(t => (t.description || '').trim().toLowerCase()).filter(Boolean)
+  if (descs.length >= 3) {
+    const uniqueDescs = new Set(descs)
+    if (uniqueDescs.size === 1) {
+      warnings.push('All transactions have the same description. Description column may not be recognised.')
+    }
+  }
+
+  return warnings
+}
+
 export async function handler(event) {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' }
@@ -69,6 +113,9 @@ export async function handler(event) {
       return { statusCode: 400, body: JSON.stringify({ error: 'Each transaction needs an `amount` number' }) }
     }
   }
+
+  // ── 1b. Anomaly detection (non-blocking — returned as warnings) ──────────────
+  const ingestionWarnings = detectIngestionAnomalies(transactions)
 
   // ── 2. Auth ────────────────────────────────────────────────────────────────
   const authHeader = event.headers['authorization'] || event.headers['Authorization'] || ''
@@ -276,6 +323,9 @@ ${JSON.stringify(chunkItems.map(t => ({ idx: t.idx, description: t._clean, amoun
   return {
     statusCode: 200,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ transactions: result }),
+    body: JSON.stringify({
+      transactions: result,
+      warnings: ingestionWarnings.length > 0 ? ingestionWarnings : undefined,
+    }),
   }
 }

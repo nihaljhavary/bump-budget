@@ -527,3 +527,17 @@
   .proj-assumption-row { flex-direction: column; align-items: flex-start; gap: 6px; }
   .proj-event-form-row { flex-direction: column; }
 }
+
+/* ── Integrity notice ── */
+.proj-integrity-notice {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 0.8rem;
+  color: #92400e;
+}
+.proj-integrity-item + .proj-integrity-item {
+  margin-top: 4px;
+}

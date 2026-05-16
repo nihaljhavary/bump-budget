@@ -188,6 +188,32 @@
   font-size: 0.82rem;
   margin: 10px 0;
 }
+.import-warning {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  color: #92400e;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  margin: 10px 0;
+}
+.import-warning--overlap {
+  background: #fff7ed;
+  border-color: #fb923c;
+  color: #9a3412;
+}
+.import-warning-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.import-warning-item {
+  margin-top: 3px;
+  padding-left: 8px;
+}
+.import-warning-icon {
+  margin-right: 4px;
+}
+
 
 /* ── Preview ── */
 .preview-shell {

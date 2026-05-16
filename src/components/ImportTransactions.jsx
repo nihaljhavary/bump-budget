@@ -4,6 +4,7 @@ import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { normalizeForDisplay } from '../utils/merchantNormalizer'
 import { txnFingerprint, buildFingerprintSet, formatLocalDate } from '../utils/ledger'
+import { validateIngestionBatch, detectBatchOverlap } from '../utils/integrity'
 import './ImportTransactions.css'
 
 const CATEGORIES = [
@@ -251,6 +252,8 @@ export default function ImportTransactions({ onImportComplete }) {
   const [skippedCount, setSkippedCount] = useState(0)
   const [replaceInRange, setReplaceInRange] = useState(false)
   const [removedInRangeCount, setRemovedInRangeCount] = useState(0)
+  const [batchWarnings, setBatchWarnings] = useState([])  // integrity warnings
+  const [overlapWarning, setOverlapWarning] = useState(null) // duplicate upload warning
   const fileRef = useRef()
 
   // ── File parsing ─────────────────────────────────────────────────────────
@@ -265,6 +268,11 @@ export default function ImportTransactions({ onImportComplete }) {
         if (rows.length === 0) { setError('No data found in file'); return }
         const txns = parseRows(rows, bank)
         if (txns.length === 0) { setError("Couldn't find transaction columns. Try selecting a different bank or use \"Other / Generic\"."); return }
+        // Client-side integrity check before sending to backend
+        const { valid, errors: batchErrors, warnings: batchWarn } = validateIngestionBatch(txns)
+        if (!valid) { setError(batchErrors.join(' ')); return }
+        setBatchWarnings(batchWarn || [])
+        setOverlapWarning(null)
         setReplaceInRange(false)
         setParsed(txns)
         setStep('preview')
@@ -318,6 +326,10 @@ export default function ImportTransactions({ onImportComplete }) {
         setCategorised(txns.map((t, i) => ({ ...t, id: i, category: t.is_transfer ? 'Transfer' : t.is_income ? 'Income' : 'Other', include: true })))
         if (!data.transactions) setError('Categorisation returned an unexpected response — categories set to Other. You can adjust before importing.')
         return
+      }
+      // Surface any backend anomaly warnings (non-blocking)
+      if (data.warnings && data.warnings.length > 0) {
+        setBatchWarnings(prev => [...prev, ...data.warnings])
       }
       setCategorised(rawResults.map((t, i) => {
         // Use the original is_income hint as a safety net: if backend still returned
@@ -460,6 +472,18 @@ export default function ImportTransactions({ onImportComplete }) {
         const existingFingerprints = buildFingerprintSet(
           (existing || []).map(t => ({ ...t, description: t.raw_merchant || t.name }))
         )
+        // Overlap detection: warn if this batch is mostly already in the DB
+        const overlapResult = detectBatchOverlap(
+          included.map(t => ({ ...t, description: t.raw_merchant || t.description || t.name })),
+          existingFingerprints
+        )
+        if (overlapResult.isDuplicate) {
+          setOverlapWarning(
+            `${overlapResult.overlapPct}% of these transactions already exist in your account ` +
+            `(${overlapResult.overlapCount} of ${included.length}). ` +
+            'This may be a duplicate upload. New transactions will still be imported.'
+          )
+        }
         const incomingFingerprints = new Set(existingFingerprints)
 
         for (const t of included) {
@@ -648,6 +672,19 @@ export default function ImportTransactions({ onImportComplete }) {
         )}
 
         {!loading && error && <div className="import-error">{error}</div>}
+
+        {/* Integrity warnings (non-blocking) */}
+        {!loading && overlapWarning && (
+          <div className="import-warning import-warning--overlap">
+            <span className="import-warning-icon">⚠️</span> {overlapWarning}
+          </div>
+        )}
+        {!loading && batchWarnings.length > 0 && (
+          <div className="import-warning">
+            <div className="import-warning-title">⚠️ Parsing notices</div>
+            {batchWarnings.map((w, i) => <div key={i} className="import-warning-item">{w}</div>)}
+          </div>
+        )}
 
         {/* Rule creation */}
         {!loading && (

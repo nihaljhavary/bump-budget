@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { fetchTransactionsByRange } from '../services/transactions'
-import { buildLedgerSummary, countCalendarMonths, formatLocalDate } from '../utils/ledger'
+import { buildLedgerSummary, countCalendarMonths, formatLocalDate, validateProjectionInputs } from '../utils/ledger'
 import { useTier, isDateAllowed } from '../context/TierContext'
 import './Projections.css'
 
@@ -267,6 +267,7 @@ export default function Projections({ recurringMonthly }) {
   const { user, profile } = useAuth()
   const tier = useTier()
   const [loading, setLoading]   = useState(true)
+  const [projIntegrityIssues, setProjIntegrityIssues] = useState([])  // reconciliation issues
   const [txns, setTxns]         = useState([])
   const [view, setView]         = useState('monthly')
   const [range, setRange]       = useState({ from: '', to: '' })
@@ -340,6 +341,20 @@ export default function Projections({ recurringMonthly }) {
   const debitOrders   = parseFloat(debitOrdersInput)   || (profile?.monthly_debit_orders             ? profile.monthly_debit_orders / 100 : 0)
   const currentSavings= parseFloat(currentSavingsInput)|| 0
 
+  // Reconciliation check: validate projection inputs against canonical ledger
+  // Uses validateProjectionInputs from integrity.js (pure, no side effects)
+  // Runs synchronously so yearModels always reflect any detected drift
+  const _projIssues = useMemo(() => {
+    if (!netIncome || !avgVariableSpend) return []
+    // Build a minimal ledger-compatible object from the useMemo output
+    const approxLedger = { resolvedMonthlyIncome: monthlyIncome || 0 }
+    return validateProjectionInputs(approxLedger, {
+      netIncomeMonthly: netIncome,
+      fixedMonthly: debitOrders,
+      variableMonthly: avgVariableSpend,
+    })
+  }, [netIncome, debitOrders, avgVariableSpend, monthlyIncome])
+
   const monthlyFreeCashFlow   = netIncome - debitOrders - avgVariableSpend
   const optimisedVariableSpend= avgVariableSpend * 0.9
   const optimisedFreeCashFlow = netIncome - debitOrders - optimisedVariableSpend
@@ -409,6 +424,15 @@ export default function Projections({ recurringMonthly }) {
         <h2 className="proj-title">Scenario Planning</h2>
         <p className="proj-sub">Model your financial future. All calculations are deterministic — no AI maths.</p>
       </div>
+
+      {/* Integrity notice: shown only when projection inputs drift from canonical ledger */}
+      {_projIssues.length > 0 && (
+        <div className="proj-integrity-notice">
+          {_projIssues.map((issue, i) => (
+            <div key={i} className="proj-integrity-item">⚠ {issue}</div>
+          ))}
+        </div>
+      )}
 
       {/* Forecast mode tabs */}
       <div className="proj-mode-tabs">

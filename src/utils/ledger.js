@@ -344,3 +344,7 @@ export function buildLedgerSummary(transactions, profile, opts = {}) {
     resolvedMonthlyIncome,
   }
 }
+
+// -- Integrity re-export --------------------------------------------------------
+// Convenience: callers can import validateLedgerSummary from ledger.js directly.
+export { validateLedgerSummary, validateProjectionInputs } from './integrity.js'

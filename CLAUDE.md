@@ -294,46 +294,34 @@ State: `{ salaryGrowth: 5, inflation: 6, investmentReturn: 8 }` (all percentages
 `YearChart` component: SVG line chart of net worth over years, same SVG rendering pattern as `ProjectionChart`. All three scenario paths rendered (current = coral solid, optimised = green dashed, custom = purple dashed). Labels use year integers not month strings.
 
 ### Recommendations integration
-`Recommendations.jsx` now imports `detectRecurring` from `../utils/recurring`. After `buildLedgerSummary` in `loadData()`, it sums `isObligation` median amounts into `recurringMonthly` state. This is passed as `recurringMonthly` prop to `<Projections />`, which uses it to pre-fill the fixed obligations input (falls back to `profile.monthly_debit_orders` if no recurring detected). This wires real statement-detected obligations into the projection base.
-
-### Component prop
-`Projections` now accepts optional `recurringMonthly: number` prop (rands/month). When provided, it overrides the debit orders input pre-fill from profile. Backward-compatible — no prop = existing behaviour unchanged. Dashboard.jsx embeds `<Projections />` directly (no prop); Recommendations passes the detected obligation total.
+`Recommendations.jsx` now imports `detectRecurring` fr
 
 ---
 
-## Grocery Intelligence (2026-05)
+## Financial integrity & observability (2026-05 hardening session)
 
-### Architecture overview
-`GroceryComparison.jsx` evolved from a simple price comparison tool into a full grocery intelligence system. Three input modes: **Scan receipt** (photo upload → vision API), **Paste list** (text regex parser), **Enter items** (manual grid). Behavioural insights from transaction history are shown above the input tabs on every load.
+### src/utils/integrity.js (NEW)
+Pure validation module — no imports from React/Supabase. Four exports:
+- `anomalyFlags(txns)` — detects: identical amounts (>90%), extreme amounts (>R500k), all-same dates, all-same descriptions, future dates. Used by both client and server.
+- `validateIngestionBatch(txns)` — full client-side pre-send validation. Returns `{ valid, errors, warnings, stats }`. Errors block submission; warnings show in UI non-blocking.
+- `detectBatchOverlap(incoming, existingFPs)` — computes overlap % between incoming and existing fingerprint set. `isDuplicate = true` when ≥70% match. Called in `handleSave()` before insert.
+- `validateLedgerSummary(ledger)` — checks: NaN fields, negative spend, catTotals drift from totalSpend (tolerance R1), impossible spend-to-income ratios. Re-exported from `ledger.js` for single import point.
+- `validateProjectionInputs(ledger, inputs)` — checks projection base income vs canonical ledger resolvedMonthlyIncome (≥50% drift flagged), combined fixed+variable >200% income.
 
-### Receipt image parsing
-`parse-grocery-receipt.js` (new Netlify function). POST `{ imageBase64, mediaType }` with Bearer token. Uses Claude Haiku vision API — multimodal message with base64-encoded image. Returns `{ store, items[], subtotal, discounts, deliveryFee, loyaltySavings }`. On success, items are populated into the manual grid and mode switches to 'manual' for review. Supports JPEG, PNG, WebP up to 10 MB. No OCR/technical language exposed to the user — loading state says "Reading your receipt...".
+### Ingestion validation flow
+1. `handleFile()` in `ImportTransactions.jsx` calls `validateIngestionBatch()` immediately after `parseRows()`. Batch errors block upload; warnings set `batchWarnings` state shown in preview.
+2. `parse-bulk-transactions.js` runs `detectIngestionAnomalies()` (inline mirror of `anomalyFlags`) before Claude call. Returns `{ transactions, warnings? }` — client surfaces backend warnings in preview UI.
+3. `handleSave()` calls `detectBatchOverlap()` after fetching existing fingerprints. If `isDuplicate`, shows orange overlap warning (non-blocking — user can still save).
 
-### SA retailer coverage (2026-05)
-`STORES` array: Woolworths, Checkers, Checkers Sixty60, Pick n Pay, Pick n Pay ASAP, Shoprite, Spar, Clicks, Dis-Chem, Makro. `compare-groceries.js` has expanded knowledge: WRewards, Xtra Savings (up to 15%), Smart Shopper, Smart Price range (15-20% cheaper), Clicks ClubCard, Makro bulk pricing. Delivery fees: Sixty60 R25-35, Woolworths Dash R35-45, PnP ASAP R30, Spar2u R35.
+### Reconciliation guarantees
+- `catTotals` and `totalSpend` are both derived from `filterSpend()` in `buildLedgerSummary()`. `validateLedgerSummary()` asserts their sum matches within R1 — any drift indicates a code regression.
+- `Projections.jsx` computes `_projIssues` via `validateProjectionInputs()` in a `useMemo`. Shows yellow notice above the forecast tabs when inputs drift >50% from canonical ledger income. Non-blocking.
+- Integrity re-exported from `ledger.js`: `import { validateLedgerSummary, validateProjectionInputs } from '../utils/ledger'`.
 
-### Behavioural grocery insights
-`computeGroceryInsights(txns)` — pure client-side function, no AI. Runs on last 3 months of transactions from `fetchRecentMonths(user.id, 3)`. Computes: `monthlyAvg`, `deliveryPct`, `deliveryCount`, `deliveryPremiumPct`, `topRetailer`, `topRetailerPct`, `retailerTotals`. `InsightsPanel` component renders a 2-4 card grid above the input UI. Nudges fire when: delivery > 30% of grocery spend, or Woolworths > 60% of grocery spend.
+### Duplicate upload detection
+`txnFingerprint()` + `buildFingerprintSet()` in `ledger.js` remain the canonical dedup mechanism. `detectBatchOverlap()` adds a *batch-level* signal on top: it warns before save rather than silently skipping. Both mechanisms coexist — fingerprint-based skip prevents double-inserts; overlap warning educates the user.
 
-### Delivery detection patterns
-```js
-const DELIVERY_PATTERNS = [
-  'sixty60', 'sixty 60', 'checkers sixty', 'checkers online',
-  'woolworths dash', 'woolies dash', 'woolworths delivery', 'woolies delivery', 'woolworths online', 'woolies online',
-  'pick n pay asap', 'pnp asap', 'picknpay asap', 'pnp online', 'pick n pay online', 'picknpay online',
-  'spar online', 'spar deliver', 'spar2u',
-]
-```
-Same patterns used in both `GroceryComparison.jsx` (client-side `isDelivery()`) and `_context.js` (`GROCERY_DELIVERY_KW` array for AI context).
-
-### AI context integration (_context.js)
-After eating-out delivery split detection, `_context.js` now detects grocery delivery split: filters `merchantsToUse` by `category === 'Groceries'`, checks against `GROCERY_DELIVERY_KW`, outputs `"Grocery split: X% delivery services (Sixty60/Dash/ASAP) vs Y% in-store"` when delivery > 0.
-
-### compare-groceries.js response schema
-Now includes `groceryInsights: { loyaltyTip, savingsTip, deliveryNote }` — three optional AI-generated tips shown in the results area. `FORMAT_RULES` added (no em dashes, tilde, markdown bold). `max_tokens` bumped to 2500.
-
-### CSS variables (GroceryComparison.css)
-All hardcoded dark colors replaced with CSS variables. No `#1A1008`, `#120C07`, `#2C1F14`, `#5A3020`, `rgba(255,255,255,0.03)` anywhere. Uses `var(--surface)`, `var(--input-bg)`, `var(--border)`, `var(--coral)`, `var(--hover-bg)`, `var(--card-bg)`, `var(--bg-alt)`.
-
-### Emoji in JSX (critical)
-All emoji in JSX text content must be actual characters (paste directly). `\u{1f4f7}` syntax fails in JSX — esbuild throws "Syntax error". Valid: paste 📷 directly. Invalid: `\u{1f4f7}` in JSX text.
+### What was deliberately NOT added
+- No new Supabase tables — `error_logs` (v8) is sufficient; integrity issues are non-fatal and client-logged.
+- No blocking reconciliation UI — all checks are advisory warnings, never hard blocks (except invalid batches at upload).
+- No rewrite of `buildLedgerSummary()` or ingestion pipeline — existing architecture is correct; only validation layer added on top.
