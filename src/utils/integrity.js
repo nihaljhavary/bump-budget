@@ -169,30 +169,64 @@ export function validateIngestionBatch(transactions) {
 }
 
 /**
- * Compute overlap between an incoming batch and a fingerprint set of existing transactions.
- * Uses the same fingerprint logic as buildFingerprintSet() in ledger.js.
+ * Compute the canonical fingerprint for a single transaction.
  *
- * @param  {Array}  incoming           - parsed transactions (pre-categorisation)
- * @param  {Set}    existingFingerprints - from buildFingerprintSet()
- * @returns {{ overlapCount: number, overlapPct: number, isDuplicate: boolean }}
+ * MUST stay byte-for-byte identical to txnFingerprint() in ledger.js.
+ * Field priority: description → raw_merchant → name (same order as ledger.js).
+ * integrity.js is a pure module (no imports) so we duplicate the logic here.
+ *
+ * @param  {{ date: string, amount: number, description?: string, raw_merchant?: string, name?: string }} t
+ * @returns {string}
+ */
+export function batchTxnFingerprint(t) {
+  // Priority matches ledger.js txnFingerprint: description first, then raw_merchant, then name.
+  const desc = (t.description || t.raw_merchant || t.name || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60)
+  const amt = Math.round((t.amount || 0) * 100) / 100
+  return `${t.date}|${amt}|${desc}`
+}
+
+/**
+ * Compute overlap between an incoming batch and a fingerprint set of existing transactions.
+ * Uses batchTxnFingerprint() which is kept in sync with ledger.js txnFingerprint()
+ * to ensure consistent duplicate detection.
+ *
+ * Overlap tiers:
+ *   ≥70% → isDuplicate (likely full re-upload of same statement)
+ *   ≥30% → isPartialDuplicate (partial overlap — warn but allow)
+ *   <30%  → clean batch
+ *
+ * @param  {Array}  incoming             - parsed transactions (pre-categorisation)
+ * @param  {Set}    existingFingerprints - from buildFingerprintSet() in ledger.js
+ * @returns {{ overlapCount: number, overlapPct: number, isDuplicate: boolean, isPartialDuplicate: boolean }}
  */
 export function detectBatchOverlap(incoming, existingFingerprints) {
   if (!incoming || incoming.length === 0 || !existingFingerprints || existingFingerprints.size === 0) {
-    return { overlapCount: 0, overlapPct: 0, isDuplicate: false }
+    return { overlapCount: 0, overlapPct: 0, isDuplicate: false, isPartialDuplicate: false }
   }
 
   let overlapCount = 0
   for (const t of incoming) {
-    const desc = (t.raw_merchant || t.description || t.name || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 60)
-    const amt  = Math.round((t.amount || 0) * 100) / 100
-    const fp   = `${t.date}|${amt}|${desc}`
-    if (existingFingerprints.has(fp)) overlapCount++
+    const fp = batchTxnFingerprint(t)
+    if (existingFingerprints.has(fp)) {
+      overlapCount++
+    } else {
+      // Also check with raw_merchant-first priority (legacy rows imported before this fix)
+      const legacyDesc = (t.raw_merchant || t.description || t.name || '')
+        .toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 60)
+      const legacyFp = `${t.date}|${Math.round((t.amount || 0) * 100) / 100}|${legacyDesc}`
+      if (existingFingerprints.has(legacyFp)) overlapCount++
+    }
   }
 
-  const overlapPct  = Math.round((overlapCount / incoming.length) * 100)
-  const isDuplicate = overlapPct >= 70 // 70%+ overlap = likely re-upload of same statement
+  const overlapPct        = Math.round((overlapCount / incoming.length) * 100)
+  const isDuplicate       = overlapPct >= 70   // full re-upload of same statement
+  const isPartialDuplicate = overlapPct >= 30  // partial overlap — worth surfacing
 
-  return { overlapCount, overlapPct, isDuplicate }
+  return { overlapCount, overlapPct, isDuplicate, isPartialDuplicate }
 }
 
 // ── Ledger summary validation ─────────────────────────────────────────────────
@@ -297,4 +331,135 @@ export function validateProjectionInputs(ledger, inputs) {
   }
 
   return issues
+}
+
+
+// ── Cross-tab reconciliation ──────────────────────────────────────────────────
+
+/**
+ * Reconcile Overview and Analytics ledger summaries.
+ *
+ * Both tabs call buildLedgerSummary() independently. When they use the same
+ * period + tier parameters their totalSpend and income should match within R1.
+ * A mismatch indicates a period/filter divergence (period buttons out of sync,
+ * tier applied differently, etc.).
+ *
+ * @param  {Object} overviewLedger  - buildLedgerSummary() from Overview/Dashboard
+ * @param  {Object} analyticsLedger - buildLedgerSummary() from Analytics
+ * @param  {number} [toleranceRands=1] - acceptable rounding tolerance
+ * @returns {{ reconciled: boolean, issues: string[] }}
+ */
+export function reconcileTabTotals(overviewLedger, analyticsLedger, toleranceRands = 1) {
+  const issues = []
+  if (!overviewLedger || !analyticsLedger) {
+    return { reconciled: false, issues: ['One or both ledger summaries are missing.'] }
+  }
+
+  const spendDrift = Math.abs((overviewLedger.totalSpend || 0) - (analyticsLedger.totalSpend || 0))
+  if (spendDrift > toleranceRands) {
+    issues.push(
+      `Overview totalSpend (R${Math.round(overviewLedger.totalSpend)}) differs from ` +
+      `Analytics totalSpend (R${Math.round(analyticsLedger.totalSpend)}) by R${Math.round(spendDrift)}. ` +
+      'Period or tier filter may be misaligned between tabs.'
+    )
+  }
+
+  const incomeDrift = Math.abs((overviewLedger.income || 0) - (analyticsLedger.income || 0))
+  if (incomeDrift > toleranceRands) {
+    issues.push(
+      `Overview income (R${Math.round(overviewLedger.income)}) differs from ` +
+      `Analytics income (R${Math.round(analyticsLedger.income)}) by R${Math.round(incomeDrift)}. ` +
+      'Income resolution may differ between tabs.'
+    )
+  }
+
+  const monthDrift = Math.abs((overviewLedger.monthCount || 0) - (analyticsLedger.monthCount || 0))
+  if (monthDrift > 0) {
+    issues.push(
+      `Overview monthCount (${overviewLedger.monthCount}) differs from ` +
+      `Analytics monthCount (${analyticsLedger.monthCount}). ` +
+      'Period boundaries may be computed differently.'
+    )
+  }
+
+  return { reconciled: issues.length === 0, issues }
+}
+
+/**
+ * Reconcile recurring obligations total against spend transactions.
+ *
+ * detectRecurring() returns a subset of transactions that appear across ≥2
+ * months. Their combined monthly amount should not exceed totalSpend — if it
+ * does, a transaction is being double-counted or categorised incorrectly.
+ *
+ * @param  {Array}  recurring   - output of detectRecurring(transactions)
+ * @param  {number} totalSpend  - from buildLedgerSummary().totalSpend
+ * @param  {number} monthCount  - from buildLedgerSummary().monthCount (for monthly normalisation)
+ * @returns {{ reconciled: boolean, issues: string[] }}
+ */
+export function reconcileRecurring(recurring, totalSpend, monthCount) {
+  const issues = []
+  if (!Array.isArray(recurring) || recurring.length === 0) {
+    return { reconciled: true, issues: [] }
+  }
+
+  const mc = Math.max(monthCount || 1, 1)
+
+  // Sum recurring monthly amounts (recurring items already have monthlyAmount)
+  const recurringTotal = recurring.reduce((s, r) => s + (r.monthlyAmount || 0), 0)
+
+  // Recurring obligations monthly total should not exceed the total monthly spend
+  const monthlySpend = totalSpend / mc
+  if (recurringTotal > monthlySpend * 1.1 && monthlySpend > 0) {
+    // Allow 10% buffer for rounding/partial-month edge cases
+    issues.push(
+      `Recurring obligations total (R${Math.round(recurringTotal)}/mo) exceeds ` +
+      `average monthly spend (R${Math.round(monthlySpend)}/mo). ` +
+      'A recurring item may be double-counted or include non-spend categories.'
+    )
+  }
+
+  return { reconciled: issues.length === 0, issues }
+}
+
+
+/**
+ * Reconcile AI context income/spend vs canonical ledger.
+ *
+ * analyse.js/_context.js receives income and spend figures from the client.
+ * This check confirms the AI context matches the canonical ledger so the AI
+ * does not receive stale or truncated numbers.
+ *
+ * @param  {Object} aiContext  - { income, totalSpend } sent to analyse.js
+ * @param  {Object} ledger     - buildLedgerSummary() output
+ * @param  {number} [driftPct=0.05] - max allowed relative drift (5% default)
+ * @returns {{ reconciled: boolean, issues: string[] }}
+ */
+export function reconcileAiContext(aiContext, ledger, driftPct = 0.05) {
+  const issues = []
+  if (!aiContext || !ledger) return { reconciled: true, issues: [] }
+
+  const spendDrift = ledger.totalSpend > 0
+    ? Math.abs((aiContext.totalSpend || 0) - ledger.totalSpend) / ledger.totalSpend
+    : 0
+  if (spendDrift > driftPct) {
+    issues.push(
+      `AI context spend (R${Math.round(aiContext.totalSpend)}) differs from ` +
+      `canonical ledger spend (R${Math.round(ledger.totalSpend)}) ` +
+      `by ${Math.round(spendDrift * 100)}%. AI analysis may be based on stale data.`
+    )
+  }
+
+  const incomeDrift = ledger.income > 0
+    ? Math.abs((aiContext.income || 0) - ledger.income) / ledger.income
+    : 0
+  if (incomeDrift > driftPct) {
+    issues.push(
+      `AI context income (R${Math.round(aiContext.income)}) differs from ` +
+      `canonical ledger income (R${Math.round(ledger.income)}) ` +
+      `by ${Math.round(incomeDrift * 100)}%. AI analysis may be based on stale data.`
+    )
+  }
+
+  return { reconciled: issues.length === 0, issues }
 }

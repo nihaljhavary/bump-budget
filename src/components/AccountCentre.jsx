@@ -12,6 +12,19 @@ const CATEGORIES = [
   'Gifts','Home & Garden','Other',
 ]
 
+// Human-readable bank labels keyed by detected_bank value from import
+const BANK_LABELS = {
+  fnb:       'FNB',
+  nedbank:   'Nedbank',
+  absa:      'ABSA',
+  standard:  'Standard Bank',
+  capitec:   'Capitec',
+  discovery: 'Discovery Bank',
+  tyme:      'TymeBank',
+  investec:  'Investec',
+  generic:   'Generic / Other',
+}
+
 const fmt  = n => 'R' + Math.round(n).toLocaleString('en-ZA')
 const fmtD = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : ''
 const fmtDate = d => d ? d.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : ''
@@ -147,6 +160,12 @@ function SubscriptionSection({ tier, onClose, onNavigate }) {
   const [confirm, setConfirm] = useState(null)   // 'cancel' | 'downgrade:starter' | 'downgrade:growth'
 
   const sub = tier.subscription || {}
+
+  // Correctly distinguish downgrade (scheduledTier is a real plan) from cancellation (free)
+  const isDowngrade   = sub.cancelAtPeriodEnd && sub.scheduledTier && sub.scheduledTier !== 'free'
+  const isCancel      = sub.cancelAtPeriodEnd && (!sub.scheduledTier || sub.scheduledTier === 'free')
+  const hasPending    = isDowngrade || isCancel
+
   const planLabel = {
     free:    'Free',
     starter: 'Starter — R49/mo',
@@ -154,6 +173,8 @@ function SubscriptionSection({ tier, onClose, onNavigate }) {
     pro:     'Pro — R199/mo',
     admin:   'Admin',
   }
+
+  const planCapital = p => p ? p.charAt(0).toUpperCase() + p.slice(1) : ''
 
   async function handleAction(action, plan) {
     setBusy(true); setMsg(null); setConfirm(null)
@@ -187,35 +208,39 @@ function SubscriptionSection({ tier, onClose, onNavigate }) {
               <span className="acc-billing-value">{fmtDate(sub.billingCycleStart)} – {fmtDate(sub.billingCycleEnd)}</span>
             </div>
           )}
-          {sub.billingCycleEnd && !sub.cancelAtPeriodEnd && (
+          {sub.billingCycleEnd && !hasPending && (
             <div className="acc-billing-row">
               <span className="acc-billing-label">Next renewal</span>
               <span className="acc-billing-value">{fmtDate(sub.billingCycleEnd)}</span>
             </div>
           )}
-          {sub.billingCycleEnd && sub.cancelAtPeriodEnd && (
+          {sub.billingCycleEnd && hasPending && (
             <div className="acc-billing-row">
-              <span className="acc-billing-label">Access until</span>
-              <span className="acc-billing-value">{fmtDate(sub.billingCycleEnd)}</span>
+              <span className="acc-billing-label">Full access until</span>
+              <span className="acc-billing-value acc-billing-value--end">{fmtDate(sub.billingCycleEnd)}</span>
             </div>
           )}
         </div>
       )}
 
-      {/* Pending changes banners */}
-      {sub.cancelAtPeriodEnd && (
+      {/* Pending change banners — mutually exclusive */}
+      {isCancel && (
         <div className="acc-alert warning">
-          <strong>Cancellation scheduled</strong> — your plan reverts to Free at end of billing cycle
-          {sub.billingCycleEnd ? ` (${fmtDate(sub.billingCycleEnd)})` : ''}. You keep full access until then.
+          <div>
+            <strong>Cancellation scheduled</strong> — your plan reverts to Free at end of billing cycle
+            {sub.billingCycleEnd ? ` (${fmtDate(sub.billingCycleEnd)})` : ''}. You keep full access until then.
+          </div>
           <button className="acc-link-btn" onClick={() => handleAction('reactivate')} disabled={busy}>
             Undo cancellation
           </button>
         </div>
       )}
-      {sub.scheduledTier && !sub.cancelAtPeriodEnd && sub.scheduledTier !== tier.plan && (
+      {isDowngrade && (
         <div className="acc-alert warning">
-          <strong>Downgrade scheduled</strong> — moving to {sub.scheduledTier} at end of billing cycle
-          {sub.billingCycleEnd ? ` (${fmtDate(sub.billingCycleEnd)})` : ''}.
+          <div>
+            <strong>Downgrade scheduled</strong> — moving to {planCapital(sub.scheduledTier)} at end of billing cycle
+            {sub.billingCycleEnd ? ` (${fmtDate(sub.billingCycleEnd)})` : ''}. You keep your current plan until then.
+          </div>
           <button className="acc-link-btn" onClick={() => handleAction('reactivate')} disabled={busy}>
             Undo downgrade
           </button>
@@ -248,13 +273,13 @@ function SubscriptionSection({ tier, onClose, onNavigate }) {
         </div>
       )}
 
-      {/* Paid: manage */}
-      {!tier.isAdmin && tier.plan !== 'free' && !sub.cancelAtPeriodEnd && !sub.scheduledTier && (
+      {/* Paid + no pending change: manage */}
+      {!tier.isAdmin && tier.plan !== 'free' && !hasPending && (
         <div className="acc-box">
           <p className="acc-box-title">Manage subscription</p>
           <p className="acc-hint">Changes activate at your next billing date — you keep full access until then.</p>
 
-          {/* Downgrade options */}
+          {/* Downgrade to Growth */}
           {tier.plan === 'pro' && (
             <div className="acc-manage-row">
               <div>
@@ -271,6 +296,8 @@ function SubscriptionSection({ tier, onClose, onNavigate }) {
               )}
             </div>
           )}
+
+          {/* Downgrade to Starter */}
           {(tier.plan === 'pro' || tier.plan === 'growth') && (
             <div className="acc-manage-row">
               <div>
@@ -315,6 +342,7 @@ function UploadsSection({ user, onDataChange }) {
   const [err,      setErr]      = useState(null)
   const [deleting, setDeleting] = useState(null)  // batchId being deleted
   const [confirm,  setConfirm]  = useState(null)  // batchId to confirm delete
+  const [search,   setSearch]   = useState('')    // filter by bank name
 
   const load = useCallback(async () => {
     setBatches(null); setErr(null)
@@ -338,7 +366,6 @@ function UploadsSection({ user, onDataChange }) {
       })
       setConfirm(null)
       await load()
-      // Signal Dashboard to reload transactions + recalculate analytics
       onDataChange?.()
     } catch (e) {
       setErr(e.message)
@@ -349,54 +376,99 @@ function UploadsSection({ user, onDataChange }) {
 
   if (batches === null) return <div className="acc-section"><div className="acc-loading">Loading uploads...</div></div>
 
-  const totalTxns = batches.reduce((s, b) => s + b.count, 0)
+  // Filter by bank name (search term matches readable bank label or ID)
+  const filtered = search.trim()
+    ? batches.filter(b => {
+        const bank = b.detectedBank || ''
+        const label = BANK_LABELS[bank] || bank
+        return label.toLowerCase().includes(search.toLowerCase()) ||
+               bank.toLowerCase().includes(search.toLowerCase())
+      })
+    : batches
+
+  const totalTxns  = batches.reduce((s, b) => s + b.count, 0)
+  const confirmBatch = confirm ? batches.find(b => b.batchId === confirm) : null
 
   return (
     <div className="acc-section">
       <p className="acc-hint">
-        Each row represents one uploaded bank statement. Deleting a batch removes all its transactions and recalculates your analytics. Manual entries are unaffected.
+        Each row represents one uploaded bank statement. Deleting a batch removes all its transactions and recalculates your analytics. Manually added transactions are never affected.
       </p>
 
       {batches.length > 0 && (
         <div className="acc-uploads-summary">
-          <span>{batches.length} {batches.length === 1 ? 'batch' : 'batches'}</span>
+          <span>{batches.length} {batches.length === 1 ? 'statement' : 'statements'}</span>
           <span className="acc-uploads-summary-dot">·</span>
-          <span>{totalTxns.toLocaleString()} transactions total</span>
+          <span>{totalTxns.toLocaleString()} transactions</span>
+          {filtered.length < batches.length && (
+            <>
+              <span className="acc-uploads-summary-dot">·</span>
+              <span>{filtered.length} shown</span>
+            </>
+          )}
+        </div>
+      )}
+
+      {batches.length > 2 && (
+        <div className="acc-upload-search-wrap">
+          <input
+            className="acc-input acc-upload-search"
+            type="search"
+            placeholder="Filter by bank..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
         </div>
       )}
 
       {err && <div className="acc-alert err">{err}</div>}
 
       {batches.length === 0 ? (
-        <div className="acc-empty">No uploaded statements found. Import a statement using the Import tab.</div>
+        <div className="acc-empty">No uploaded statements yet. Use the Import tab to upload your bank statement.</div>
+      ) : filtered.length === 0 ? (
+        <div className="acc-empty">No statements match "{search}".</div>
       ) : (
         <div className="acc-upload-list">
-          {batches.map(b => (
-            <div key={b.batchId} className="acc-upload-row">
-              <div className="acc-upload-info">
-                <div className="acc-upload-header">
-                  <div className="acc-upload-range">{fmtD(b.fromDate)} – {fmtD(b.toDate)}</div>
-                  {b.detectedBank && <span className="acc-upload-bank">{b.detectedBank.toUpperCase()}</span>}
+          {filtered.map(b => {
+            const bankLabel = b.detectedBank ? (BANK_LABELS[b.detectedBank] || b.detectedBank.toUpperCase()) : null
+            const isConfirming = confirm === b.batchId
+            return (
+              <div key={b.batchId} className={`acc-upload-row ${isConfirming ? 'acc-upload-row--confirming' : ''}`}>
+                <div className="acc-upload-info">
+                  <div className="acc-upload-header">
+                    <div className="acc-upload-range">{fmtD(b.fromDate)} – {fmtD(b.toDate)}</div>
+                    {bankLabel && <span className="acc-upload-bank">{bankLabel}</span>}
+                  </div>
+                  <div className="acc-upload-meta">
+                    {b.count} transactions &nbsp;·&nbsp; {fmt(b.totalAmount / 100)} spend
+                  </div>
+                  <div className="acc-upload-when">Uploaded {fmtDate(new Date(b.createdAt))}</div>
+
+                  {/* Inline delete confirmation with context */}
+                  {isConfirming && (
+                    <div className="acc-upload-confirm-inline">
+                      <div className="acc-upload-confirm-text">
+                        Remove <strong>{b.count} transactions</strong> from {fmtD(b.fromDate)} to {fmtD(b.toDate)}? This cannot be undone.
+                      </div>
+                      <div className="acc-confirm-btns">
+                        <button
+                          className="acc-btn danger"
+                          onClick={() => deleteBatch(b.batchId)}
+                          disabled={deleting === b.batchId}
+                        >{deleting === b.batchId ? 'Deleting...' : 'Yes, remove'}</button>
+                        <button className="acc-btn" onClick={() => setConfirm(null)} disabled={!!deleting}>Keep it</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="acc-upload-meta">{b.count} transactions &nbsp;·&nbsp; {fmt(b.totalAmount / 100)}</div>
-                <div className="acc-upload-when">Uploaded {fmtDate(new Date(b.createdAt))}</div>
-              </div>
-              <div className="acc-upload-actions">
-                {confirm === b.batchId ? (
-                  <>
-                    <button
-                      className="acc-btn danger"
-                      onClick={() => deleteBatch(b.batchId)}
-                      disabled={deleting === b.batchId}
-                    >{deleting === b.batchId ? 'Deleting...' : 'Yes, delete'}</button>
-                    <button className="acc-btn" onClick={() => setConfirm(null)}>Cancel</button>
-                  </>
-                ) : (
-                  <button className="acc-btn danger" onClick={() => setConfirm(b.batchId)}>Delete</button>
+                {!isConfirming && (
+                  <div className="acc-upload-actions">
+                    <button className="acc-btn danger" onClick={() => setConfirm(b.batchId)}>Delete</button>
+                  </div>
                 )}
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
@@ -407,19 +479,43 @@ function UploadsSection({ user, onDataChange }) {
 function ExportSection({ user }) {
   const [loading,  setLoading]  = useState(false)
   const [err,      setErr]      = useState(null)
+  const [category, setCategory] = useState('All')
+
+  // Date range with sensible default: last 12 months
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date(); d.setFullYear(d.getFullYear() - 1)
     return d.toISOString().slice(0, 10)
   })
-  const [toDate,   setToDate]   = useState(new Date().toISOString().slice(0, 10))
-  const [category, setCategory] = useState('All')
+  const [toDate, setToDate] = useState(new Date().toISOString().slice(0, 10))
 
+  function applyPreset(preset) {
+    const today = new Date()
+    const iso = d => d.toISOString().slice(0, 10)
+    if (preset === '1m') {
+      const from = new Date(today.getFullYear(), today.getMonth(), 1)
+      setFromDate(iso(from)); setToDate(iso(today))
+    } else if (preset === '3m') {
+      const from = new Date(today.getFullYear(), today.getMonth() - 2, 1)
+      setFromDate(iso(from)); setToDate(iso(today))
+    } else if (preset === '12m') {
+      const from = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate())
+      setFromDate(iso(from)); setToDate(iso(today))
+    } else if (preset === 'ytd') {
+      setFromDate(`${today.getFullYear()}-01-01`); setToDate(iso(today))
+    } else if (preset === 'all') {
+      setFromDate('2020-01-01'); setToDate(iso(today))
+    }
+  }
+
+  // Fetch all transactions matching current filters (paginated, cents from DB)
   async function fetchForExport() {
     const PAGE = 1000
     let all = []
     let offset = 0
     for (;;) {
-      let q = supabase.from('transactions').select('date, name, amount, category, raw_merchant')
+      let q = supabase
+        .from('transactions')
+        .select('date, name, amount, category, raw_merchant')
         .eq('user_id', user.id)
         .gte('date', fromDate)
         .lte('date', toDate)
@@ -435,16 +531,58 @@ function ExportSection({ user }) {
     return all
   }
 
+  // Build analytics summary from raw rows (cents in DB, convert to rands for display)
+  function buildAnalyticsSummary(rows) {
+    const spendRows   = rows.filter(r => r.category !== 'Income' && r.category !== 'Transfer' && r.category !== 'Savings')
+    const incomeRows  = rows.filter(r => r.category === 'Income')
+    const totalSpend  = spendRows.reduce((s, r) => s + (r.amount || 0), 0) / 100
+    const totalIncome = incomeRows.reduce((s, r) => s + (r.amount || 0), 0) / 100
+
+    // Approximate month count from date range
+    const from = new Date(fromDate + 'T12:00:00')
+    const to   = new Date(toDate   + 'T12:00:00')
+    const monthCount = Math.max(1,
+      (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth()) + 1
+    )
+
+    // Category totals (spend only)
+    const catMap = {}
+    for (const r of spendRows) {
+      catMap[r.category] = (catMap[r.category] || 0) + (r.amount || 0)
+    }
+
+    const overviewRows = [
+      ['Metric', 'Total (R)', 'Monthly Avg (R)'],
+      ['Total income',  (totalIncome).toFixed(2),                 (totalIncome / monthCount).toFixed(2)],
+      ['Total spend',   (totalSpend).toFixed(2),                  (totalSpend  / monthCount).toFixed(2)],
+      ['Net (surplus)', (totalIncome - totalSpend).toFixed(2),    ((totalIncome - totalSpend) / monthCount).toFixed(2)],
+      ['Months in range', String(monthCount), ''],
+      [],
+      ['Category Breakdown', '', ''],
+      ['Category', 'Total (R)', 'Monthly Avg (R)'],
+      ...Object.entries(catMap)
+        .sort((a, b) => b[1] - a[1])
+        .map(([cat, amt]) => [cat, (amt / 100).toFixed(2), (amt / 100 / monthCount).toFixed(2)]),
+    ]
+
+    return overviewRows
+  }
+
   async function exportCSV() {
     setLoading(true); setErr(null)
     try {
       const rows = await fetchForExport()
       if (rows.length === 0) { setErr('No transactions found for the selected filters.'); setLoading(false); return }
+
+      // amounts are cents in DB — divide by 100 for export
       const header = 'Date,Description,Amount (R),Category\n'
-      const lines  = rows.map(r => `${r.date},"${(r.name || '').replace(/"/g, '""')}",${(r.amount / 100).toFixed(2)},${r.category}`).join('\n')
-      const blob   = new Blob([header + lines], { type: 'text/csv;charset=utf-8;' })
-      const url    = URL.createObjectURL(blob)
-      const a      = document.createElement('a'); a.href = url; a.download = `bump_transactions_${fromDate}_${toDate}.csv`
+      const lines  = rows.map(r =>
+        `${r.date},"${(r.name || '').replace(/"/g, '""')}",${(r.amount / 100).toFixed(2)},${r.category}`
+      ).join('\n')
+      const blob = new Blob([header + lines], { type: 'text/csv;charset=utf-8;' })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a'); a.href = url
+      a.download = `bump_transactions_${fromDate}_to_${toDate}.csv`
       document.body.appendChild(a); a.click(); document.body.removeChild(a)
       URL.revokeObjectURL(url)
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
@@ -456,36 +594,50 @@ function ExportSection({ user }) {
       const rows = await fetchForExport()
       if (rows.length === 0) { setErr('No transactions found for the selected filters.'); setLoading(false); return }
 
-      // Sheet 1: Transactions
+      // ── Sheet 1: Transactions ──────────────────────────────────────────────
       const txnData = [
         ['Date', 'Description', 'Amount (R)', 'Category'],
-        ...rows.map(r => [r.date, r.name || '', (r.amount / 100).toFixed(2), r.category]),
+        ...rows.map(r => [r.date, r.name || r.raw_merchant || '', (r.amount / 100).toFixed(2), r.category]),
       ]
 
-      // Sheet 2: Category summary
+      // ── Sheet 2: Category Summary ──────────────────────────────────────────
+      // Spend only (excludes Income/Transfer/Savings) — matches Analytics tab logic
+      const spendRows = rows.filter(r => r.category !== 'Income' && r.category !== 'Transfer' && r.category !== 'Savings')
       const catMap = {}
-      for (const r of rows) {
+      for (const r of spendRows) {
         if (!catMap[r.category]) catMap[r.category] = { count: 0, total: 0 }
         catMap[r.category].count++
         catMap[r.category].total += r.amount
       }
+      const totalSpend = Object.values(catMap).reduce((s, v) => s + v.total, 0)
       const summaryData = [
-        ['Category', 'Transactions', 'Total (R)'],
+        ['Category', 'Transactions', 'Total (R)', '% of Spend'],
         ...Object.entries(catMap)
           .sort((a, b) => b[1].total - a[1].total)
-          .map(([cat, v]) => [cat, v.count, (v.total / 100).toFixed(2)]),
+          .map(([cat, v]) => [
+            cat,
+            v.count,
+            (v.total / 100).toFixed(2),
+            totalSpend > 0 ? ((v.total / totalSpend) * 100).toFixed(1) + '%' : '0%',
+          ]),
       ]
 
-      // Sheet 3: Recurring obligations
-      // detectRecurring expects { name, amount, category, date } which matches our rows
-      const recurring = detectRecurring(rows)
+      // ── Sheet 3: Analytics Overview ────────────────────────────────────────
+      // Numerically reconciles with visible Analytics/Overview values
+      const analyticsData = buildAnalyticsSummary(rows)
+
+      // ── Sheet 4: Recurring Obligations ────────────────────────────────────
+      // detectRecurring expects { name, amount (rands), category, date }
+      // Amounts are in cents from DB — convert first
+      const recurringInput = rows.map(r => ({ ...r, amount: r.amount / 100 }))
+      const recurring = detectRecurring(recurringInput)
       const recurringData = [
         ['Merchant', 'Category', 'Median Amount (R)', 'Avg Amount (R)', 'Months Seen', 'Type'],
         ...recurring.map(r => [
           r.merchant,
           r.category,
-          (r.medianAmount / 100).toFixed(2),
-          (r.avgAmount / 100).toFixed(2),
+          r.medianAmount.toFixed(2),
+          r.avgAmount.toFixed(2),
           r.months.length,
           r.isObligation ? 'Obligation' : 'Habitual',
         ]),
@@ -494,16 +646,37 @@ function ExportSection({ user }) {
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(txnData),      'Transactions')
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryData),  'Category Summary')
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(analyticsData),'Analytics Overview')
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(recurringData),'Recurring')
-      XLSX.writeFile(wb, `bump_transactions_${fromDate}_${toDate}.xlsx`)
+      XLSX.writeFile(wb, `bump_report_${fromDate}_to_${toDate}.xlsx`)
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }
 
   return (
     <div className="acc-section">
-      <p className="acc-hint">Export your transaction data as CSV or Excel. The Excel file includes a category summary and recurring obligations sheet.</p>
+      <p className="acc-hint">
+        Export your transaction data with analytics summaries. The Excel report includes four sheets: Transactions, Category Summary, Analytics Overview, and Recurring Obligations.
+      </p>
 
-      {/* Filters */}
+      {/* Date presets */}
+      <div className="acc-export-presets">
+        <span className="acc-field-label">Quick range</span>
+        <div className="acc-preset-btns">
+          {[
+            { id: '1m',  label: 'This month' },
+            { id: '3m',  label: '3 months'   },
+            { id: '12m', label: '12 months'  },
+            { id: 'ytd', label: 'This year'  },
+            { id: 'all', label: 'All time'   },
+          ].map(p => (
+            <button key={p.id} className="acc-preset-btn" onClick={() => applyPreset(p.id)}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Custom filters */}
       <div className="acc-export-filters">
         <div className="acc-field">
           <label className="acc-field-label">From date</label>
@@ -525,21 +698,24 @@ function ExportSection({ user }) {
       {err && <div className="acc-alert err">{err}</div>}
 
       <div className="acc-export-btns">
-        <button className="acc-primary-btn" onClick={exportCSV} disabled={loading}>
-          {loading ? 'Exporting...' : 'Download CSV'}
+        <button className="acc-primary-btn" onClick={exportXLSX} disabled={loading}>
+          {loading ? 'Preparing...' : '↓ Download Excel report'}
         </button>
-        <button className="acc-secondary-btn" onClick={exportXLSX} disabled={loading}>
-          {loading ? 'Exporting...' : 'Download Excel (.xlsx)'}
+        <button className="acc-secondary-btn" onClick={exportCSV} disabled={loading}>
+          {loading ? 'Preparing...' : '↓ Download CSV'}
         </button>
       </div>
-      <p className="acc-hint">Exports include all transactions matching your filters, not just the currently visible period.</p>
+      <p className="acc-hint">
+        Excel includes category breakdown and analytics summary that reconcile with your Overview and Analytics tabs.
+        CSV exports raw transactions only.
+      </p>
     </div>
   )
 }
 
 // ── Data / Account Section ───────────────────────────────────────────────────────────────
 function DataSection({ user, onClose }) {
-  const [deleteStep,  setDeleteStep]  = useState(0)  // 0: idle, 1: warned, 2: typing
+  const [deleteStep,  setDeleteStep]  = useState(0)
   const [deleteInput, setDeleteInput] = useState('')
   const [deleting,    setDeleting]    = useState(false)
   const [deleteErr,   setDeleteErr]   = useState(null)
@@ -552,7 +728,6 @@ function DataSection({ user, onClose }) {
         method: 'POST',
         body: JSON.stringify({ confirmation: 'DELETE' }),
       })
-      // Sign out — account is gone
       await supabase.auth.signOut()
       window.location.href = '/'
     } catch (e) {
@@ -567,7 +742,6 @@ function DataSection({ user, onClose }) {
         Your financial data is encrypted in transit and stored securely. It is never sold to third parties or used for advertising. You can export all your data from the Export tab before deleting.
       </p>
 
-      {/* Delete account */}
       <div className="acc-danger-box">
         <div className="acc-danger-title">Delete account</div>
         <div className="acc-danger-desc">

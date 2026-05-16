@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { normalizeForDisplay } from '../utils/merchantNormalizer'
 import { txnFingerprint, buildFingerprintSet, formatLocalDate } from '../utils/ledger'
 import { validateIngestionBatch, detectBatchOverlap } from '../utils/integrity'
+import { observe, DOMAIN } from '../utils/observe'
 import './ImportTransactions.css'
 
 const CATEGORIES = [
@@ -292,13 +293,27 @@ export default function ImportTransactions({ onImportComplete }) {
   }, [bank])
 
   // ── Claude categorisation ─────────────────────────────────────────────────
+  // AbortController ref for timeout + unmount cleanup
+  const categoriseAbortRef = useRef(null)
+
   async function categoriseWithClaude(txns) {
+    // Cancel any in-flight request before starting a new one
+    if (categoriseAbortRef.current) categoriseAbortRef.current.abort()
+    const controller = new AbortController()
+    categoriseAbortRef.current = controller
+
+    // Hard timeout: abort after 55 s (Netlify function limit is 60 s)
+    const timeoutId = setTimeout(() => controller.abort(), 55_000)
+
     setLoading(true)
     setError(null)
+    observe.info(DOMAIN.INGESTION, 'Categorisation started', { rowCount: txns.length, bank })
+
     try {
       const token = await getToken()
       const res = await fetch('/.netlify/functions/parse-bulk-transactions', {
         method: 'POST',
+        signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {})
@@ -315,14 +330,17 @@ export default function ImportTransactions({ onImportComplete }) {
       }
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
-        throw new Error(d.error || `Categorisation failed (${res.status})`)
+        const errMsg = d.error || `Categorisation failed (${res.status})`
+        observe.categorizationError(new Error(errMsg), { status: res.status, bank, rowCount: txns.length })
+        throw new Error(errMsg)
       }
 
       const data = await res.json()
-      // Backend returns { results: [...] } — guard against malformed/empty response
+      // Backend returns { transactions: [...] } — guard against malformed/empty response
       const rawResults = Array.isArray(data.transactions) ? data.transactions : []
       if (rawResults.length === 0) {
         // Fallback: show parsed rows with Other so user can adjust manually
+        observe.categorizationMismatch('Empty transactions array in response', { bank, rowCount: txns.length })
         setCategorised(txns.map((t, i) => ({ ...t, id: i, category: t.is_transfer ? 'Transfer' : t.is_income ? 'Income' : 'Other', include: true })))
         if (!data.transactions) setError('Categorisation returned an unexpected response — categories set to Other. You can adjust before importing.')
         return
@@ -330,6 +348,7 @@ export default function ImportTransactions({ onImportComplete }) {
       // Surface any backend anomaly warnings (non-blocking)
       if (data.warnings && data.warnings.length > 0) {
         setBatchWarnings(prev => [...prev, ...data.warnings])
+        observe.ingestionWarning(data.warnings, { bank, rowCount: txns.length })
       }
       setCategorised(rawResults.map((t, i) => {
         // Use the original is_income hint as a safety net: if backend still returned
@@ -344,11 +363,20 @@ export default function ImportTransactions({ onImportComplete }) {
         const displayName = t.name || normalizeForDisplay(t.description) || t.description
         return { ...t, name: displayName, id: i, include: true, category }
       }))
+      observe.info(DOMAIN.CATEGORISATION, 'Categorisation complete', { resultCount: rawResults.length })
     } catch (err) {
-      setError(err.message)
-      // Still show parsed data with "Other" as fallback
+      if (err.name === 'AbortError') {
+        const timeoutErr = new Error('Categorisation timed out. Please try again with a smaller file, or import without AI categorisation.')
+        observe.categorizationError(timeoutErr, { bank, rowCount: txns.length, reason: 'timeout' })
+        setError(timeoutErr.message)
+      } else {
+        observe.categorizationError(err, { bank, rowCount: txns.length })
+        setError(err.message)
+      }
+      // Still show parsed data with "Other" as fallback so user isn't stuck
       setCategorised(txns.map((t, i) => ({ ...t, id: i, category: t.is_transfer ? 'Transfer' : t.is_income ? 'Income' : 'Other', include: true })))
     } finally {
+      clearTimeout(timeoutId)
       setLoading(false)
     }
   }
@@ -478,10 +506,22 @@ export default function ImportTransactions({ onImportComplete }) {
           existingFingerprints
         )
         if (overlapResult.isDuplicate) {
+          observe.duplicateOverlap(overlapResult, { bank, includedCount: included.length, minDate, maxDate })
           setOverlapWarning(
             `${overlapResult.overlapPct}% of these transactions already exist in your account ` +
             `(${overlapResult.overlapCount} of ${included.length}). ` +
             'This may be a duplicate upload. New transactions will still be imported.'
+          )
+        } else if (overlapResult.isPartialDuplicate) {
+          // 30-69% overlap — partial duplicate, log and surface lightly
+          observe.warn(DOMAIN.DUPLICATE, `Partial overlap: ${overlapResult.overlapPct}%`, {
+            overlapCount: overlapResult.overlapCount,
+            includedCount: included.length,
+            bank,
+          })
+          setOverlapWarning(
+            `${overlapResult.overlapCount} of these transactions already exist and will be skipped. ` +
+            'Only new transactions will be imported.'
           )
         }
         const incomingFingerprints = new Set(existingFingerprints)
@@ -526,6 +566,7 @@ export default function ImportTransactions({ onImportComplete }) {
         }
       }
 
+      observe.info(DOMAIN.INGESTION, 'Batch saved', { savedCount: toSave.length, skipped, bank, replaceInRange })
       setSavedCount(toSave.length)
       setStep('done')
 
@@ -540,6 +581,7 @@ export default function ImportTransactions({ onImportComplete }) {
       const prefix = replaceInRange
         ? 'Save failed. If you used replace, rows in this date range may have been removed — re-import the file with Replace on to fill them again. '
         : ''
+      observe.ingestionError(err, { bank, replaceInRange, includedCount: categorised.filter(t => t.include).length })
       setError(prefix + err.message)
     } finally {
       setSaving(false)

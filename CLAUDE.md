@@ -325,3 +325,101 @@ Pure validation module — no imports from React/Supabase. Four exports:
 - No new Supabase tables — `error_logs` (v8) is sufficient; integrity issues are non-fatal and client-logged.
 - No blocking reconciliation UI — all checks are advisory warnings, never hard blocks (except invalid batches at upload).
 - No rewrite of `buildLedgerSummary()` or ingestion pipeline — existing architecture is correct; only validation layer added on top.
+
+---
+
+## Production hardening (2026-05)
+
+### Deployment consistency
+- `netlify.toml` has `[[headers]]` blocks mirroring `public/_headers` as belt-and-suspenders. Both must be kept in sync. `public/_headers` is the canonical source; `netlify.toml` is a fallback in case `_headers` is not copied to `dist`.
+- `public/_headers` rules: `index.html` → `no-cache, no-store`; `/assets/*` → `immutable, max-age=31536000`; `/version.json` → `no-cache, no-store`.
+- Vite content-hashes all `/assets/*` filenames by default — stale JS/CSS references are automatically invalidated on deploy.
+
+### Build version awareness
+- `vite.config.js` injects `__BUMP_BUILD_ID__` and `__BUMP_BUILD_TIME__` at build time. `DEPLOY_ID` from Netlify CI is used as build ID; local fallback is `Date.now().toString(36)`.
+- `src/hooks/useVersionCheck.js` polls `/version.json?_=<timestamp>` on focus + every 5 minutes. Polling is skipped in local dev (build ID is not a Netlify DEPLOY_ID).
+- `UpdateBanner` in `App.jsx` shows a dismissible coral banner when `updateAvailable = true`.
+- `/version.json` is emitted by a Vite plugin in `vite.config.js` during every build.
+
+### Observability (src/utils/observe.js)
+- Lightweight structured event logger. Never throws, never blocks. Always logs to console; persists WARN/ERROR events to Supabase `error_logs` table (best-effort, auth-gated).
+- `observe.info / warn / error(domain, message, context)` — raw API.
+- Typed helpers: `observe.ingestionBatch`, `ingestionWarning`, `ingestionError`, `categorizationError`, `categorizationMismatch`, `duplicateOverlap`, `reconciliationMismatch`, `ledgerIssues`, `enrichmentError`, `staleBundle`.
+- Domains: `DOMAIN.INGESTION`, `CATEGORISATION`, `RECONCILIATION`, `ENRICHMENT`, `DUPLICATE`, `LEDGER`, `DEPLOYMENT`.
+- Uses dynamic `import('../supabase')` (not `require`) to avoid circular deps — lazy-loads on first WARN/ERROR only.
+
+### Integrity (src/utils/integrity.js — extended)
+- `batchTxnFingerprint(t)` — canonical fingerprint for incoming batch transactions. **Field priority: `description → raw_merchant → name`** — matches `txnFingerprint()` in `ledger.js` exactly. Must stay in sync.
+- `detectBatchOverlap()` — now returns `{ overlapCount, overlapPct, isDuplicate, isPartialDuplicate }`. Tiers: ≥70% = `isDuplicate` (full re-upload); ≥30% = `isPartialDuplicate` (partial — surfaces to user); <30% = clean. Also checks legacy fingerprints (raw_merchant-first) for backwards compat with rows imported before this fix.
+- `reconcileTabTotals(overviewLedger, analyticsLedger)` — checks totalSpend, income, monthCount match within R1 between tabs.
+- `reconcileRecurring(recurring, totalSpend, monthCount)` — checks recurring obligations monthly total does not exceed monthly spend (10% buffer).
+- `reconcileAiContext(aiContext, ledger)` — checks AI context income/spend within 5% of canonical ledger.
+
+### Reconciliation wiring in Dashboard.jsx
+`useEffect` after `ledger` + `recurring` useMemos runs `validateLedgerSummary()` and `reconcileRecurring()` on every ledger change. Issues surface via `observe.ledgerIssues()` and `observe.reconciliationMismatch()` — never block UI.
+
+### Async enrichment resilience (src/services/ai.js)
+- All exported functions (`analyseSpending`, `recategoriseAll`, `enrichMerchant`, `parseTransaction`) accept an optional `{ signal }` parameter and add a 55s hard timeout via `timeoutSignal()`.
+- `timeoutSignal(ms, callerSignal)` chains caller + timeout into a single `AbortSignal`. Timer is cleared in `finally` to prevent leaks.
+- `runAnalysis()` in Dashboard.jsx, `handleAI()` in Analytics.jsx, `generateAI()` in IncomeStatement.jsx, `categoriseWithClaude()` in ImportTransactions.jsx — all use `AbortController` refs, cancel in-flight requests when called again, and guard state setters with `!signal.aborted`.
+- Components abort in-flight AI calls on unmount via `useEffect` cleanup.
+- `categoriseWithClaude` in ImportTransactions.jsx has a 55s client-side timeout in addition to the server's Netlify limit. On timeout, falls back to "Other" categories so the user is never stuck on a spinner.
+
+### Fingerprint alignment (critical)
+The `detectBatchOverlap` fingerprint in `integrity.js` previously used `raw_merchant → description → name` (opposite priority from `txnFingerprint` in `ledger.js`). Now aligned: both use `description → raw_merchant → name`. Legacy fingerprints (old priority) are also checked to avoid false negatives on rows imported before this fix.
+
+---
+
+## Export architecture (2026-05 Session 2)
+
+### AccountCentre.jsx — ExportSection
+- Fetches transactions directly from Supabase with date/category filters (not from Dashboard state).
+- **Amounts in DB are cents** — divide by `100` for display and export. Failure to do this gives 100x inflated numbers.
+- CSV: simple transactions export (date, name, amount, category). No income/transfer rows are excluded — users can filter in Excel.
+- XLSX has **4 sheets**: Transactions, Category Summary (spend-only, % of spend column), Analytics Overview (income/spend/net/monthly avg + category breakdown), Recurring (from `detectRecurring` called with `amount / 100` — cents must be converted to rands before passing or recurring amounts are 100x wrong).
+- **Export presets**: 1m, 3m, 12m, YTD, All-time. `applyPreset()` sets `exportFrom`/`exportTo` date inputs. Active preset is tracked in `activePreset` state; custom date entry clears it.
+- Category Summary excludes Income, Transfer, Savings rows to match Analytics tab logic.
+
+### detectRecurring cents/rands contract
+`detectRecurring(txns)` expects amounts in **rands**. DB rows have amounts in **cents**. Always convert before calling: `rows.map(r => ({ ...r, amount: r.amount / 100 }))`.
+
+---
+
+## Upload management UX (2026-05 Session 2)
+
+### AccountCentre.jsx — UploadsSection
+- **Bank name display**: `BANK_LABELS` constant maps raw bank IDs (`fnb`, `nedbank`, etc.) to human-readable names (`FNB`, `Nedbank`, etc.). Used in coral badge and search filter.
+- **Search**: filters by bank label text (case-insensitive). `filtered` derived from `batches` state based on `search` state.
+- **Inline delete confirmation** replaces dialog-based confirm. When `confirmingId === b.batchId`, the row gains `acc-upload-row--confirming` class and shows `acc-upload-confirm-inline` block with transaction count + date range context: "Remove X transactions from DATE to DATE? This cannot be undone."
+- `onDataChange` prop (passed from Dashboard) is called after batch delete → triggers `loadTransactions()` + `setImportSignal(s => s+1)`. Without this, Dashboard analytics don't refresh.
+
+---
+
+## Subscription lifecycle (2026-05 Session 2)
+
+### Downgrade vs cancel detection
+`cancel_at_period_end` is set for BOTH cancels AND downgrades by `manage-subscription.js`. Previously both showed "Cancellation scheduled". Distinguish by:
+```js
+const isDowngrade = sub.cancelAtPeriodEnd && sub.scheduledTier && sub.scheduledTier !== 'free'
+const isCancel    = sub.cancelAtPeriodEnd && (!sub.scheduledTier || sub.scheduledTier === 'free')
+```
+- `isDowngrade` → shows "Downgrade scheduled to {tier} on {date}"
+- `isCancel` → shows "Cancellation scheduled — access until {date}"
+- Both show "Undo" link that calls `reactivate` action on `manage-subscription.js`.
+
+### Billing end date styling
+`acc-billing-value--end` class: muted color + normal weight. Used for the billing-end date row to visually distinguish it from the renewal date (which uses full `acc-billing-value` weight/color).
+
+---
+
+## AccountCentre.css patterns (2026-05)
+
+New CSS classes added in Session 2:
+- `.acc-billing-value--end` — muted variant for end dates
+- `.acc-upload-search-wrap` / `.acc-upload-search` — upload search input
+- `.acc-upload-row--confirming` — red-tinted row when inline delete confirmation is shown
+- `.acc-upload-confirm-inline` / `.acc-upload-confirm-text` — inline delete confirmation block
+- `.acc-export-presets` / `.acc-preset-btns` / `.acc-preset-btn` — export date presets
+- `.acc-preset-btn.active` — coral highlight for the currently selected preset
+
+**CSS rewrite rule for AccountCentre.css**: This file must be written via Python (`open(path, 'w').write(content)`) not the Edit tool. The Edit tool truncates it at the Linux side, causing build CSS syntax errors. Always verify with `python3 -c "... brace depth check ..."` after writing.

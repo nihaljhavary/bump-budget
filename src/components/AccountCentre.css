@@ -243,6 +243,7 @@
 }
 .acc-billing-label { color: var(--muted); }
 .acc-billing-value { font-weight: 600; color: var(--text); }
+.acc-billing-value--end { color: var(--muted); font-weight: 500; }
 .acc-plan-row {
   display: flex;
   align-items: center;
@@ -317,6 +318,37 @@
 .acc-upload-when  { font-size: 0.73rem; color: var(--muted); }
 .acc-upload-actions { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
 
+/* ── Upload: search ── */
+.acc-upload-search-wrap {
+  position: relative;
+  margin-bottom: 2px;
+}
+.acc-upload-search {
+  width: 100%;
+  padding-left: 10px;
+  font-size: 0.84rem;
+}
+
+/* ── Upload: confirming state ── */
+.acc-upload-row--confirming {
+  border-color: rgba(220,38,38,0.35);
+  background: rgba(220,38,38,0.03);
+}
+.acc-upload-confirm-inline {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+.acc-upload-confirm-text {
+  font-size: 0.8rem;
+  color: #7f1d1d;
+  line-height: 1.45;
+}
+
 /* ── Export section ── */
 .acc-export-filters {
   display: flex;
@@ -324,6 +356,38 @@
   flex-wrap: wrap;
 }
 .acc-export-filters .acc-field { flex: 1; min-width: 130px; }
+.acc-export-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.acc-preset-btns {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.acc-preset-btn {
+  padding: 5px 11px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  font-family: 'DM Sans', sans-serif;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  cursor: pointer;
+  color: var(--muted);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.acc-preset-btn:hover {
+  background: var(--bg-alt);
+  color: var(--text);
+}
+.acc-preset-btn.active {
+  background: color-mix(in srgb, var(--coral) 12%, transparent);
+  border-color: var(--coral);
+  color: var(--coral);
+}
 .acc-export-btns {
   display: flex;
   gap: 10px;
@@ -364,4 +428,5 @@
   .acc-upload-row { flex-direction: column; align-items: flex-start; gap: 8px; }
   .acc-upload-actions { width: 100%; }
   .acc-plan-cards { flex-direction: column; }
+  .acc-preset-btn { font-size: 0.72rem; padding: 4px 9px; }
 }

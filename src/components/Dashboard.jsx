@@ -5,6 +5,8 @@ import { useTier, isDateAllowed, PLAN_PRICES } from '../context/TierContext'
 import { fetchTransactions, fetchTransactionsByMonth, fetchRecentMonths, addTransaction, updateTransaction, deleteTransaction } from '../services/transactions'
 import { buildAIPayload, buildTopMerchants } from '../utils/financials'
 import { buildLedgerSummary, getCalendarMonthRange } from '../utils/ledger'
+import { validateLedgerSummary, reconcileRecurring } from '../utils/integrity'
+import { observe, DOMAIN } from '../utils/observe'
 import { parseTransaction, analyseSpending, recategoriseAll } from '../services/ai'
 import { detectRecurring, recurringToContext } from '../utils/recurring'
 import ImportTransactions from './ImportTransactions'
@@ -81,6 +83,9 @@ export default function Dashboard({ onNavigate }) {
   const profileMenuRef = useRef(null)
   const chatEndRef = useRef(null)
   const textareaRef = useRef(null)
+  // Tracks the AbortController for any in-flight analyseSpending call.
+  // Aborted on unmount to prevent state updates on a dead component.
+  const analysisAbortRef = useRef(null)
 
   // Consultation state
   const [consultRequests, setConsultRequests] = useState([])
@@ -209,6 +214,25 @@ export default function Dashboard({ onNavigate }) {
 
   // Recurring obligations detected from all allowed transaction history
   const recurring = useMemo(() => detectRecurring(allowedTransactions), [allowedTransactions])
+
+  // ── Reconciliation safeguards (dev + prod) ────────────────────────────────
+  // Runs after ledger and recurring are stable. Failures are advisory only —
+  // they never block the UI but surface via observe.js for production diagnosis.
+  useEffect(() => {
+    if (!ledger || !allowedTransactions.length) return
+
+    // 1. Ledger internal consistency
+    const ledgerIssues = validateLedgerSummary(ledger)
+    if (ledgerIssues.length > 0) {
+      observe.ledgerIssues(ledgerIssues, { selectedMonth, monthCount: ledger.monthCount })
+    }
+
+    // 2. Recurring obligations vs total spend
+    const { issues: recurringIssues } = reconcileRecurring(recurring, ledger.totalSpend, ledger.monthCount)
+    if (recurringIssues.length > 0) {
+      recurringIssues.forEach(msg => observe.reconciliationMismatch('recurring-vs-spend', 0, { msg }))
+    }
+  }, [ledger, recurring, allowedTransactions.length, selectedMonth])
 
   // AI-suggested budgets: 85% of rolling 12-month average per category.
   // Loaded async on mount and re-loaded after each import. Far more accurate
@@ -350,6 +374,11 @@ export default function Dashboard({ onNavigate }) {
   }
 
   async function runAnalysis() {
+    // Cancel any previous in-flight analysis before starting a new one
+    if (analysisAbortRef.current) analysisAbortRef.current.abort()
+    const controller = new AbortController()
+    analysisAbortRef.current = controller
+
     setAiLoading(true)
     setAiText('')
     try {
@@ -366,12 +395,16 @@ export default function Dashboard({ onNavigate }) {
         incomeResolutionMode: ledger.incomeResolutionMode,
         periodLabel: monthDisplayLabel(),
       })
-      const result = await analyseSpending(payload)
-      setAiText(result.analysis)
+      const result = await analyseSpending(payload, { signal: controller.signal })
+      if (!controller.signal.aborted) setAiText(result.analysis)
     } catch (e) {
-      setAiText(e.message || 'Analysis failed -- check your connection and try again.')
+      if (!controller.signal.aborted) {
+        observe.error(DOMAIN.RECONCILIATION, 'Analysis failed', { message: e.message })
+        setAiText(e.message || 'Analysis failed -- check your connection and try again.')
+      }
+    } finally {
+      if (!controller.signal.aborted) setAiLoading(false)
     }
-    setAiLoading(false)
   }
 
   function handleTextareaKey(e) {
@@ -383,13 +416,17 @@ export default function Dashboard({ onNavigate }) {
     el.style.height = Math.min(el.scrollHeight, 120) + 'px'
   }
 
-  // Close profile menu on outside click
+  // Close profile menu on outside click + abort any in-flight analysis on unmount
   useEffect(() => {
     function handleClick(e) {
       if (profileMenuRef.current && !profileMenuRef.current.contains(e.target)) setShowProfileMenu(false)
     }
     document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      // Cancel any pending AI request when Dashboard unmounts (e.g. admin switching views)
+      if (analysisAbortRef.current) analysisAbortRef.current.abort()
+    }
   }, [])
 
   const pendingRequests = consultRequests.filter(r => r.status === 'pending')

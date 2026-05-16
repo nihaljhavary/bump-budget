@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { fetchTransactionsByRange } from '../services/transactions'
@@ -82,6 +82,7 @@ export default function IncomeStatement() {
   const [loading, setLoading] = useState(false)
   const [aiText, setAiText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
+  const aiAbortRef = useRef(null)
 
   const { from, to } = useMemo(() => {
     if (period === 'custom' && customFrom && customTo) return { from: customFrom, to: customTo }
@@ -125,6 +126,11 @@ export default function IncomeStatement() {
   ])].sort((a, b) => (stmt.catTotals[b] || 0) - (stmt.catTotals[a] || 0))
 
   async function generateAI() {
+    // Cancel any in-flight request before starting a new one
+    if (aiAbortRef.current) aiAbortRef.current.abort()
+    const controller = new AbortController()
+    aiAbortRef.current = controller
+
     setAiLoading(true)
     try {
       const top3 = allCats.slice(0, 3).map(c => `${c}: ${fmt(stmt.catTotals[c] || 0)}`).join(', ')
@@ -135,11 +141,17 @@ export default function IncomeStatement() {
         monthlyData: groupByMonth(txns),
         question,
       })
-      const data = await analyseSpending(payload)
-      setAiText(data.analysis || '')
-    } catch { setAiText('Could not generate insights. Please try again.') }
-    setAiLoading(false)
+      const data = await analyseSpending(payload, { signal: controller.signal })
+      if (!controller.signal.aborted) setAiText(data.analysis || '')
+    } catch (e) {
+      if (!controller.signal.aborted) setAiText('Could not generate insights. Please try again.')
+    } finally {
+      if (!controller.signal.aborted) setAiLoading(false)
+    }
   }
+
+  // Abort in-flight AI call on unmount
+  useEffect(() => () => { if (aiAbortRef.current) aiAbortRef.current.abort() }, [])
 
   return (
     <div className="is-shell">

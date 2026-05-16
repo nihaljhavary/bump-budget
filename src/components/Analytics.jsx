@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useTier, isDateAllowed } from '../context/TierContext'
 import { fetchTransactionsByRange } from '../services/transactions'
@@ -120,6 +120,7 @@ export default function Analytics({ preferDeclared = true }) {
   const [aiText, setAiText]           = useState('')
   const [aiLoading, setAiLoading]     = useState(false)
   const [recat, setRecat]             = useState({ loading: false, result: null })
+  const aiAbortRef = useRef(null)
   const [editBudget, setEditBudget]   = useState(null)   // { cat, value } when editing inline
   const [budgetMode, setBudgetMode]   = useState(() => {
     try { return localStorage.getItem('bumpBudgetMode') || 'my' } catch { return 'my' }
@@ -243,6 +244,10 @@ export default function Analytics({ preferDeclared = true }) {
   )
 
   async function handleAI() {
+    if (aiAbortRef.current) aiAbortRef.current.abort()
+    const controller = new AbortController()
+    aiAbortRef.current = controller
+
     setAiLoading(true)
     try {
       const payload = buildAIPayload(txns, profile, 200, {
@@ -255,13 +260,17 @@ export default function Analytics({ preferDeclared = true }) {
         periodLabel,
         budgets:              activeBudgets,
       })
-      const data = await analyseSpending(payload)
-      setAiText(data.analysis || '')
+      const data = await analyseSpending(payload, { signal: controller.signal })
+      if (!controller.signal.aborted) setAiText(data.analysis || '')
     } catch (e) {
-      setAiText(e.message || 'Could not generate insights. Please try again.')
+      if (!controller.signal.aborted) setAiText(e.message || 'Could not generate insights. Please try again.')
+    } finally {
+      if (!controller.signal.aborted) setAiLoading(false)
     }
-    setAiLoading(false)
   }
+
+  // Abort in-flight AI call on unmount
+  useEffect(() => () => { if (aiAbortRef.current) aiAbortRef.current.abort() }, [])
 
   async function handleRecat() {
     setRecat({ loading: true, result: null })
