@@ -188,6 +188,22 @@
   font-size: 0.82rem;
   margin: 10px 0;
 }
+/* Schema inference in-progress indicator (upload step) */
+.import-inferring {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  margin: 10px 0;
+}
+.import-inferring-icon {
+  font-size: 1rem;
+}
 .import-warning {
   background: #fffbeb;
   border: 1px solid #fcd34d;

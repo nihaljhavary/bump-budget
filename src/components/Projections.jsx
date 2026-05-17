@@ -491,6 +491,10 @@ export default function Projections({ recurringMonthly }) {
   const [editingId,        setEditingId]       = useState(null)   // id of event being edited inline
   const [editDraft,        setEditDraft]       = useState({})
 
+  // Cross-device Supabase persistence refs
+  const scenarioHydrated  = useRef(false)  // true once profile.scenario_state hydration resolves
+  const saveScenarioTimer = useRef(null)   // debounce handle for Supabase scenario saves
+
   const [aiPrompt,       setAiPrompt]       = useState('')
   const [aiLoading,      setAiLoading]      = useState(false)
   const [aiError,        setAiError]        = useState('')
@@ -515,6 +519,74 @@ export default function Projections({ recurringMonthly }) {
   useEffect(() => { lsSet('horizonYears',   horizonYears)       }, [horizonYears])
   useEffect(() => { lsSet('customEvents',   customEvents)       }, [customEvents])
   useEffect(() => { lsSet('currentSavings', currentSavingsInput)}, [currentSavingsInput])
+
+  // Track LS scenario freshness so cross-device sync can compare timestamps
+  useEffect(() => {
+    lsSet('updatedAt', Date.now())
+  }, [forecastMode, assumptions, horizonYears, customEvents, currentSavingsInput])
+
+  // Supabase hydration: resolves cross-device sync for scenario planning state.
+  // Runs once when profile first becomes available. scenarioHydrated guards re-runs.
+  // Strategy: compare updatedAt timestamps -- whichever is newer wins.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!user?.id || !profile || scenarioHydrated.current) return
+    scenarioHydrated.current = true  // set before any state changes to arm the save effect
+
+    const db = profile.scenario_state
+    if (!db?.updatedAt) return  // No Supabase scenario data -- localStorage initialised above is correct
+
+    const lsTs = lsGet('updatedAt', 0)
+
+    if (db.updatedAt <= lsTs) {
+      // localStorage is newer (or equal) -- push current LS state to Supabase silently
+      // so it becomes available on other devices without waiting for user interaction
+      supabase.from('profiles')
+        .upsert({ id: user.id, scenario_state: {
+          forecastMode:   lsGet('forecastMode',   'current'),
+          assumptions:    lsGet('assumptions',    DEFAULT_ASSUMPTIONS),
+          horizonYears:   lsGet('horizonYears',   10),
+          customEvents:   lsGet('customEvents',   []),
+          currentSavings: lsGet('currentSavings', ''),
+          updatedAt:      lsTs || Date.now(),
+        }}, { onConflict: 'id' })
+        .catch(() => {})
+      return
+    }
+
+    // Supabase is newer -- hydrate React state (cross-device case: no/stale LS data)
+    if (db.forecastMode)                 setForecastMode(db.forecastMode)
+    if (db.assumptions)                  setAssumptions(db.assumptions)
+    if (db.horizonYears)                 setHorizonYears(db.horizonYears)
+    if (Array.isArray(db.customEvents))  setCustomEvents(db.customEvents)
+    if (db.currentSavings !== undefined) setCurrentSavingsInput(String(db.currentSavings || ''))
+
+    // Sync back to localStorage so same-device refreshes see the hydrated state
+    lsSet('forecastMode',   db.forecastMode   || 'current')
+    lsSet('assumptions',    db.assumptions    || DEFAULT_ASSUMPTIONS)
+    lsSet('horizonYears',   db.horizonYears   || 10)
+    lsSet('customEvents',   db.customEvents   || [])
+    lsSet('currentSavings', String(db.currentSavings || ''))
+    lsSet('updatedAt',      db.updatedAt)
+  }, [user?.id, profile?.scenario_state])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist scenario state to Supabase (debounced 3 s, only after hydration resolves).
+  // Fire-and-forget: no profile refetch, no UI side effects.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!user?.id || !scenarioHydrated.current) return
+    clearTimeout(saveScenarioTimer.current)
+    saveScenarioTimer.current = setTimeout(() => {
+      supabase.from('profiles')
+        .upsert({ id: user.id, scenario_state: {
+          forecastMode, assumptions, horizonYears,
+          customEvents, currentSavings: currentSavingsInput,
+          updatedAt: Date.now(),
+        }}, { onConflict: 'id' })
+        .catch(err => console.warn('[proj] scenario sync failed:', err))
+    }, 3000)
+  }, [forecastMode, assumptions, horizonYears, customEvents, currentSavingsInput])
+  // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadTransactions() {
     setLoading(true)

@@ -113,8 +113,12 @@ function hasTransferHint(description, type = '') {
   return /\b(transfer|internal transfer|own account|own acc|account transfer|inter-?account|discovery pay|payshap|send money)\b/i.test(text)
 }
 
-function parseRows(rows, bankId) {
-  if (rows.length === 0) return []
+// ── Deterministic parser (existing logic — unchanged) ─────────────────────────
+// Returns { txns: [], confidence: 'high'|'low', columns: {} }
+// confidence 'high'  = descCol + amount source found → continue as before
+// confidence 'low'   = key columns missing → caller may invoke AI fallback
+function parseRowsDeterministic(rows, bankId) {
+  if (rows.length === 0) return { txns: [], confidence: 'low', columns: {} }
   const headers = Object.keys(rows[0])
 
   let dateCol, descCol, amtCol, debitCol, creditCol, typeCol
@@ -191,9 +195,31 @@ function parseRows(rows, bankId) {
 
   typeCol = typeCol || findCol(headers, 'type', 'transaction type', 'transaction code')
 
+  // ── Confidence scoring ────────────────────────────────────────────────────
+  // High = descCol found AND at least one amount source found
+  // Low  = missing description or all amount columns → trigger AI fallback
+  const hasDesc   = !!descCol
+  const hasAmount = !!(amtCol || debitCol || creditCol)
+  const confidence = (hasDesc && hasAmount) ? 'high' : 'low'
+
+  const columns = { dateCol, descCol, amtCol, debitCol, creditCol, typeCol }
+
+  if (confidence === 'low') {
+    return { txns: [], confidence: 'low', columns }
+  }
+
+  const txns = extractRows(rows, { dateCol, descCol, amtCol, debitCol, creditCol, typeCol })
+  // Even with high column confidence, zero extracted rows = low confidence
+  return { txns, confidence: txns.length > 0 ? 'high' : 'low', columns }
+}
+
+// ── Core row extractor — shared by deterministic + AI-mapping paths ───────────
+// Takes rows + explicit column mapping, returns normalised transaction array.
+// This is the canonical normalisation engine — no duplication.
+function extractRows(rows, { dateCol, descCol, amtCol, debitCol, creditCol, typeCol }) {
   const result = []
   for (const row of rows) {
-    const desc = row[descCol] ? String(row[descCol]).trim() : null
+    const desc = descCol && row[descCol] ? String(row[descCol]).trim() : null
     if (!desc) continue // skip empty rows
 
     let amount = null
@@ -225,14 +251,43 @@ function parseRows(rows, bankId) {
       type:        txnType || undefined,
     })
   }
-
   return result
+}
+
+// ── AI-inferred schema path ───────────────────────────────────────────────────
+// Takes rows + column mapping returned by schema-infer.js and extracts transactions
+// using the same extractRows normalisation engine.
+function parseWithMapping(rows, mapping) {
+  const { dateCol, descCol, amtCol, debitCol, creditCol } = mapping
+  return extractRows(rows, { dateCol, descCol, amtCol, debitCol, creditCol, typeCol: null })
 }
 
 // ── Token helper ──────────────────────────────────────────────────────────────
 async function getToken() {
   const { data: { session } } = await supabase.auth.getSession()
   return session?.access_token || null
+}
+
+// ── AI schema inference (called only when deterministic parser has low confidence) ──
+// Sends headers + up to 5 sample rows to schema-infer.js.
+// Returns column mapping or null on failure.
+async function inferSchema(headers, sampleRows, bankHint) {
+  try {
+    const token = await getToken()
+    const res = await fetch('/.netlify/functions/schema-infer', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ headers, sampleRows: sampleRows.slice(0, 5), bankHint }),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.mapping || null
+  } catch {
+    return null
+  }
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -244,6 +299,7 @@ export default function ImportTransactions({ onImportComplete }) {
   const [parsed, setParsed] = useState([])    // raw parsed rows
   const [categorised, setCategorised] = useState([]) // after Claude
   const [loading, setLoading] = useState(false)
+  const [inferring, setInferring] = useState(false) // schema inference in progress
   const [error, setError] = useState(null)
   const [ruleText, setRuleText] = useState('')
   const [ruleLoading, setRuleLoading] = useState(false)
@@ -262,25 +318,75 @@ export default function ImportTransactions({ onImportComplete }) {
     setError(null)
     const reader = new FileReader()
     reader.onload = e => {
-      try {
-        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: false })
-        const ws = wb.Sheets[wb.SheetNames[0]]
-        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' })
-        if (rows.length === 0) { setError('No data found in file'); return }
-        const txns = parseRows(rows, bank)
-        if (txns.length === 0) { setError("Couldn't find transaction columns. Try selecting a different bank or use \"Other / Generic\"."); return }
-        // Client-side integrity check before sending to backend
-        const { valid, errors: batchErrors, warnings: batchWarn } = validateIngestionBatch(txns)
-        if (!valid) { setError(batchErrors.join(' ')); return }
-        setBatchWarnings(batchWarn || [])
-        setOverlapWarning(null)
-        setReplaceInRange(false)
-        setParsed(txns)
-        setStep('preview')
-        categoriseWithClaude(txns)
-      } catch (err) {
-        setError('Could not read file: ' + err.message)
-      }
+      // Wrap in async IIFE so we can await schema inference when needed
+      ;(async () => {
+        try {
+          const wb = XLSX.read(e.target.result, { type: 'array', cellDates: false })
+          const ws = wb.Sheets[wb.SheetNames[0]]
+          const rows = XLSX.utils.sheet_to_json(ws, { defval: '' })
+          if (rows.length === 0) { setError('No data found in file'); return }
+
+          // ── Step 1: deterministic parse (fast, no AI cost) ──────────────
+          const { txns: deterministicTxns, confidence } = parseRowsDeterministic(rows, bank)
+
+          let txns = deterministicTxns
+          const extraWarnings = []
+
+          // ── Step 2: AI schema inference fallback (only when confidence is low) ──
+          if (confidence === 'low') {
+            observe.info(DOMAIN.INGESTION, 'Parser confidence low — invoking schema inference', {
+              bank, headers: Object.keys(rows[0]), rowCount: rows.length,
+            })
+            setInferring(true)
+            try {
+              const headers = Object.keys(rows[0])
+              const mapping = await inferSchema(headers, rows, bank)
+
+              if (mapping) {
+                txns = parseWithMapping(rows, mapping)
+                observe.info(DOMAIN.INGESTION, 'Schema inference succeeded', {
+                  bank, mapping, inferredRowCount: txns.length,
+                })
+                if (txns.length > 0) {
+                  extraWarnings.push(
+                    'Statement format was auto-detected. Please verify the dates, amounts, and descriptions in the preview before importing.'
+                  )
+                }
+              }
+            } catch (inferErr) {
+              observe.warn(DOMAIN.INGESTION, 'Schema inference error', { error: inferErr?.message })
+              // Inference failed — fall through to the hard error below
+            } finally {
+              setInferring(false)
+            }
+          }
+
+          // ── Step 3: hard fail with a helpful message ──────────────────────
+          if (txns.length === 0) {
+            setError(
+              "Couldn't find transaction columns. " +
+              (confidence === 'low'
+                ? 'The statement format could not be recognised automatically. Try selecting a different bank, export as CSV from your banking app, or use "Other / Generic".'
+                : 'Try selecting a different bank or use "Other / Generic".')
+            )
+            return
+          }
+
+          // ── Step 4: client-side integrity check before sending to backend ─
+          const { valid, errors: batchErrors, warnings: batchWarn } = validateIngestionBatch(txns)
+          if (!valid) { setError(batchErrors.join(' ')); return }
+
+          setBatchWarnings([...extraWarnings, ...(batchWarn || [])])
+          setOverlapWarning(null)
+          setReplaceInRange(false)
+          setParsed(txns)
+          setStep('preview')
+          categoriseWithClaude(txns)
+        } catch (err) {
+          setError('Could not read file: ' + err.message)
+          setInferring(false)
+        }
+      })()
     }
     reader.readAsArrayBuffer(file)
   }
@@ -661,7 +767,13 @@ export default function ImportTransactions({ onImportComplete }) {
             onChange={e => e.target.files[0] && handleFile(e.target.files[0])}
           />
         </div>
-        {error && <div className="import-error">{error}</div>}
+        {inferring && (
+          <div className="import-inferring">
+            <span className="import-inferring-icon">🔍</span>
+            Analysing statement format...
+          </div>
+        )}
+        {error && !inferring && <div className="import-error">{error}</div>}
         <div className="import-tips">
           <strong>Tips for {bankLabel}:</strong>
           {bank === 'fnb'      && <p>Go to Transact → Accounts → Statement → Download CSV</p>}

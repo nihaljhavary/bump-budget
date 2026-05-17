@@ -190,9 +190,10 @@ export default function Recommendations({ onImportSignal = 0 }) {
     }
   }, [onImportSignal, loadData])
 
-  // Restore saved state on mount -- no expiry check, persists indefinitely
+  // Restore saved state from localStorage on mount (fast, before profile loads).
+  // Depends on user?.id only so profile mutations (billing webhooks etc.) don't re-run this.
   useEffect(() => {
-    if (!user) return
+    if (!user?.id) return
     const saved = loadSaved(user.id)
     if (!saved) return
     setAnswers(saved.answers || {})
@@ -203,7 +204,44 @@ export default function Recommendations({ onImportSignal = 0 }) {
     if (aDate) setAnalysisDate(new Date(aDate))
     const gDate = saved.answersUpdatedAt || saved.savedAt
     if (gDate) setGoalsDate(new Date(gDate))
-  }, [user])
+  }, [user?.id])
+
+  // Supabase hydration -- fires when profile.planning_profile is available.
+  // Resolves cross-device sync: Supabase wins if its timestamp is newer than localStorage.
+  // Also silently pushes localStorage data to Supabase for devices that had pre-existing answers.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!user?.id || !profile) return
+    const db = profile.planning_profile
+    const lsData = loadSaved(user.id)
+    const dbTs = db?.analysisRunAt || db?.savedAt || 0
+    const lsTs = lsData?.analysisRunAt || lsData?.savedAt || 0
+
+    if (dbTs > lsTs && db?.result) {
+      // Supabase has newer data -- hydrate state and overwrite localStorage cache
+      setAnswers(db.answers || {})
+      setResult(db.result)
+      setStep('results')
+      const aDate = db.analysisRunAt || db.savedAt
+      if (aDate) setAnalysisDate(new Date(aDate))
+      const gDate = db.answersUpdatedAt || db.savedAt
+      if (gDate) setGoalsDate(new Date(gDate))
+      persist(user.id, db.answers, db.result, {
+        answersUpdatedAt: db.answersUpdatedAt,
+        analysisRunAt:    db.analysisRunAt || db.savedAt,
+      })
+    } else if (lsTs > dbTs && lsData?.result) {
+      // localStorage has newer data -- silently push to Supabase (new-column bootstrap)
+      supabase.from('profiles')
+        .upsert({ id: user.id, planning_profile: {
+          answers:          lsData.answers,
+          result:           lsData.result,
+          answersUpdatedAt: lsData.answersUpdatedAt || lsTs,
+          analysisRunAt:    lsData.analysisRunAt    || lsTs,
+        }}, { onConflict: 'id' })
+        .catch(() => {})
+    }
+  }, [user?.id, profile?.planning_profile])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pre-fill income + savings goal from profile if not already set by user
   useEffect(() => {
@@ -298,6 +336,15 @@ export default function Recommendations({ onImportSignal = 0 }) {
       setAnalysisDate(new Date(now))
       if (isNewGoals) setGoalsDate(new Date(now))
       persist(user?.id, finalAnswers, d.result, { answersUpdatedAt, analysisRunAt: now })
+      // Also sync to Supabase for cross-device persistence (fire-and-forget, no profile refetch)
+      supabase.from('profiles')
+        .upsert({ id: user.id, planning_profile: {
+          answers:          finalAnswers,
+          result:           d.result,
+          answersUpdatedAt: answersUpdatedAt,
+          analysisRunAt:    now,
+        }}, { onConflict: 'id' })
+        .catch(err => console.warn('[rec] Supabase sync failed:', err))
     } catch (e) {
       setError(e.message)
       setStep('quiz')
@@ -331,6 +378,12 @@ export default function Recommendations({ onImportSignal = 0 }) {
   // Start fresh = explicit destructive reset. Only callable by user action.
   function handleStartFresh() {
     clearSaved(user?.id)
+    // Also clear Supabase so other devices see the reset
+    if (user?.id) {
+      supabase.from('profiles')
+        .upsert({ id: user.id, planning_profile: null }, { onConflict: 'id' })
+        .catch(() => {})
+    }
     setResult(null)
     setAnalysisDate(null)
     setGoalsDate(null)

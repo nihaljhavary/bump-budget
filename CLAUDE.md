@@ -103,6 +103,7 @@ If the branch has diverged, user runs: `git push --force origin dev`
 | `support-chat.js` | Support chatbot using Haiku. Has FORMAT_RULES. |
 | `parse-transaction.js` | Single SMS/text transaction parser |
 | `parse-bulk-transactions.js` | Bulk statement import parser. Uses `ai_usage` table for rate limiting. |
+| `schema-infer.js` | AI schema inference fallback. Called ONLY when `parseRowsDeterministic()` has low confidence (descCol or amount col missing). Accepts `{ headers, sampleRows (max 5), bankHint }`. Returns `{ mapping: { dateCol, descCol, amtCol, debitCol, creditCol, balanceCol, structureType } }`. Uses Haiku. Auth required, no separate rate limit. |
 | `compare-groceries.js` | Grocery price comparison |
 | `get-recommendations.js` | Budget recommendations |
 | `admin-data.js` | Admin: get_dashboard, update_access_status, get_user_transactions |
@@ -308,8 +309,33 @@ Pure validation module — no imports from React/Supabase. Four exports:
 - `validateLedgerSummary(ledger)` — checks: NaN fields, negative spend, catTotals drift from totalSpend (tolerance R1), impossible spend-to-income ratios. Re-exported from `ledger.js` for single import point.
 - `validateProjectionInputs(ledger, inputs)` — checks projection base income vs canonical ledger resolvedMonthlyIncome (≥50% drift flagged), combined fixed+variable >200% income.
 
+### AI schema inference fallback (2026-05)
+
+**Problem solved:** Some bank statements use irregular or unknown column names. Previously they hard-failed with "Couldn't find transaction columns". Now they recover automatically.
+
+**Architecture — two-stage parsing in ImportTransactions.jsx:**
+1. `parseRowsDeterministic(rows, bankId)` — unchanged bank-specific switch-case + auto-detect. Returns `{ txns, confidence: 'high'|'low', columns }`. Confidence is HIGH when `descCol` AND at least one amount col found; LOW otherwise.
+2. If confidence is LOW (or txns.length === 0): call `inferSchema(headers, sampleRows, bankHint)` → `/.netlify/functions/schema-infer`. Shows "Analysing statement format..." in the upload step UI.
+3. If schema-infer returns a mapping: call `parseWithMapping(rows, mapping)` — feeds mapping into the shared `extractRows()` normalisation engine.
+4. If inference also fails or returns 0 rows: show improved error message.
+
+**`extractRows(rows, { dateCol, descCol, amtCol, debitCol, creditCol, typeCol })`** — canonical single normalisation function shared by BOTH paths. Not duplicated. Used by `parseRowsDeterministic` and `parseWithMapping`.
+
+**schema-infer.js contract:**
+- Input: `{ headers: string[], sampleRows: object[] (max 5), bankHint?: string }`
+- Output: `{ mapping: { dateCol, descCol, amtCol, debitCol, creditCol, balanceCol, structureType } | null }`
+- All column references validated against actual headers (`validateMapping()`) before returning — no hallucinated column names.
+- Returns `{ mapping: null }` with reason if descCol cannot be identified.
+- Uses Haiku (cheap: ~150 input tokens, 50 output tokens per call).
+
+**Performance:** Existing supported bank uploads are NEVER affected — AI fallback only fires when `confidence === 'low'`. No additional latency for FNB/Nedbank/ABSA/etc. statements.
+
+**UX:** `inferring` state boolean drives a "Analysing statement format..." indicator in the upload step. On success, batchWarnings includes "Statement format was auto-detected — verify before importing."
+
+**What is NOT changed:** `parse-bulk-transactions.js`, `sa-categorise.js`, ledger, analytics, budgeting, projections, recurring obligations — all untouched.
+
 ### Ingestion validation flow
-1. `handleFile()` in `ImportTransactions.jsx` calls `validateIngestionBatch()` immediately after `parseRows()`. Batch errors block upload; warnings set `batchWarnings` state shown in preview.
+1. `handleFile()` in `ImportTransactions.jsx` calls `parseRowsDeterministic()` first. If confidence is low, triggers schema inference before `validateIngestionBatch()`.
 2. `parse-bulk-transactions.js` runs `detectIngestionAnomalies()` (inline mirror of `anomalyFlags`) before Claude call. Returns `{ transactions, warnings? }` — client surfaces backend warnings in preview UI.
 3. `handleSave()` calls `detectBatchOverlap()` after fetching existing fingerprints. If `isDuplicate`, shows orange overlap warning (non-blocking — user can still save).
 
@@ -549,3 +575,57 @@ Compact always-visible panel above the annual strip. Surfaces 5–6 metrics from
 - `computeBaselineProjection()` in `projection.js` unchanged
 - `DEFAULT_PROJECTION_ASSUMPTIONS` shared constant unchanged
 - `LongTermMetricsPanel` reads exclusively from `yearModels.current` rows — no separate computation
+
+---
+
+## Authenticated cross-device planning persistence (2026-05 Session 6)
+
+### Architecture: two new JSONB columns on profiles
+
+`planning_profile JSONB` — owned by Recommendations.jsx.
+Stores: `{ answers, result, answersUpdatedAt, analysisRunAt }`.
+
+`scenario_state JSONB` — owned by Projections.jsx.
+Stores: `{ forecastMode, assumptions, horizonYears, customEvents, currentSavings, updatedAt }`.
+
+**SQL migration:** `supabase/migrations/20260517_add_planning_profile_columns.sql`
+Run in the Supabase SQL editor. Uses `ADD COLUMN IF NOT EXISTS` — safe to re-run.
+No new tables, no new RLS policies — inherits existing profiles row-level security.
+AuthContext `fetchProfile()` uses `*` selector so new columns are automatically included.
+
+### Recommendations.jsx persistence layers
+
+Two-layer model:
+1. **localStorage** (fast): `loadSaved(uid)` / `persist(uid, ...)` / `clearSaved(uid)`. Keyed `bump_rec_v2_{uid}`. Hydrates immediately on mount (before profile is available).
+2. **Supabase** (authoritative): `profiles.planning_profile`. Hydrates on `profile?.planning_profile` availability via a second useEffect. Freshness is compared by `analysisRunAt` timestamp — the newer source wins.
+
+Sync flows:
+- **Same device, returning visit**: localStorage wins (lsTs >= dbTs). If Supabase column was just added (dbTs = 0), LS silently pushes its data to Supabase in the background.
+- **Different device (cross-device)**: localStorage is empty (lsTs = 0), Supabase has data (dbTs > 0). Supabase wins, hydrates React state + overwrites localStorage.
+- **After analysis**: `getRecommendations()` writes to both localStorage (sync) and Supabase (fire-and-forget upsert, no profile refetch).
+- **Start fresh**: `handleStartFresh()` clears both localStorage (`clearSaved`) and Supabase (`planning_profile: null`).
+- **Edit goals**: Does NOT reset either store — keeps existing answers as quiz defaults.
+
+### Projections.jsx persistence layers
+
+Same two-layer model, with a debounce to avoid Supabase write storms during active scenario editing.
+
+Refs:
+- `scenarioHydrated` (`useRef(false)`): armed to `true` once profile hydration resolves. Guards the debounced save effect so it doesn't fire during initial hydration.
+- `saveScenarioTimer` (`useRef(null)`): debounce handle for 3s Supabase writes.
+
+LS timestamp: `bumpScenario_updatedAt` (epoch ms) updated whenever any scenario state changes. Used for freshness comparison against `scenario_state.updatedAt` from Supabase.
+
+Sync flows:
+- **Same device**: `lsTs >= dbTs` → LS wins. Supabase copy is silently updated with current LS state (bootstrap for other devices).
+- **Different device**: `dbTs > lsTs` → Supabase wins. State is hydrated from Supabase + LS is overwritten.
+- **Active editing**: each state change → 5 LS-write effects fire immediately + 1 combined Supabase save fires after 3s of inactivity. Both are fire-and-forget.
+- **Not persisted** (intentionally): netIncomeInput, debitOrdersInput — re-derived from profile/ledger each load so they stay fresh.
+
+### Deterministic guarantees preserved
+- `buildYearModel()` engine: unchanged
+- `buildAiBudgets()`: unchanged  
+- `computeBaselineProjection()`: unchanged
+- Ledger architecture: unchanged
+- AI budgeting, recurring obligations: unchanged
+- All localStorage keys remain valid fallbacks (offline continuity)
