@@ -724,3 +724,159 @@
 
 /* ── Extended year table (new granular rows) ────────────────────── */
 .proj-tr-income  { background: rgba(29,158,117,0.02); }
+
+/* ── Tab event badge ───────────────────────────────────────────────── */
+.proj-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  margin-left: 5px;
+  padding: 0 4px;
+  background: rgba(216,90,48,0.18);
+  color: var(--coral);
+  vertical-align: middle;
+  line-height: 1;
+}
+.proj-tab-badge.on-active {
+  background: rgba(255,255,255,0.25);
+  color: white;
+}
+
+/* ── Saved events hint (outside custom mode) ───────────────────────── */
+.proj-events-saved-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(127,119,221,0.06);
+  border: 1px solid rgba(127,119,221,0.2);
+  border-radius: 10px;
+  padding: 10px 14px;
+  gap: 10px;
+}
+.proj-events-saved-text {
+  font-size: 12px;
+  color: #7F77DD;
+  font-weight: 500;
+}
+.proj-events-switch-btn {
+  font-size: 11px;
+  font-weight: 600;
+  color: #7F77DD;
+  background: rgba(127,119,221,0.1);
+  border: 1px solid rgba(127,119,221,0.25);
+  border-radius: 7px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.proj-events-switch-btn:hover { background: rgba(127,119,221,0.18); }
+
+/* ── Inline event edit ─────────────────────────────────────────────── */
+.proj-event-item.editing {
+  background: rgba(216,90,48,0.04);
+  border-color: rgba(216,90,48,0.25);
+  flex-direction: column;
+  align-items: stretch;
+}
+.proj-event-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.proj-event-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.proj-event-edit-btn {
+  font-size: 14px;
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 2px;
+  flex-shrink: 0;
+}
+.proj-event-edit-btn:hover { color: var(--coral); }
+
+/* ── Long-term metrics panel ───────────────────────────────────────── */
+.proj-longterm-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+.proj-longterm-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+.proj-longterm-sub {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 11px;
+  margin-left: 6px;
+}
+.proj-longterm-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.proj-longterm-metric {
+  background: var(--input-bg);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.proj-longterm-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.proj-longterm-value {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.proj-longterm-hint {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* ── Improved year-grid ─────────────────────────────────────────────── */
+/* Stronger sticky shadow to hint that the table scrolls horizontally */
+.proj-table-sticky {
+  box-shadow: 2px 0 4px -1px rgba(0,0,0,0.06);
+}
+/* Row separators between income / expense / net sections */
+.proj-tr-expense:first-of-type { border-top: 2px solid var(--border); }
+.proj-tr-net                   { border-top: 2px solid var(--border); }
+.proj-tr-networth              { border-top: 1px solid var(--border); }
+/* Compact scroll hint on mobile */
+@media (max-width: 600px) {
+  .proj-table-wrap::after {
+    content: '';
+    display: block;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(216,90,48,0.12), transparent);
+    margin-top: 4px;
+  }
+  .proj-longterm-grid { grid-template-columns: repeat(2, 1fr); }
+  .proj-year-table { min-width: 480px; }
+  .proj-table-label { min-width: 120px; font-size: 11px; }
+  .proj-table-cell  { padding: 6px 10px; font-size: 11.5px; }
+}

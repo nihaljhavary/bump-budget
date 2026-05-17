@@ -274,6 +274,87 @@ function ScenarioComparisonPanel({ models, horizonYears }) {
 }
 
 // ---------------------------------------------------------------------------
+// Long-term financial metrics panel.
+// All values sourced directly from the deterministic buildYearModel() engine.
+// No AI involved -- pure arithmetic display.
+// ---------------------------------------------------------------------------
+function LongTermMetricsPanel({ yearModels, horizonYears, debitOrders, netIncome, currentSavings, monthlyFreeCashFlow, recurringMonthly }) {
+  const rows = yearModels?.current
+  if (!rows?.length || !netIncome) return null
+
+  const yr5NW     = rows[Math.min(4, rows.length - 1)]?.netWorth || 0
+  const yr10NW    = rows[Math.min(9, rows.length - 1)]?.netWorth || 0
+  const horizonNW = rows[rows.length - 1]?.netWorth || 0
+  const yr1FCF    = rows[0]?.freeCashFlow || 0
+
+  // Accumulated investment growth over the projection horizon
+  const totalInvGrowth = rows.reduce((s, r) => s + (r.investmentGrowth || 0), 0)
+
+  // Obligation burden: fixed debit orders as % of net income
+  const obligationBurden = netIncome > 0 ? Math.round((debitOrders + (recurringMonthly || 0)) / netIncome * 100) : 0
+
+  // Savings runway: months current savings cover if FCF is negative
+  const runway = monthlyFreeCashFlow < 0 && currentSavings > 0
+    ? Math.round(currentSavings / Math.abs(monthlyFreeCashFlow)) : null
+
+  const nwTarget = horizonYears <= 5 ? yr5NW : horizonYears <= 10 ? yr10NW : horizonNW
+
+  const metrics = [
+    {
+      label: `Net worth (${horizonYears}yr)`,
+      value: fmtK(nwTarget),
+      color: nwTarget < 0 ? '#D85A30' : '#1D9E75',
+      hint: 'current path',
+    },
+    {
+      label: 'Investment growth',
+      value: fmtK(totalInvGrowth),
+      color: 'var(--text)',
+      hint: `over ${horizonYears} years`,
+    },
+    {
+      label: 'Annual free cash flow',
+      value: fmtK(yr1FCF),
+      color: yr1FCF < 0 ? '#D85A30' : 'var(--text)',
+      hint: 'year 1',
+    },
+    {
+      label: 'Obligation burden',
+      value: obligationBurden + '%',
+      color: obligationBurden > 65 ? '#D85A30' : obligationBurden > 45 ? '#BA7517' : 'var(--text)',
+      hint: 'of net income',
+    },
+    ...(runway !== null ? [{
+      label: 'Savings runway',
+      value: runway + ' mo',
+      color: runway < 6 ? '#D85A30' : runway < 12 ? '#BA7517' : 'var(--text)',
+      hint: 'at current burn',
+    }] : []),
+    ...(horizonYears > 5 ? [{
+      label: '5yr net worth',
+      value: fmtK(yr5NW),
+      color: yr5NW < 0 ? '#D85A30' : 'var(--muted)',
+      hint: 'milestone',
+    }] : []),
+  ]
+
+  return (
+    <div className="proj-longterm-panel">
+      <div className="proj-longterm-header">Long-term outlook <span className="proj-longterm-sub">current path · deterministic</span></div>
+      <div className="proj-longterm-grid">
+        {metrics.map(m => (
+          <div key={m.label} className="proj-longterm-metric">
+            <div className="proj-longterm-label">{m.label}</div>
+            <div className="proj-longterm-value" style={{ color: m.color }}>{m.value}</div>
+            <div className="proj-longterm-hint">{m.hint}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Year-by-year financial table (sticky left col, horizontal scroll on mobile)
 // Shows only rows with non-zero values across any year.
 // ---------------------------------------------------------------------------
@@ -390,7 +471,7 @@ export default function Projections({ recurringMonthly }) {
 
   const [netIncomeInput,     setNetIncomeInput]     = useState('')
   const [debitOrdersInput,   setDebitOrdersInput]   = useState('')
-  const [currentSavingsInput,setCurrentSavingsInput]= useState('')
+  const [currentSavingsInput,setCurrentSavingsInput]= useState(() => lsGet('currentSavings', ''))
 
   const [forecastMode,     setForecastMode]    = useState(() => lsGet('forecastMode', 'current'))
   const [assumptions,      setAssumptions]     = useState(() => lsGet('assumptions', DEFAULT_ASSUMPTIONS))
@@ -403,6 +484,8 @@ export default function Projections({ recurringMonthly }) {
   const [eventDraft,       setEventDraft]      = useState({
     type: 'bonus', year: new Date().getFullYear() + 1, amount: '', description: '',
   })
+  const [editingId,        setEditingId]       = useState(null)   // id of event being edited inline
+  const [editDraft,        setEditDraft]       = useState({})
 
   const [aiPrompt,       setAiPrompt]       = useState('')
   const [aiLoading,      setAiLoading]      = useState(false)
@@ -414,15 +497,20 @@ export default function Projections({ recurringMonthly }) {
     if (profile.net_income) setNetIncomeInput(String(Math.round(profile.net_income / 100)))
     const debitBase = recurringMonthly || (profile.monthly_debit_orders ? profile.monthly_debit_orders / 100 : 0)
     if (debitBase) setDebitOrdersInput(String(Math.round(debitBase)))
+    // Seed starting savings from profile only when user hasn't manually set one yet
+    if (profile.savings_balance && !lsGet('currentSavings', '')) {
+      setCurrentSavingsInput(String(Math.round(profile.savings_balance / 100)))
+    }
   }, [profile, recurringMonthly])
 
   useEffect(() => { loadTransactions() }, [user?.id, tier])
   // Persist scenario planning state across sessions.
   // Only meaningful state is persisted -- inputs derived from profile/ledger are not.
-  useEffect(() => { lsSet('forecastMode', forecastMode) }, [forecastMode])
-  useEffect(() => { lsSet('assumptions',  assumptions)  }, [assumptions])
-  useEffect(() => { lsSet('horizonYears', horizonYears) }, [horizonYears])
-  useEffect(() => { lsSet('customEvents', customEvents) }, [customEvents])
+  useEffect(() => { lsSet('forecastMode',   forecastMode)       }, [forecastMode])
+  useEffect(() => { lsSet('assumptions',    assumptions)        }, [assumptions])
+  useEffect(() => { lsSet('horizonYears',   horizonYears)       }, [horizonYears])
+  useEffect(() => { lsSet('customEvents',   customEvents)       }, [customEvents])
+  useEffect(() => { lsSet('currentSavings', currentSavingsInput)}, [currentSavingsInput])
 
   async function loadTransactions() {
     setLoading(true)
@@ -559,6 +647,20 @@ export default function Projections({ recurringMonthly }) {
     setEventDraft({ type: 'bonus', year: currentYear + 1, amount: '', description: '' })
   }
 
+  function startEdit(ev) {
+    setEditingId(ev.id)
+    setEditDraft({ amount: String(ev.amount), year: ev.year, description: ev.description || '' })
+    setShowEventForm(false)
+  }
+
+  function saveEdit(id) {
+    setCustomEvents(prev => prev.map(ev =>
+      ev.id === id ? { ...ev, amount: editDraft.amount, year: Number(editDraft.year), description: editDraft.description } : ev
+    ))
+    setEditingId(null)
+    setEditDraft({})
+  }
+
   return (
     <div className="proj-shell">
       <div className="proj-header">
@@ -575,7 +677,12 @@ export default function Projections({ recurringMonthly }) {
       <div className="proj-mode-tabs">
         {[['current','Current Path'],['optimised','Optimised Path'],['custom','Custom Scenario']].map(([mode, label]) => (
           <button key={mode} className={'proj-mode-tab' + (forecastMode === mode ? ' active' : '')}
-            onClick={() => setForecastMode(mode)}>{label}</button>
+            onClick={() => setForecastMode(mode)}>
+            {label}
+            {mode === 'custom' && customEvents.length > 0 && (
+              <span className={'proj-tab-badge' + (forecastMode === 'custom' ? ' on-active' : '')}>{customEvents.length}</span>
+            )}
+          </button>
         ))}
       </div>
 
@@ -631,6 +738,16 @@ export default function Projections({ recurringMonthly }) {
           <div className="proj-card-sub">{forecastMode} path</div>
         </div>
       </div>
+
+      <LongTermMetricsPanel
+        yearModels={yearModels}
+        horizonYears={horizonYears}
+        debitOrders={debitOrders}
+        netIncome={netIncome}
+        currentSavings={currentSavings}
+        monthlyFreeCashFlow={monthlyFreeCashFlow}
+        recurringMonthly={recurringMonthly}
+      />
 
       <div className="proj-annual-strip">
         <div className="proj-annual-item">
@@ -740,6 +857,17 @@ export default function Projections({ recurringMonthly }) {
         )}
       </div>
 
+      {forecastMode !== 'custom' && customEvents.length > 0 && (
+        <div className="proj-events-saved-hint">
+          <span className="proj-events-saved-text">
+            {customEvents.length} life event{customEvents.length !== 1 ? 's' : ''} saved in Custom Scenario
+          </span>
+          <button className="proj-events-switch-btn" onClick={() => setForecastMode('custom')}>
+            View &amp; edit
+          </button>
+        </div>
+      )}
+
       {forecastMode === 'custom' && (
         <div className="proj-events-panel">
           <div className="proj-events-head">
@@ -810,20 +938,53 @@ export default function Projections({ recurringMonthly }) {
 
           {customEvents.map(ev => {
             const tmpl = EVENT_TEMPLATES.find(t => t.type === ev.type) || EVENT_TEMPLATES[0]
+            const isEditing = editingId === ev.id
             return (
-              <div key={ev.id} className="proj-event-item">
-                <div className="proj-event-item-info">
-                  <span className={'proj-event-year-badge ' + (ev.income ? 'income' : 'expense')}>{ev.year}</span>
-                  <span className="proj-event-type-icon" aria-hidden="true">{tmpl.icon}</span>
-                  <span className="proj-event-item-label">{ev.description || tmpl.label}</span>
-                  <span className="proj-event-item-amount">
-                    {ev.income ? '+' : '-'}{fmt(Number(ev.amount))}{ev.monthly ? '/mo' : ''}
-                  </span>
-                </div>
-                <button className="proj-event-remove-btn"
-                  onClick={() => setCustomEvents(prev => prev.filter(e => e.id !== ev.id))}>
-                  \xd7
-                </button>
+              <div key={ev.id} className={'proj-event-item' + (isEditing ? ' editing' : '')}>
+                {isEditing ? (
+                  <div className="proj-event-edit-form">
+                    <div className="proj-event-form-row">
+                      <div className="proj-input-wrap" style={{ flex: 1 }}>
+                        <span className="proj-prefix">R</span>
+                        <input className="proj-input" type="number" placeholder="Amount"
+                          value={editDraft.amount}
+                          onChange={e => setEditDraft(d => ({ ...d, amount: e.target.value }))} />
+                      </div>
+                      <select className="proj-event-select"
+                        value={editDraft.year}
+                        onChange={e => setEditDraft(d => ({ ...d, year: Number(e.target.value) }))}>
+                        {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+                      </select>
+                    </div>
+                    <div className="proj-event-form-row">
+                      <input className="proj-event-desc-input" type="text" placeholder="Label (optional)"
+                        value={editDraft.description}
+                        onChange={e => setEditDraft(d => ({ ...d, description: e.target.value }))} />
+                    </div>
+                    <div className="proj-event-form-actions">
+                      <button className="proj-event-cancel-btn" onClick={() => { setEditingId(null); setEditDraft({}) }}>Cancel</button>
+                      <button className="proj-event-add-btn" onClick={() => saveEdit(ev.id)} disabled={!editDraft.amount}>Save</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="proj-event-item-info">
+                    <span className={'proj-event-year-badge ' + (ev.income ? 'income' : 'expense')}>{ev.year}</span>
+                    <span className="proj-event-type-icon" aria-hidden="true">{tmpl.icon}</span>
+                    <span className="proj-event-item-label">{ev.description || tmpl.label}</span>
+                    <span className="proj-event-item-amount">
+                      {ev.income ? '+' : '-'}{fmt(Number(ev.amount))}{ev.monthly ? '/mo' : ''}
+                    </span>
+                  </div>
+                )}
+                {!isEditing && (
+                  <div className="proj-event-actions">
+                    <button className="proj-event-edit-btn" onClick={() => startEdit(ev)} title="Edit">&#x270E;</button>
+                    <button className="proj-event-remove-btn"
+                      onClick={() => setCustomEvents(prev => prev.filter(e => e.id !== ev.id))}>
+                      \xd7
+                    </button>
+                  </div>
+                )}
               </div>
             )
           })}

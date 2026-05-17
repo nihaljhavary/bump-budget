@@ -514,3 +514,38 @@ All shared financial math confirmed in canonical locations:
 - `DEFAULT_PROJECTION_ASSUMPTIONS` in `src/utils/projection.js` — used by Projections.jsx (full engine) and implicitly by Recommendations.jsx (via `computeBaselineProjection` defaults).
 - `computeBaselineProjection()` in `src/utils/projection.js` — used by Recommendations.jsx for AI context. Projections.jsx owns the full `buildYearModel()` engine independently.
 - Reconciliation guarantee preserved: base-case Recommendations projection (no events, no varReduction) is arithmetically identical to Projections tab base case within rounding.
+---
+
+## Scenario Planning v3 (2026-05 Session 5)
+
+### Persistence extended
+All five planning inputs now survive refreshes/navigation/redeployments via `localStorage` (`bumpScenario_` prefix):
+- `forecastMode`, `assumptions`, `horizonYears`, `customEvents` (from Session 4)
+- `currentSavings` (NEW) — starting savings input. Seeded once from `profile.savings_balance` when no LS value exists; thereafter user-owned. `netIncomeInput` and `debitOrdersInput` are deliberately NOT persisted — they re-derive from profile to stay fresh.
+
+### LongTermMetricsPanel (NEW component in Projections.jsx)
+Compact always-visible panel above the annual strip. Surfaces 5–6 metrics from `buildYearModel()` output — no AI, pure arithmetic:
+- Net worth at the selected horizon (5/10/15yr)
+- Accumulated investment growth over horizon
+- Year-1 annual free cash flow
+- Obligation burden % (fixed + recurring / net income) — amber >45%, red >65%
+- Savings runway in months (only when FCF is negative and currentSavings > 0)
+- 5yr net worth milestone (when horizon > 5yr)
+
+### Custom scenario lifecycle improvements
+- **Event count badge** on the Custom Scenario mode tab — shows count when events exist, white on active coral background, coral-tinted when inactive.
+- **Saved events hint** — when user is in Current/Optimised mode with saved custom events, a purple hint bar with "N life events saved in Custom Scenario + View & edit" button keeps the scenario visible without cluttering the main view.
+- **Inline event edit** — each event item now has a pencil (✎) button. Clicking opens an inline edit form (amount, year, label) without removing and re-adding. `editingId` + `editDraft` state manages the edit lifecycle.
+- `startEdit(ev)` / `saveEdit(id)` functions in Projections.jsx.
+
+### Year-grid CSS improvements (Projections.css)
+- Sticky left column now has a subtle box-shadow (`2px 0 4px`) to hint scrollability
+- Section separators: `border-top: 2px solid var(--border)` on first expense row and net-worth rows for visual grouping
+- Mobile: `min-width` reduced to 480px, tighter cell padding, smaller label column (120px)
+- Scroll gradient hint on mobile (::after pseudo-element on proj-table-wrap)
+
+### Reconciliation safeguards preserved
+- `buildYearModel()` engine untouched — all deterministic arithmetic identical
+- `computeBaselineProjection()` in `projection.js` unchanged
+- `DEFAULT_PROJECTION_ASSUMPTIONS` shared constant unchanged
+- `LongTermMetricsPanel` reads exclusively from `yearModels.current` rows — no separate computation
