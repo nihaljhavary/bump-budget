@@ -479,45 +479,38 @@ All shared financial math must live in `src/utils/`. Components import from thes
 
 ### src/utils/projection.js (NEW)
 - `DEFAULT_PROJECTION_ASSUMPTIONS` -- `{ salaryGrowth: 5, inflation: 6, investmentReturn: 8 }`. Canonical defaults used by both Projections.jsx and Recommendations.jsx.
-- `computeBaselineProjection(netIncome, fixedMonthly, variableMonthly, startingSavings, assumptions)` -- lightweight deterministic projection baseline. Returns `{ netWorth1yr, netWorth5yr, netWorth10yr, optimisedNetWorth10yr, monthlyFreeCashFlow, salaryGrowth, investmentReturn }`. No events, no granular tracking -- used by Recommendations.jsx for AI context only.
-- **Projections.jsx** still owns the full `buildYearModel()` (events, granular rows, 12 row fields per year). It imports `DEFAULT_PROJECTION_ASSUMPTIONS` via `const DEFAULT_ASSUMPTIONS = DEFAULT_PROJECTION_ASSUMPTIONS`.
-- **Reconciliation guarantee**: base-case Recommendations projection (no events, no varReduction) is arithmetically identical to base-case Projections tab output.
+- `computeBaselineProj
+---
 
-### src/utils/budgets.js (NEW)
-- `buildAiBudgets(catTotals, monthCount, factor = 0.85)` -- canonical AI budget derivation. Rule: 85% of average monthly spend per category.
-- **Dashboard.jsx** calls `buildAiBudgets(hist.catTotals, hist.monthCount)` after fetching rolling 12-month history (stable baseline -- not affected by current selected month).
-- **Analytics.jsx** calls `buildAiBudgets(ledger.catTotals, ledger.monthCount)` from its current selected period (period-relative -- intentionally different input window, same formula).
-- Previously duplicated: Dashboard had an inline loop, Analytics had a local `buildAISuggestedBudgets` function -- both removed.
-- Dashboard tooltip/hint text corrected from "current month" to "12-month rolling average".
+## Persistence, schema alignment, and continuity (2026-05 Session 4)
 
-### budget-chat.js canonical context upgrade (2026-05)
-`budget-chat.js` was previously building its own simplified context string (manual catTotals, monthly averages, no merchant intelligence). Now migrated to use `buildInsightContext()` from `_context.js` -- same context builder used by `analyse.js`.
+### Upload schema: defensive detected_bank handling (manage-uploads.js)
+`detected_bank` on the `transactions` table may not exist for all deployments (it was added later). `manage-uploads.js` now probes for the column with a cheap single-row query before the full paginated fetch. If the column doesn't exist, it falls back to a query without it (all `detectedBank` values return as `null`). This makes the Uploads section work correctly even before running the migration.
 
-What this adds to budget-chat responses:
-- Per-merchant breakdown (derived from raw transactions -- delivery vs dine-in splits, top merchants by rand)
-- Behavioural spend classification (obligations vs lifestyle vs essentials)
-- Budget-vs-actual framing for each category
-- Month-on-month trend signals
-- Recurring obligation context (if client passes `recurringContext`)
-- Anomaly detection (large unusual transactions)
+**SQL migration file**: `supabase/migrations/20260517_add_upload_tracking_columns.sql` — run this in the Supabase SQL editor to add `detected_bank`, `raw_merchant`, `transaction_hash`, `import_batch_id` columns (all `ADD COLUMN IF NOT EXISTS`, safe to run on existing data). Also creates the `idx_transactions_import_batch_id` index.
 
-**Client payload for budget-chat.js** (when wired up):
-```js
-{
-  question:            string,
-  transactions:        Array,   // raw spend txns -- amounts in rands
-  profile:             Object,  // profile row -- amounts in cents
-  monthlyBudgets:      Object,  // { category: monthlyRands }
-  conversationHistory: Array,   // [{ role, content }] -- last 6 turns
-  // Optional (richer AI output if provided):
-  recurringContext:    string,  // from recurringToContext()
-  topMerchants:        Array,   // from buildTopMerchants()
-}
-```
+**Columns used by upload tracking (all nullable for backwards compat)**:
+- `detected_bank TEXT` — bank ID at import time ('fnb', 'nedbank', etc.)
+- `raw_merchant TEXT` — original bank statement description
+- `transaction_hash TEXT` — dedup fingerprint (date+amount+description hash)
+- `import_batch_id UUID` — groups transactions from one upload together
 
-Note: `budget-chat.js` is not yet wired to any React component. The function is ready to connect; see design-handoff docs for planned UX location.
+**Pattern** (same as ImportTransactions.jsx uses for `transaction_hash`): probe first, fall back without column if error contains 'detected_bank'.
 
-### Reconciliation safeguards
-- **Projection base case**: `computeBaselineProjection` in `src/utils/projection.js` and `buildYearModel` in `Projections.jsx` share `DEFAULT_PROJECTION_ASSUMPTIONS`. A Recommendations projection at year 1/5/10 with zero events MUST match the Projections tab base case within rounding.
-- **AI budgets**: Dashboard (12-month window) and Analytics (selected period) WILL show different suggested amounts when the selected period is not 12 months. This is correct behaviour -- they use the same formula on different windows.
-- **No new Supabase tables added** in this session. All consolidation is pure utility extraction.
+### Scenario planning persistence (Projections.jsx)
+Four state variables are now persisted to `localStorage` across refreshes, sessions, and deployments:
+- `bumpScenario_forecastMode` — 'current' | 'optimised' | 'custom'
+- `bumpScenario_assumptions` — `{ salaryGrowth, inflation, investmentReturn }`
+- `bumpScenario_horizonYears` — 5 | 10 | 15
+- `bumpScenario_customEvents` — array of life event objects
+
+**Implementation**: `lsGet(key, fallback)` / `lsSet(key, value)` helpers in `Projections.jsx`. State initialised via lazy initialisers (`useState(() => lsGet(...))`). Four `useEffect` hooks persist each state on change. Reads/writes are silent no-ops on error (private browsing, quota exceeded, etc.). Input fields (netIncomeInput, debitOrdersInput, currentSavingsInput) are deliberately NOT persisted — they're re-derived from the user profile and ledger on each load.
+
+**Not persisted** (intentionally): AI prompt, AI explanation, form draft, view toggle, UI expansion state (showAssumptions, showCompare, etc.).
+
+### Shared calculation consolidation: verified clean (no drift)
+All shared financial math confirmed in canonical locations:
+- `buildAiBudgets()` in `src/utils/budgets.js` — used by Dashboard.jsx (12-month rolling) and Analytics.jsx (selected period). No inline 0.85 logic in components.
+- `DEFAULT_PROJECTION_ASSUMPTIONS` in `src/utils/projection.js` — used by Projections.jsx (full engine) and implicitly by Recommendations.jsx (via `computeBaselineProjection` defaults).
+- `computeBaselineProjection()` in `src/utils/projection.js` — used by Recommendations.jsx for AI context. Projections.jsx owns the full `buildYearModel()` engine independently.
+- Reconciliation guarantee preserved: base-case Recommendations projection (no events, no varReduction) is arithmetically identical to Projections tab base case within rounding.

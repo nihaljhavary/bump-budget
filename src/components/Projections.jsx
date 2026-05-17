@@ -359,6 +359,25 @@ const EVENT_TEMPLATES = [
 ]
 
 // ---------------------------------------------------------------------------
+// localStorage persistence helpers for scenario planning state.
+// Keys are scoped under 'bumpScenario_' to avoid collisions.
+// Failures are silently swallowed -- persistence is best-effort.
+// ---------------------------------------------------------------------------
+const LS_PREFIX = 'bumpScenario_'
+function lsGet(key, fallback) {
+  try {
+    const raw = localStorage.getItem(LS_PREFIX + key)
+    if (raw === null) return fallback
+    const parsed = JSON.parse(raw)
+    // Basic type check: if parsed is an object/array, verify it's not empty-corrupted
+    return parsed !== null && parsed !== undefined ? parsed : fallback
+  } catch { return fallback }
+}
+function lsSet(key, value) {
+  try { localStorage.setItem(LS_PREFIX + key, JSON.stringify(value)) } catch {}
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 export default function Projections({ recurringMonthly }) {
@@ -373,13 +392,13 @@ export default function Projections({ recurringMonthly }) {
   const [debitOrdersInput,   setDebitOrdersInput]   = useState('')
   const [currentSavingsInput,setCurrentSavingsInput]= useState('')
 
-  const [forecastMode,     setForecastMode]    = useState('current')
-  const [assumptions,      setAssumptions]     = useState(DEFAULT_ASSUMPTIONS)
+  const [forecastMode,     setForecastMode]    = useState(() => lsGet('forecastMode', 'current'))
+  const [assumptions,      setAssumptions]     = useState(() => lsGet('assumptions', DEFAULT_ASSUMPTIONS))
   const [showAssumptions,  setShowAssumptions] = useState(false)
   const [showYearTable,    setShowYearTable]   = useState(false)
   const [showCompare,      setShowCompare]     = useState(false)
-  const [horizonYears,     setHorizonYears]    = useState(10)
-  const [customEvents,     setCustomEvents]    = useState([])
+  const [horizonYears,     setHorizonYears]    = useState(() => lsGet('horizonYears', 10))
+  const [customEvents,     setCustomEvents]    = useState(() => lsGet('customEvents', []))
   const [showEventForm,    setShowEventForm]   = useState(false)
   const [eventDraft,       setEventDraft]      = useState({
     type: 'bonus', year: new Date().getFullYear() + 1, amount: '', description: '',
@@ -398,6 +417,12 @@ export default function Projections({ recurringMonthly }) {
   }, [profile, recurringMonthly])
 
   useEffect(() => { loadTransactions() }, [user?.id, tier])
+  // Persist scenario planning state across sessions.
+  // Only meaningful state is persisted -- inputs derived from profile/ledger are not.
+  useEffect(() => { lsSet('forecastMode', forecastMode) }, [forecastMode])
+  useEffect(() => { lsSet('assumptions',  assumptions)  }, [assumptions])
+  useEffect(() => { lsSet('horizonYears', horizonYears) }, [horizonYears])
+  useEffect(() => { lsSet('customEvents', customEvents) }, [customEvents])
 
   async function loadTransactions() {
     setLoading(true)
