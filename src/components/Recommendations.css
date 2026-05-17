@@ -671,3 +671,29 @@
   font-weight: 700;
   color: var(--text);
 }
+
+/* ── New-import re-analysis banner ── */
+.rec-reanalysis-banner {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #166534;
+  margin-bottom: 10px;
+}
+.rec-reanalysis-banner .rec-link-btn {
+  color: #15803d;
+  font-weight: 600;
+}
+
+/* ── Secondary date label in persistence bar ── */
+.rec-persistence-dates {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rec-saved-date--secondary {
+  font-size: 11px;
+  color: var(--muted);
+}

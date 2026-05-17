@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { fetchRecentMonths } from '../services/transactions'
@@ -11,8 +11,8 @@ import LockedFeature from './LockedFeature'
 
 const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
 
+// Persists indefinitely -- no expiry. Planning answers are a living financial profile.
 const LS_KEY = uid => `bump_rec_v2_${uid}`
-const MAX_AGE_DAYS = 30
 
 const DEFAULT_ASSUMPTIONS = { salaryGrowth: 5, inflation: 6, investmentReturn: 8 }
 
@@ -120,16 +120,23 @@ function loadSaved(uid) {
   try {
     const raw = localStorage.getItem(LS_KEY(uid))
     if (!raw) return null
-    const parsed = JSON.parse(raw)
-    const ageDays = (Date.now() - (parsed.savedAt || 0)) / (1000 * 60 * 60 * 24)
-    if (ageDays > MAX_AGE_DAYS) { localStorage.removeItem(LS_KEY(uid)); return null }
-    return parsed
+    // No age check -- planning answers persist indefinitely.
+    // Legacy records have `savedAt`; new records have `answersUpdatedAt` + `analysisRunAt`.
+    return JSON.parse(raw)
   } catch { return null }
 }
 
-function persist(uid, answers, result) {
+// opts.answersUpdatedAt -- when the user last edited their goals (preserved across re-analyses)
+// opts.analysisRunAt    -- when the AI analysis was last run (updated every run)
+function persist(uid, answers, result, opts = {}) {
   try {
-    localStorage.setItem(LS_KEY(uid), JSON.stringify({ answers, result, savedAt: Date.now() }))
+    const existing = loadSaved(uid) || {}
+    localStorage.setItem(LS_KEY(uid), JSON.stringify({
+      answers,
+      result,
+      answersUpdatedAt: opts.answersUpdatedAt ?? existing.answersUpdatedAt ?? existing.savedAt ?? Date.now(),
+      analysisRunAt:    opts.analysisRunAt    ?? Date.now(),
+    }))
   } catch {}
 }
 
@@ -148,14 +155,22 @@ export default function Recommendations({ onImportSignal = 0 }) {
   const [error, setError]         = useState('')
   const [spendingData, setSpendingData] = useState(null)
   const [budgets, setBudgets]     = useState({})
-  const [savedDate, setSavedDate] = useState(null)
+  const [analysisDate, setAnalysisDate] = useState(null)   // when AI last ran
+  const [goalsDate, setGoalsDate]       = useState(null)   // when user last edited goals
   const [dataLoaded, setDataLoaded] = useState(false)
   const [monthCount, setMonthCount] = useState(1)
   const [recurringMonthly, setRecurringMonthly] = useState(0)
   const [fixedMonthly, setFixedMonthly] = useState(0)
   const [showProjections, setShowProjections] = useState(false)
+  const [needsReanalysis, setNeedsReanalysis] = useState(false)
   const { canProjections } = useTier()
 
+  // Ref so import-signal effect can check result without adding it to deps
+  const resultRef = useRef(result)
+  useEffect(() => { resultRef.current = result }, [result])
+
+  // Only re-fetch when the user ID or net income changes -- not on every profile mutation
+  // (billing date webhook updates, etc. must not blow away spending data)
   const loadData = useCallback(async () => {
     if (!user) return
     try {
@@ -193,11 +208,21 @@ export default function Recommendations({ onImportSignal = 0 }) {
     } catch (e) {
       console.error('Failed to load spending data', e)
     }
-  }, [user, profile])
+  }, [user?.id, profile?.net_income])  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadData() }, [loadData])
-  useEffect(() => { if (onImportSignal > 0) loadData() }, [onImportSignal, loadData])
 
+  // New import: refresh spending data. If user already has results, flag for re-analysis.
+  useEffect(() => {
+    if (onImportSignal > 0) {
+      loadData()
+      if (resultRef.current != null) {
+        setNeedsReanalysis(true)
+      }
+    }
+  }, [onImportSignal, loadData])
+
+  // Restore saved state on mount -- no expiry check, persists indefinitely
   useEffect(() => {
     if (!user) return
     const saved = loadSaved(user.id)
@@ -205,9 +230,14 @@ export default function Recommendations({ onImportSignal = 0 }) {
     setAnswers(saved.answers || {})
     setResult(saved.result)
     setStep('results')
-    setSavedDate(new Date(saved.savedAt))
+    // Support both new (analysisRunAt) and legacy (savedAt) records
+    const aDate = saved.analysisRunAt || saved.savedAt
+    if (aDate) setAnalysisDate(new Date(aDate))
+    const gDate = saved.answersUpdatedAt || saved.savedAt
+    if (gDate) setGoalsDate(new Date(gDate))
   }, [user])
 
+  // Pre-fill income + savings goal from profile if not already set by user
   useEffect(() => {
     if (!profile) return
     setAnswers(prev => {
@@ -251,7 +281,8 @@ export default function Recommendations({ onImportSignal = 0 }) {
       setQIndex(i => i + 1)
       setCurrentVal(updatedAnswers[nextQ.id] || '')
     } else {
-      getRecommendations(updatedAnswers)
+      // Quiz completed -- answers are new/updated goals
+      getRecommendations(updatedAnswers, { isNewGoals: true })
     }
   }
 
@@ -265,7 +296,9 @@ export default function Recommendations({ onImportSignal = 0 }) {
     }
   }
 
-  async function getRecommendations(finalAnswers) {
+  // isNewGoals: true  = user edited their goals via quiz (updates answersUpdatedAt)
+  // isNewGoals: false = re-analysis with existing goals and fresh spending data (preserves answersUpdatedAt)
+  async function getRecommendations(finalAnswers, { isNewGoals = false } = {}) {
     setStep('loading')
     setError('')
     try {
@@ -284,23 +317,33 @@ export default function Recommendations({ onImportSignal = 0 }) {
       })
       const d = await res.json()
       if (!res.ok) throw new Error(d.error || 'Failed to get recommendations')
+
+      const now = Date.now()
+      const existing = loadSaved(user?.id)
+      const answersUpdatedAt = isNewGoals
+        ? now
+        : (existing?.answersUpdatedAt ?? existing?.savedAt ?? now)
+
       setResult(d.result)
       setStep('results')
-      setSavedDate(new Date())
-      persist(user?.id, finalAnswers, d.result)
+      setNeedsReanalysis(false)
+      setAnalysisDate(new Date(now))
+      if (isNewGoals) setGoalsDate(new Date(now))
+      persist(user?.id, finalAnswers, d.result, { answersUpdatedAt, analysisRunAt: now })
     } catch (e) {
       setError(e.message)
       setStep('quiz')
     }
   }
 
+  // Re-run analysis with existing goals + freshest spending data.
+  // Does NOT clear localStorage or reset goals -- only updates the result.
   function handleReAnalyze() {
     setResult(null)
-    clearSaved(user?.id)
-    setSavedDate(null)
+    setNeedsReanalysis(false)
     loadData().then(() => {
       if (Object.keys(answers).length >= QUESTIONS.length) {
-        getRecommendations(answers)
+        getRecommendations(answers, { isNewGoals: false })
       } else {
         setStep('quiz')
         setQIndex(0)
@@ -309,17 +352,21 @@ export default function Recommendations({ onImportSignal = 0 }) {
     })
   }
 
-  function handleEditAnswers() {
+  // Edit goals = back to quiz while keeping existing answers as defaults.
+  function handleEditGoals() {
     setStep('quiz')
     setQIndex(0)
     setCurrentVal(answers[QUESTIONS[0].id] || '')
     setError('')
   }
 
+  // Start fresh = explicit destructive reset. Only callable by user action.
   function handleStartFresh() {
     clearSaved(user?.id)
     setResult(null)
-    setSavedDate(null)
+    setAnalysisDate(null)
+    setGoalsDate(null)
+    setNeedsReanalysis(false)
     setAnswers({
       ...(profile?.net_income   ? { income:      String(Math.round(profile.net_income / 100))   } : {}),
       ...(profile?.savings_goal ? { savingsGoal: String(Math.round(profile.savings_goal / 100)) } : {}),
@@ -348,9 +395,9 @@ export default function Recommendations({ onImportSignal = 0 }) {
               ℹ️ Import your bank statement first for the best recommendations. You can still get general advice without it.
             </div>
           )}
-          {hasSaved && savedDate && (
+          {hasSaved && analysisDate && (
             <div className="rec-saved-notice">
-              You have results from {savedDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}.{' '}
+              You have results from {analysisDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}.{' '}
               <button className="rec-link-btn" onClick={() => setStep('results')}>View them</button> or start a new analysis below.
             </div>
           )}
@@ -428,17 +475,42 @@ export default function Recommendations({ onImportSignal = 0 }) {
 
   if (step === 'results' && result) {
     const scoreColor = result.healthScore >= 7 ? 'var(--success)' : result.healthScore >= 4 ? 'var(--amber)' : 'var(--coral)'
+
+    // Show separate goal/analysis dates only when they differ by more than a minute
+    const showSeparateDates = goalsDate && analysisDate &&
+      Math.abs(goalsDate.getTime() - analysisDate.getTime()) > 60000
+
     return (
       <div className="rec-shell rec-results-shell">
+
+        {needsReanalysis && (
+          <div className="rec-reanalysis-banner">
+            📊 New bank data imported —{' '}
+            <button className="rec-link-btn" onClick={handleReAnalyze}>Refresh analysis</button>
+            {' '}to update your recommendations.
+          </div>
+        )}
+
         <div className="rec-persistence-bar">
-          {savedDate && (
-            <span className="rec-saved-date">
-              Last analysed {savedDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}
-            </span>
-          )}
+          <div className="rec-persistence-dates">
+            {showSeparateDates ? (
+              <>
+                <span className="rec-saved-date">
+                  Goals updated {goalsDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </span>
+                <span className="rec-saved-date rec-saved-date--secondary">
+                  Analysis {analysisDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </span>
+              </>
+            ) : analysisDate ? (
+              <span className="rec-saved-date">
+                Last analysed {analysisDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </span>
+            ) : null}
+          </div>
           <div className="rec-persistence-actions">
             <button className="rec-action-btn" onClick={handleReAnalyze}>↻ Re-analyze</button>
-            <button className="rec-action-btn" onClick={handleEditAnswers}>✎ Edit answers</button>
+            <button className="rec-action-btn" onClick={handleEditGoals}>✎ Edit goals</button>
             <button className="rec-action-btn secondary" onClick={handleStartFresh}>Start fresh</button>
           </div>
         </div>
