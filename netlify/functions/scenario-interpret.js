@@ -16,6 +16,15 @@ STRICT RULES:
 - If the year is ambiguous (e.g. "in 3 years"), compute it from currentYear.
 - Recurring monthly events: set monthly=true. One-off events: monthly=false.
 
+LIFECYCLE DURATIONS -- include endYear for recurring events so the model spans the full cost period:
+- children: set endYear = year + 18 (monthly child costs continue until adulthood)
+- bond_payment: set endYear = year + 20 (typical 20-year SA home loan; use year + 25 for longer bonds)
+- school_fees (if recurring/monthly): primary school endYear = year + 7; high school endYear = year + 5; full career endYear = year + 12
+- investment: include endYear only if the user specifies a fixed contribution period (e.g. "for 5 years"); otherwise omit
+- salary_change: NO endYear -- salary increases are permanent, run to end of horizon
+- debt_payoff: NO endYear -- the monthly saving continues permanently once the debt is cleared
+- One-off events (bonus, vehicle_buy, vehicle_sell, property, expense, income): NO endYear
+
 EVENT TYPES:
 - bonus: windfall / lump sum income (income:true, monthly:false)
 - salary_change: ongoing salary increase (income:true, monthly:true -- NET monthly delta)
@@ -48,7 +57,7 @@ export async function handler(event) {
     return { statusCode: 400, body: JSON.stringify({ error: 'No prompt provided' }) }
   }
 
-  // ── Auth ──────────────────────────────────────────────────────────────────
+  // -- Auth ------------------------------------------------------------------
   const authHeader = event.headers['authorization'] || event.headers['Authorization'] || ''
   if (!authHeader.startsWith('Bearer ')) {
     return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized' }) }
@@ -64,15 +73,15 @@ export async function handler(event) {
     return { statusCode: 401, body: JSON.stringify({ error: 'Invalid or expired session' }) }
   }
 
-  // ── Build prompt ──────────────────────────────────────────────────────────
+  // -- Build prompt ----------------------------------------------------------
   const contextLines = [
     `Current year: ${currentYear || new Date().getFullYear()}`,
-    netIncome    ? `User net monthly income: R${Math.round(netIncome)}` : '',
-    debitOrders  ? `Fixed obligations/debit orders: R${Math.round(debitOrders)}/mo` : '',
+    netIncome     ? `User net monthly income: R${Math.round(netIncome)}` : '',
+    debitOrders   ? `Fixed obligations/debit orders: R${Math.round(debitOrders)}/mo` : '',
     variableSpend ? `Variable spend: R${Math.round(variableSpend)}/mo` : '',
   ].filter(Boolean).join('\n')
 
-  const userMessage = `USER FINANCIAL CONTEXT:\n${contextLines}\n\nUSER SCENARIO: "${prompt.trim()}"\n\nExtract this into structured financial events. Return ONLY valid JSON:\n{\n  "events": [\n    {\n      "type": "bonus|salary_change|vehicle_buy|vehicle_sell|property|bond_payment|children|school_fees|debt_payoff|investment|expense|income",\n      "year": number,\n      "amount": number,\n      "income": boolean,\n      "monthly": boolean,\n      "description": "brief human-readable label for this event"\n    }\n  ],\n  "explanation": "1-2 sentences describing what you extracted and any assumptions made"\n}\n\nNo markdown. No extra text. JSON only.`
+  const userMessage = `USER FINANCIAL CONTEXT:\n${contextLines}\n\nUSER SCENARIO: "${prompt.trim()}"\n\nExtract this into structured financial events. Return ONLY valid JSON:\n{\n  "events": [\n    {\n      "type": "bonus|salary_change|vehicle_buy|vehicle_sell|property|bond_payment|children|school_fees|debt_payoff|investment|expense|income",\n      "year": number,\n      "endYear": number|null,\n      "amount": number,\n      "income": boolean,\n      "monthly": boolean,\n      "description": "brief human-readable label for this event"\n    }\n  ],\n  "explanation": "1-2 sentences describing what was extracted and any assumptions made (mention endYear durations where applicable)"\n}\n\nNo markdown. No extra text. JSON only.`
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -84,7 +93,7 @@ export async function handler(event) {
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 900,
+        max_tokens: 1000,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userMessage }],
       }),
@@ -107,21 +116,28 @@ export async function handler(event) {
 
     const events = (parsed.events || [])
       .filter(ev => validTypes.has(ev.type) && Number.isFinite(Number(ev.amount)) && Number(ev.amount) > 0)
-      .map(ev => ({
-        type:        ev.type,
-        year:        Number(ev.year) || new Date().getFullYear() + 1,
-        amount:      Math.abs(Number(ev.amount)),
-        income:      Boolean(ev.income),
-        monthly:     Boolean(ev.monthly),
-        description: String(ev.description || ev.type).slice(0, 60),
-      }))
+      .map(ev => {
+        const mapped = {
+          type:        ev.type,
+          year:        Number(ev.year) || new Date().getFullYear() + 1,
+          amount:      Math.abs(Number(ev.amount)),
+          income:      Boolean(ev.income),
+          monthly:     Boolean(ev.monthly),
+          description: String(ev.description || ev.type).slice(0, 60),
+        }
+        // Only accept endYear for recurring monthly events where it makes sense
+        if (ev.endYear && Number.isFinite(Number(ev.endYear)) && Number(ev.endYear) > mapped.year) {
+          mapped.endYear = Number(ev.endYear)
+        }
+        return mapped
+      })
 
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         events,
-        explanation: String(parsed.explanation || '').slice(0, 300),
+        explanation: String(parsed.explanation || '').slice(0, 400),
       }),
     }
   } catch (e) {

@@ -44,7 +44,11 @@ function buildYearModel({ netIncomeMonthly, fixedMonthly, variableMonthly,
     const annualVariable = Math.round(variableMonthly   * 12 * inf * varReduction)
 
     // Events for this year -- granular tracking by type
-    const yearEvents = (events || []).filter(e => Number(e.year) === year)
+    const yearEvents = (events || []).filter(e => {
+      const startY = Number(e.year)
+      const endY = e.endYear ? Number(e.endYear) : startY
+      return year >= startY && year <= endY
+    })
     let eventIncome = 0, eventExpense = 0
     let bonusIncome = 0, salaryEventIncome = 0
     let vehicleCosts = 0, schoolFees = 0, childCosts = 0
@@ -482,7 +486,7 @@ export default function Projections({ recurringMonthly }) {
   const [customEvents,     setCustomEvents]    = useState(() => lsGet('customEvents', []))
   const [showEventForm,    setShowEventForm]   = useState(false)
   const [eventDraft,       setEventDraft]      = useState({
-    type: 'bonus', year: new Date().getFullYear() + 1, amount: '', description: '',
+    type: 'bonus', year: new Date().getFullYear() + 1, amount: '', description: '', endYear: null,
   })
   const [editingId,        setEditingId]       = useState(null)   // id of event being edited inline
   const [editDraft,        setEditDraft]       = useState({})
@@ -610,6 +614,36 @@ export default function Projections({ recurringMonthly }) {
   const currentYear = new Date().getFullYear()
   const yearOptions = Array.from({ length: 15 }, (_, i) => currentYear + i)
 
+  // Pre-computed metrics for the scenario commentary card.
+  // All values sourced from the deterministic buildYearModel engine -- no AI.
+  const scenarioCardMetrics = useMemo(() => {
+    const c  = yearModels.current
+    const o  = yearModels.optimised
+    const cu = yearModels.custom
+    const last = arr => arr[arr.length - 1]
+    const at5  = arr => arr[Math.min(4, arr.length - 1)]
+    const totalInvGrowth = c.reduce((s, r) => s + (r.investmentGrowth || 0), 0)
+    const salaryIn5yr    = at5(c)?.annualIncome || 0
+    const optimisedNW    = last(o)?.netWorth || 0
+    const optimisedDelta = optimisedNW - (last(c)?.netWorth || 0)
+    const yr5Delta       = (at5(o)?.netWorth || 0) - (at5(c)?.netWorth || 0)
+    const customNW       = last(cu)?.netWorth || 0
+    const customDelta    = customNW - (last(c)?.netWorth || 0)
+    return { totalInvGrowth, salaryIn5yr, optimisedNW, optimisedDelta, yr5Delta, customNW, customDelta }
+  }, [yearModels])
+
+  // Top custom event by annual impact (for the scenario commentary card)
+  const topCustomEvent = useMemo(() => {
+    if (customEvents.length === 0) return null
+    return customEvents.reduce((a, b) => {
+      const aAmt = a.monthly ? Number(a.amount) * 12 : Number(a.amount)
+      const bAmt = b.monthly ? Number(b.amount) * 12 : Number(b.amount)
+      return bAmt > aAmt ? b : a
+    })
+  }, [customEvents])
+  const topCustomEventTmpl = topCustomEvent ? (EVENT_TEMPLATES.find(t => t.type === topCustomEvent.type) || EVENT_TEMPLATES[0]) : null
+  const topCustomEventAmt  = topCustomEvent ? (topCustomEvent.monthly ? Number(topCustomEvent.amount) * 12 : Number(topCustomEvent.amount)) : 0
+
   async function interpretScenario() {
     if (!aiPrompt.trim() || aiLoading) return
     setAiLoading(true)
@@ -642,20 +676,28 @@ export default function Projections({ recurringMonthly }) {
 
   function addEvent() {
     const tmpl = EVENT_TEMPLATES.find(t => t.type === eventDraft.type) || EVENT_TEMPLATES[0]
-    setCustomEvents(prev => [...prev, { ...eventDraft, income: tmpl.income, monthly: tmpl.monthly, id: Date.now() }])
+    const ev = { ...eventDraft, income: tmpl.income, monthly: tmpl.monthly, id: Date.now() }
+    if (!tmpl.monthly) delete ev.endYear  // one-off events don't use endYear
+    setCustomEvents(prev => [...prev, ev])
     setShowEventForm(false)
-    setEventDraft({ type: 'bonus', year: currentYear + 1, amount: '', description: '' })
+    setEventDraft({ type: 'bonus', year: currentYear + 1, amount: '', description: '', endYear: null })
   }
 
   function startEdit(ev) {
     setEditingId(ev.id)
-    setEditDraft({ amount: String(ev.amount), year: ev.year, description: ev.description || '' })
+    setEditDraft({ amount: String(ev.amount), year: ev.year, description: ev.description || '', endYear: ev.endYear || null })
     setShowEventForm(false)
   }
 
   function saveEdit(id) {
     setCustomEvents(prev => prev.map(ev =>
-      ev.id === id ? { ...ev, amount: editDraft.amount, year: Number(editDraft.year), description: editDraft.description } : ev
+      ev.id === id ? {
+        ...ev,
+        amount: editDraft.amount,
+        year: Number(editDraft.year),
+        description: editDraft.description,
+        endYear: editDraft.endYear ? Number(editDraft.endYear) : null,
+      } : ev
     ))
     setEditingId(null)
     setEditDraft({})
@@ -687,9 +729,9 @@ export default function Projections({ recurringMonthly }) {
       </div>
 
       <p className="proj-mode-desc">
-        {forecastMode === 'current'   && 'Your current spending trajectory -- no behaviour changes assumed.'}
-        {forecastMode === 'optimised' && 'Applies bump. optimisation: 10% variable spend reduction, boosting free cash flow.'}
-        {forecastMode === 'custom'    && 'Add life events -- bonuses, salary changes, purchases, school fees -- to build your own scenario.'}
+        {forecastMode === 'current'   && "Your financial trajectory if today's income and spending continue unchanged. Salary grows at your assumed rate; variable costs inflate annually."}
+        {forecastMode === 'optimised' && 'Models a 10% reduction in variable spending -- the equivalent of small consistent cuts across groceries, eating out, and lifestyle. Fixed obligations and salary are unchanged.'}
+        {forecastMode === 'custom'    && 'Add life events to stress-test your future: salary changes, vehicle purchases, bond repayments, children, school fees, or any major income or expense. Recurring events span multiple years automatically.'}
       </p>
 
       <div className="proj-inputs">
@@ -904,7 +946,7 @@ export default function Projections({ recurringMonthly }) {
             <div className="proj-event-form">
               <div className="proj-event-form-row">
                 <select className="proj-event-select" value={eventDraft.type}
-                  onChange={e => setEventDraft(d => ({ ...d, type: e.target.value }))}>
+                  onChange={e => setEventDraft(d => ({ ...d, type: e.target.value, endYear: null }))}>
                   {EVENT_TEMPLATES.map(t => <option key={t.type} value={t.type}>{t.icon} {t.label}</option>)}
                 </select>
                 <select className="proj-event-select" value={eventDraft.year}
@@ -912,6 +954,16 @@ export default function Projections({ recurringMonthly }) {
                   {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
               </div>
+              {EVENT_TEMPLATES.find(t => t.type === eventDraft.type)?.monthly && (
+                <div className="proj-event-form-row">
+                  <label className="proj-event-until-lbl">Until year (optional)</label>
+                  <select className="proj-event-select" value={eventDraft.endYear || ''}
+                    onChange={e => setEventDraft(d => ({ ...d, endYear: e.target.value ? Number(e.target.value) : null }))}>
+                    <option value="">runs to horizon</option>
+                    {yearOptions.filter(y => y >= eventDraft.year).map(y => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                </div>
+              )}
               <div className="proj-event-form-row">
                 <div className="proj-input-wrap" style={{ flex: 1 }}>
                   <span className="proj-prefix">R</span>
@@ -956,6 +1008,16 @@ export default function Projections({ recurringMonthly }) {
                         {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
                       </select>
                     </div>
+                    {ev.monthly && (
+                      <div className="proj-event-form-row">
+                        <label className="proj-event-until-lbl">Until year (optional)</label>
+                        <select className="proj-event-select" value={editDraft.endYear || ''}
+                          onChange={e => setEditDraft(d => ({ ...d, endYear: e.target.value ? Number(e.target.value) : null }))}>
+                          <option value="">runs to horizon</option>
+                          {yearOptions.filter(y => y >= (editDraft.year || ev.year)).map(y => <option key={y} value={y}>{y}</option>)}
+                        </select>
+                      </div>
+                    )}
                     <div className="proj-event-form-row">
                       <input className="proj-event-desc-input" type="text" placeholder="Label (optional)"
                         value={editDraft.description}
@@ -968,7 +1030,9 @@ export default function Projections({ recurringMonthly }) {
                   </div>
                 ) : (
                   <div className="proj-event-item-info">
-                    <span className={'proj-event-year-badge ' + (ev.income ? 'income' : 'expense')}>{ev.year}</span>
+                    <span className={'proj-event-year-badge ' + (ev.income ? 'income' : 'expense')}>
+                      {ev.year}{ev.endYear && ev.endYear !== ev.year ? '–' + ev.endYear : ev.monthly ? '+' : ''}
+                    </span>
                     <span className="proj-event-type-icon" aria-hidden="true">{tmpl.icon}</span>
                     <span className="proj-event-item-label">{ev.description || tmpl.label}</span>
                     <span className="proj-event-item-amount">
@@ -1014,14 +1078,15 @@ export default function Projections({ recurringMonthly }) {
         </div>
         <p className="proj-scenario-text">
           {forecastMode === 'current' && (
-            'Your current trajectory projects ' + fmt(annualSavingsCurrent) + ' saved per year. Variable spend averages ' + fmt(avgVariableSpend) + '/mo, led by ' + topVariableCategory + '. Over ' + horizonYears + ' years at ' + assumptions.salaryGrowth + '% salary growth and ' + assumptions.investmentReturn + '% investment returns, your net worth reaches ' + fmt(currentNW10) + '.'
+            `Saving ${fmt(annualSavingsCurrent)}/year on the current path. Variable spend averages ${fmt(avgVariableSpend)}/mo, led by ${topVariableCategory}. At ${assumptions.salaryGrowth}% annual salary growth, income reaches ${fmt(scenarioCardMetrics.salaryIn5yr)}/year by year 5. With ${assumptions.investmentReturn}% returns compounding on your balance, investment growth alone contributes ${fmt(scenarioCardMetrics.totalInvGrowth)} over ${horizonYears} years -- bringing total net worth to ${fmt(currentNW10)}.`
           )}
           {forecastMode === 'optimised' && (
-            'A 10% reduction in ' + topVariableCategory + ' saves ' + fmt((avgVariableSpend - optimisedVariableSpend) * 12) + ' per year. Over ' + horizonYears + ' years (' + assumptions.salaryGrowth + '% salary growth, ' + assumptions.investmentReturn + '% returns), your net worth reaches ' + fmt(yearModels.optimised[yearModels.optimised.length - 1]?.netWorth || 0) + ' -- ' + fmt(Math.abs((yearModels.optimised[yearModels.optimised.length - 1]?.netWorth || 0) - currentNW10)) + ' more than the current path.'
+            `Trimming variable spend by 10% frees up ${fmt(optimisedFreeCashFlow - monthlyFreeCashFlow)}/mo -- ${fmt((optimisedFreeCashFlow - monthlyFreeCashFlow) * 12)} more per year. By year 5 the compounding gap reaches ${fmt(scenarioCardMetrics.yr5Delta)}, and over ${horizonYears} years net worth hits ${fmt(scenarioCardMetrics.optimisedNW)} -- ${fmt(Math.abs(scenarioCardMetrics.optimisedDelta))} ${scenarioCardMetrics.optimisedDelta >= 0 ? 'ahead of' : 'behind'} the current path. Small, consistent cuts in ${topVariableCategory} compound more than most people expect.`
           )}
-          {forecastMode === 'custom' && (customEvents.length === 0
-            ? 'Add life events above to build your custom scenario.'
-            : 'You have ' + customEvents.length + ' event(s) modelled. Your custom path projects a net worth of ' + fmt(yearModels.custom[yearModels.custom.length - 1]?.netWorth || 0) + ' in ' + horizonYears + ' years.'
+          {forecastMode === 'custom' && (
+            customEvents.length === 0
+              ? 'Add life events above to build your custom scenario.'
+              : `${customEvents.length} event${customEvents.length !== 1 ? 's' : ''} modelled. Largest impact: ${topCustomEvent ? (topCustomEvent.description || topCustomEventTmpl?.label || topCustomEvent.type) : ''} (${fmt(topCustomEventAmt)}/year). Custom path reaches ${fmt(scenarioCardMetrics.customNW)} in ${horizonYears} years -- ${fmt(Math.abs(scenarioCardMetrics.customDelta))} ${scenarioCardMetrics.customDelta >= 0 ? 'ahead of' : 'behind'} the current path.`
           )}
         </p>
       </div>
