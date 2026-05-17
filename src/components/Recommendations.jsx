@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { fetchRecentMonths } from '../services/transactions'
 import { buildLedgerSummary } from '../utils/ledger'
 import { detectRecurring } from '../utils/recurring'
+import { computeBaselineProjection } from '../utils/projection'
 import './Recommendations.css'
 import Projections from './Projections'
 import { useTier } from '../context/TierContext'
@@ -13,39 +14,6 @@ const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
 
 // Persists indefinitely -- no expiry. Planning answers are a living financial profile.
 const LS_KEY = uid => `bump_rec_v2_${uid}`
-
-const DEFAULT_ASSUMPTIONS = { salaryGrowth: 5, inflation: 6, investmentReturn: 8 }
-
-// Lightweight deterministic projection for forward-looking recommendation context.
-// Mirrors buildYearModel in Projections.jsx. No AI. Returns net worth at 1/5/10 years.
-function computeProjectionContext(netIncome, fixedMonthly, variableMonthly, startingSavings = 0) {
-  if (!netIncome || netIncome <= 0) return null
-  const { salaryGrowth, inflation, investmentReturn } = DEFAULT_ASSUMPTIONS
-  let bal = startingSavings
-  let optBal = startingSavings
-  const years = 10
-  const results = {}
-  for (let i = 0; i < years; i++) {
-    const gf  = Math.pow(1 + salaryGrowth  / 100, i)
-    const inf = Math.pow(1 + inflation     / 100, i)
-    const income   = netIncome  * 12 * gf
-    const fixed    = fixedMonthly   * 12 * inf
-    const variable = variableMonthly * 12 * inf
-    const optVar   = variable * 0.9
-    const growth     = Math.max(bal,    0) * (investmentReturn / 100)
-    const optGrowth  = Math.max(optBal, 0) * (investmentReturn / 100)
-    bal    += (income - fixed - variable) + growth
-    optBal += (income - fixed - optVar)  + optGrowth
-    if (i === 0) { results.netWorth1yr = Math.round(bal); results.optimisedNetWorth1yr = Math.round(optBal) }
-    if (i === 4) { results.netWorth5yr = Math.round(bal); results.optimisedNetWorth5yr = Math.round(optBal) }
-  }
-  results.netWorth10yr = Math.round(bal)
-  results.optimisedNetWorth10yr = Math.round(optBal)
-  results.monthlyFreeCashFlow = Math.round(netIncome - fixedMonthly - variableMonthly)
-  results.salaryGrowth = DEFAULT_ASSUMPTIONS.salaryGrowth
-  results.investmentReturn = DEFAULT_ASSUMPTIONS.investmentReturn
-  return results
-}
 
 const QUESTIONS = [
   {
@@ -259,7 +227,7 @@ export default function Recommendations({ onImportSignal = 0 }) {
       .filter(([cat]) => VARIABLE_CATS.has(cat))
       .reduce((s, [, v]) => s + v, 0)
     const debitOrders = recurringMonthly || fixedMonthly || (profile?.monthly_debit_orders ? profile.monthly_debit_orders / 100 : 0)
-    return computeProjectionContext(netIncome, debitOrders, varSpend, 0)
+    return computeBaselineProjection(netIncome, debitOrders, varSpend, 0)
   }, [answers.income, spendingData, recurringMonthly, fixedMonthly, profile])
 
   const currentQ = QUESTIONS[qIndex]

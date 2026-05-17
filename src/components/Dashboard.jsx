@@ -5,6 +5,7 @@ import { useTier, isDateAllowed, PLAN_PRICES } from '../context/TierContext'
 import { fetchTransactions, fetchTransactionsByMonth, fetchRecentMonths, addTransaction, updateTransaction, deleteTransaction } from '../services/transactions'
 import { buildAIPayload, buildTopMerchants } from '../utils/financials'
 import { buildLedgerSummary, getCalendarMonthRange } from '../utils/ledger'
+import { buildAiBudgets } from '../utils/budgets'
 import { validateLedgerSummary, reconcileRecurring } from '../utils/integrity'
 import { observe, DOMAIN } from '../utils/observe'
 import { parseTransaction, analyseSpending, recategoriseAll } from '../services/ai'
@@ -237,18 +238,13 @@ export default function Dashboard({ onNavigate }) {
   // AI-suggested budgets: 85% of rolling 12-month average per category.
   // Loaded async on mount and re-loaded after each import. Far more accurate
   // than a single-month snapshot because one exceptional month won't skew targets.
+  // Formula is canonical via buildAiBudgets() -- same rule used in Analytics.jsx.
   async function loadAiBudgets() {
     if (!user) return
     try {
       const recentTxns = await fetchRecentMonths(user.id, 12)
       const hist = buildLedgerSummary(recentTxns, profile, { preferDeclared: false, dedup: true })
-      const mc = Math.max(hist.monthCount, 1)
-      const suggested = {}
-      for (const [cat, total] of Object.entries(hist.catTotals)) {
-        const avgMonthly = total / mc
-        if (avgMonthly > 0) suggested[cat] = Math.round(avgMonthly * 0.85)
-      }
-      setAiBudgets(suggested)
+      setAiBudgets(buildAiBudgets(hist.catTotals, Math.max(hist.monthCount, 1)))
     } catch (e) {
       console.error('[bump] AI budget load failed:', e)
     }
@@ -607,12 +603,12 @@ export default function Dashboard({ onNavigate }) {
                   <button
                     className={`bmt-btn ${budgetMode === 'ai' ? 'active' : ''}`}
                     onClick={() => setBudgetMode('ai')}
-                    title="AI-suggested budgets: 85% of this month's actuals"
+                    title="AI-suggested budgets: 85% of 12-month rolling average"
                   >AI Suggested</button>
                 </div>
               </div>
               {budgetMode === 'ai' && (
-                <div className="bmt-hint">AI budgets target 85% of your current month spend per category.</div>
+                <div className="bmt-hint">AI budgets target 85% of your 12-month rolling average per category.</div>
               )}
               <div className="cats">
                 {Object.entries(catTotals).sort((a, b) => b[1] - a[1]).map(([cat, amt]) => {

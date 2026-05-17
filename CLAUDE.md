@@ -468,3 +468,56 @@ Collapsible panel (`.proj-compare-section`) below the net worth chart. Shows Cur
 
 ### git commit workaround (2026-05 Session 3)
 The `/tmp` git index files from prior sessions are owned by `nobody` (different user). Use `/sessions/blissful-compassionate-cray/git_idx_*` paths instead of `/tmp/git_idx_*` for `GIT_INDEX_FILE`. HEAD.lock and index.lock owned by `nobody` cannot be removed — must ask user to `git add` and `git push` manually from Git Bash.
+
+---
+
+## Shared financial calculation utilities (2026-05 consolidation)
+
+### Canonical architecture: one formula, one location
+
+All shared financial math must live in `src/utils/`. Components import from these modules -- never duplicate formulas inline.
+
+### src/utils/projection.js (NEW)
+- `DEFAULT_PROJECTION_ASSUMPTIONS` -- `{ salaryGrowth: 5, inflation: 6, investmentReturn: 8 }`. Canonical defaults used by both Projections.jsx and Recommendations.jsx.
+- `computeBaselineProjection(netIncome, fixedMonthly, variableMonthly, startingSavings, assumptions)` -- lightweight deterministic projection baseline. Returns `{ netWorth1yr, netWorth5yr, netWorth10yr, optimisedNetWorth10yr, monthlyFreeCashFlow, salaryGrowth, investmentReturn }`. No events, no granular tracking -- used by Recommendations.jsx for AI context only.
+- **Projections.jsx** still owns the full `buildYearModel()` (events, granular rows, 12 row fields per year). It imports `DEFAULT_PROJECTION_ASSUMPTIONS` via `const DEFAULT_ASSUMPTIONS = DEFAULT_PROJECTION_ASSUMPTIONS`.
+- **Reconciliation guarantee**: base-case Recommendations projection (no events, no varReduction) is arithmetically identical to base-case Projections tab output.
+
+### src/utils/budgets.js (NEW)
+- `buildAiBudgets(catTotals, monthCount, factor = 0.85)` -- canonical AI budget derivation. Rule: 85% of average monthly spend per category.
+- **Dashboard.jsx** calls `buildAiBudgets(hist.catTotals, hist.monthCount)` after fetching rolling 12-month history (stable baseline -- not affected by current selected month).
+- **Analytics.jsx** calls `buildAiBudgets(ledger.catTotals, ledger.monthCount)` from its current selected period (period-relative -- intentionally different input window, same formula).
+- Previously duplicated: Dashboard had an inline loop, Analytics had a local `buildAISuggestedBudgets` function -- both removed.
+- Dashboard tooltip/hint text corrected from "current month" to "12-month rolling average".
+
+### budget-chat.js canonical context upgrade (2026-05)
+`budget-chat.js` was previously building its own simplified context string (manual catTotals, monthly averages, no merchant intelligence). Now migrated to use `buildInsightContext()` from `_context.js` -- same context builder used by `analyse.js`.
+
+What this adds to budget-chat responses:
+- Per-merchant breakdown (derived from raw transactions -- delivery vs dine-in splits, top merchants by rand)
+- Behavioural spend classification (obligations vs lifestyle vs essentials)
+- Budget-vs-actual framing for each category
+- Month-on-month trend signals
+- Recurring obligation context (if client passes `recurringContext`)
+- Anomaly detection (large unusual transactions)
+
+**Client payload for budget-chat.js** (when wired up):
+```js
+{
+  question:            string,
+  transactions:        Array,   // raw spend txns -- amounts in rands
+  profile:             Object,  // profile row -- amounts in cents
+  monthlyBudgets:      Object,  // { category: monthlyRands }
+  conversationHistory: Array,   // [{ role, content }] -- last 6 turns
+  // Optional (richer AI output if provided):
+  recurringContext:    string,  // from recurringToContext()
+  topMerchants:        Array,   // from buildTopMerchants()
+}
+```
+
+Note: `budget-chat.js` is not yet wired to any React component. The function is ready to connect; see design-handoff docs for planned UX location.
+
+### Reconciliation safeguards
+- **Projection base case**: `computeBaselineProjection` in `src/utils/projection.js` and `buildYearModel` in `Projections.jsx` share `DEFAULT_PROJECTION_ASSUMPTIONS`. A Recommendations projection at year 1/5/10 with zero events MUST match the Projections tab base case within rounding.
+- **AI budgets**: Dashboard (12-month window) and Analytics (selected period) WILL show different suggested amounts when the selected period is not 12 months. This is correct behaviour -- they use the same formula on different windows.
+- **No new Supabase tables added** in this session. All consolidation is pure utility extraction.

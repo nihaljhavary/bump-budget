@@ -4,6 +4,7 @@ import { useTier, isDateAllowed } from '../context/TierContext'
 import { fetchTransactionsByRange } from '../services/transactions'
 import { buildLedgerSummary, countCalendarDays } from '../utils/ledger'
 import { buildAIPayload, buildTopMerchants } from '../utils/financials'
+import { buildAiBudgets } from '../utils/budgets'
 import { analyseSpending, recategoriseAll } from '../services/ai'
 import { supabase } from '../supabase'
 import './Analytics.css'
@@ -63,15 +64,6 @@ function buildPeriodLabel(period, from, to, monthCount) {
   return `last ${monthCount} month${monthCount !== 1 ? 's' : ''}`
 }
 
-function buildAISuggestedBudgets(catTotals, monthCount) {
-  if (!catTotals || monthCount < 1) return {}
-  const suggested = {}
-  for (const [cat, total] of Object.entries(catTotals)) {
-    const avgMonthly = total / monthCount
-    suggested[cat] = Math.round(avgMonthly * 0.85)
-  }
-  return suggested
-}
 
 function MonthlyBars({ data }) {
   if (!data || data.length === 0) return null
@@ -219,8 +211,10 @@ export default function Analytics({ preferDeclared = true }) {
   )
 
   // AI-suggested budgets from rolling averages (85% of avg spend)
+  // AI-suggested budgets: 85% of avg spend for the selected period.
+  // Formula is canonical via buildAiBudgets() -- same rule used in Dashboard.jsx.
   const aiSuggestedBudgets = useMemo(
-    () => buildAISuggestedBudgets(ledger.catTotals, ledger.monthCount),
+    () => buildAiBudgets(ledger.catTotals, ledger.monthCount),
     [ledger.catTotals, ledger.monthCount]
   )
 

@@ -4,6 +4,7 @@ import { supabase } from '../supabase'
 import { fetchTransactionsByRange } from '../services/transactions'
 import { buildLedgerSummary, countCalendarMonths, formatLocalDate, validateProjectionInputs } from '../utils/ledger'
 import { useTier, isDateAllowed } from '../context/TierContext'
+import { DEFAULT_PROJECTION_ASSUMPTIONS } from '../utils/projection'
 import './Projections.css'
 
 const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
@@ -338,7 +339,9 @@ function YearlyTable({ model }) {
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-const DEFAULT_ASSUMPTIONS = { salaryGrowth: 5, inflation: 6, investmentReturn: 8 }
+// DEFAULT_PROJECTION_ASSUMPTIONS imported from src/utils/projection.js
+// -- shared with Recommendations.jsx so both components reconcile on base case.
+const DEFAULT_ASSUMPTIONS = DEFAULT_PROJECTION_ASSUMPTIONS
 
 const EVENT_TEMPLATES = [
   { type: 'bonus',         label: 'Bonus / windfall',             income: true,  monthly: false, icon: '💰' },
