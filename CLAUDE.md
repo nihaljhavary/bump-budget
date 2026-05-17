@@ -593,39 +593,80 @@ Run in the Supabase SQL editor. Uses `ADD COLUMN IF NOT EXISTS` — safe to re-r
 No new tables, no new RLS policies — inherits existing profiles row-level security.
 AuthContext `fetchProfile()` uses `*` selector so new columns are automatically included.
 
+### Recommendations.jsx persistence
+
 ### Recommendations.jsx persistence layers
 
 Two-layer model:
 1. **localStorage** (fast): `loadSaved(uid)` / `persist(uid, ...)` / `clearSaved(uid)`. Keyed `bump_rec_v2_{uid}`. Hydrates immediately on mount (before profile is available).
 2. **Supabase** (authoritative): `profiles.planning_profile`. Hydrates on `profile?.planning_profile` availability via a second useEffect. Freshness is compared by `analysisRunAt` timestamp — the newer source wins.
 
-Sync flows:
-- **Same device, returning visit**: localStorage wins (lsTs >= dbTs). If Supabase column was just added (dbTs = 0), LS silently pushes its data to Supabase in the background.
-- **Different device (cross-device)**: localStorage is empty (lsTs = 0), Supabase has data (dbTs > 0). Supabase wins, hydrates React state + overwrites localStorage.
-- **After analysis**: `getRecommendations()` writes to both localStorage (sync) and Supabase (fire-and-forget upsert, no profile refetch).
-- **Start fresh**: `handleStartFresh()` clears both localStorage (`clearSaved`) and Supabase (`planning_profile: null`).
-- **Edit goals**: Does NOT reset either store — keeps existing answers as quiz defaults.
+Timestamps used for comparison (`dbTs`, `lsTs`) are read from the STORED data objects, not generated fresh on mount. This means the comparison is always valid — there is no "fresh Date.now() on mount" corruption risk in Recommendations.jsx.
 
 ### Projections.jsx persistence layers
 
-Same two-layer model, with a debounce to avoid Supabase write storms during active scenario editing.
+Same two-layer model with a 3-second debounce to avoid Supabase write storms during active scenario editing. See Session 7 for the critical bug fix in timestamp handling.
 
 Refs:
-- `scenarioHydrated` (`useRef(false)`): armed to `true` once profile hydration resolves. Guards the debounced save effect so it doesn't fire during initial hydration.
+- `scenarioHydrated` (`useRef(false)`): armed to `true` once profile hydration resolves. Guards the debounced save effect so it does not fire during initial hydration.
 - `saveScenarioTimer` (`useRef(null)`): debounce handle for 3s Supabase writes.
+- `scenarioInitialized` (`useRef(false)`): armed to `true` after the first run of the updatedAt tracking effect. Guards against writing `Date.now()` on mount (see Session 7 bug fix).
 
-LS timestamp: `bumpScenario_updatedAt` (epoch ms) updated whenever any scenario state changes. Used for freshness comparison against `scenario_state.updatedAt` from Supabase.
+---
 
-Sync flows:
-- **Same device**: `lsTs >= dbTs` → LS wins. Supabase copy is silently updated with current LS state (bootstrap for other devices).
-- **Different device**: `dbTs > lsTs` → Supabase wins. State is hydrated from Supabase + LS is overwritten.
-- **Active editing**: each state change → 5 LS-write effects fire immediately + 1 combined Supabase save fires after 3s of inactivity. Both are fire-and-forget.
-- **Not persisted** (intentionally): netIncomeInput, debitOrdersInput — re-derived from profile/ledger each load so they stay fresh.
+## Persistence hardening (2026-05 Session 7)
 
-### Deterministic guarantees preserved
-- `buildYearModel()` engine: unchanged
-- `buildAiBudgets()`: unchanged  
-- `computeBaselineProjection()`: unchanged
-- Ledger architecture: unchanged
-- AI budgeting, recurring obligations: unchanged
-- All localStorage keys remain valid fallbacks (offline continuity)
+### Critical bug fixed: useRef not imported in Projections.jsx
+
+`Projections.jsx` used `useRef` on two refs (`scenarioHydrated`, `saveScenarioTimer`) but had not added `useRef` to the React import. The import was:
+```js
+import { useState, useEffect, useMemo } from 'react'
+```
+Fixed to:
+```js
+import { useState, useEffect, useMemo, useRef } from 'react'
+```
+Without this fix, the entire Projections component crashed at runtime with `ReferenceError: useRef is not defined`.
+
+### Critical bug fixed: updatedAt LS write on mount corrupted cross-device sync
+
+**Root cause:** React always fires `useEffect` after the very first render, even when deps equal their lazy-initialised values. The updatedAt tracking effect:
+```js
+useEffect(() => {
+  lsSet('updatedAt', Date.now())
+}, [forecastMode, assumptions, horizonYears, customEvents, currentSavingsInput])
+```
+...fired on mount and wrote `Date.now()` to localStorage as `bumpScenario_updatedAt`. This fired BEFORE the Supabase hydration effect (effect order is definition order). When hydration then read `lsTs = lsGet('updatedAt', 0)`, it saw a freshly-minted `Date.now()` — which is always >= any Supabase `db.updatedAt` from a prior session or device. So `db.updatedAt <= lsTs` was always true and the LS branch always "won", meaning Supabase cross-device state was NEVER hydrated on any device that had visited before.
+
+**Fix:** Added `scenarioInitialized` ref (also `useRef(false)`) that guards the updatedAt effect:
+```js
+const scenarioInitialized = useRef(false) // armed after initial mount; guards updatedAt LS write
+
+useEffect(() => {
+  if (!scenarioInitialized.current) { scenarioInitialized.current = true; return }
+  lsSet('updatedAt', Date.now())
+}, [forecastMode, assumptions, horizonYears, customEvents, currentSavingsInput])
+```
+On the initial mount the effect arms the ref and returns early — no timestamp write. On subsequent runs (genuine user-driven state changes) it writes `Date.now()` correctly.
+
+**Why Recommendations.jsx does not have this bug:** Its timestamp comparison uses `lsData?.analysisRunAt` and `db?.analysisRunAt` — values from inside the stored data objects, not a standalone LS key written on mount. So there is no fresh-Date.now()-on-mount corruption risk in that component.
+
+### State separation summary (canonical architecture)
+
+| State | Owner | Persistence | Reset trigger |
+|-------|-------|-------------|---------------|
+| Forecast mode | Projections.jsx | LS + Supabase `scenario_state` | User explicit reset |
+| Assumptions | Projections.jsx | LS + Supabase `scenario_state` | User "Reset to defaults" |
+| Horizon years | Projections.jsx | LS + Supabase `scenario_state` | User explicit reset |
+| Custom events | Projections.jsx | LS + Supabase `scenario_state` | User clears events |
+| Starting savings | Projections.jsx | LS + Supabase `scenario_state` | Never (user-owned) |
+| Planning answers | Recommendations.jsx | LS + Supabase `planning_profile` | User "Start fresh" |
+| AI result | Recommendations.jsx | LS + Supabase `planning_profile` | User "Start fresh" |
+| Canonical ledger | Dashboard.jsx | None (recomputed from txns) | Uploads, tab changes |
+
+Normal uploads never wipe planning continuity — only explicit "Start fresh" or "Reset to defaults" user actions do.
+
+### Lifecycle safeguards
+- Uploads (`importSignal` bump) trigger `loadData()` re-fetch in Recommendations.jsx and `needsReanalysis = true` if results exist. Planning state (answers, result) is NOT cleared.
+- `buildYearModel()` remains the sole deterministic financial engine. AI only shapes the `customEvents` list via `scenario-interpret.js` — it never generates financial numbers.
+- `scenarioHydrated` ref prevents re-hydration on every profile refetch (which happens after billing webhooks etc.). Hydration runs exactly once per component mount.

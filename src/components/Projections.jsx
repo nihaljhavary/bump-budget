@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabase'
 import { fetchTransactionsByRange } from '../services/transactions'
@@ -494,6 +494,7 @@ export default function Projections({ recurringMonthly }) {
   // Cross-device Supabase persistence refs
   const scenarioHydrated  = useRef(false)  // true once profile.scenario_state hydration resolves
   const saveScenarioTimer = useRef(null)   // debounce handle for Supabase scenario saves
+  const scenarioInitialized = useRef(false) // armed after initial mount; guards the updatedAt LS write
 
   const [aiPrompt,       setAiPrompt]       = useState('')
   const [aiLoading,      setAiLoading]      = useState(false)
@@ -520,8 +521,15 @@ export default function Projections({ recurringMonthly }) {
   useEffect(() => { lsSet('customEvents',   customEvents)       }, [customEvents])
   useEffect(() => { lsSet('currentSavings', currentSavingsInput)}, [currentSavingsInput])
 
-  // Track LS scenario freshness so cross-device sync can compare timestamps
+  // Track LS scenario freshness so cross-device sync can compare timestamps.
+  // IMPORTANT: skip on the initial mount. React fires useEffect after every
+  // first render, even when deps equal their lazy-initialised LS values.
+  // Writing Date.now() on mount would make lsTs appear newer than any Supabase
+  // db.updatedAt, permanently breaking cross-device hydration for returning users.
+  // scenarioInitialized guards this: it arms to true on the first run and returns
+  // early, so only genuine user-driven state changes update the timestamp.
   useEffect(() => {
+    if (!scenarioInitialized.current) { scenarioInitialized.current = true; return }
     lsSet('updatedAt', Date.now())
   }, [forecastMode, assumptions, horizonYears, customEvents, currentSavingsInput])
 
