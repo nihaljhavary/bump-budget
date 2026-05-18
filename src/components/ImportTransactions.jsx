@@ -113,6 +113,60 @@ function hasTransferHint(description, type = '') {
   return /\b(transfer|internal transfer|own account|own acc|account transfer|inter-?account|discovery pay|payshap|send money)\b/i.test(text)
 }
 
+// ── Smart XLSX header detection ───────────────────────────────────────────────
+// Many SA bank XLSX exports have metadata rows before the real column headers
+// (e.g. bank name, account number, statement period).  sheet_to_json defaults
+// to ROW 1 as headers, so those metadata values become the object keys —
+// meaning the deterministic parser never finds "date", "description", etc.
+//
+// This function scans up to 20 rows for the first row that contains 2+ known
+// header keywords and re-parses the sheet from that row onward.
+// Falls back to default sheet_to_json when no offset is needed (no cost).
+function parseSheetSmartHeaders(ws, bankHint) {
+  const HEADER_KEYWORDS = [
+    'date', 'description', 'desc', 'narrative', 'details', 'reference', 'beneficiary',
+    'amount', 'debit', 'credit', 'balance', 'transaction', 'type', 'memo', 'remark',
+  ]
+  // Raw 2-D array — no header interpretation yet
+  const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+  if (raw.length === 0) return []
+
+  // Scan up to first 20 rows to find the real header row
+  let headerRowIdx = -1
+  for (let i = 0; i < Math.min(raw.length, 20); i++) {
+    const cellValues = raw[i].map(c => String(c || '').toLowerCase().trim())
+    const matchCount = cellValues.filter(v =>
+      v !== '' && HEADER_KEYWORDS.some(kw => v === kw || v.includes(kw))
+    ).length
+    if (matchCount >= 2) {
+      headerRowIdx = i
+      break
+    }
+  }
+
+  if (headerRowIdx <= 0) {
+    // Row 0 is already the header (or no recognisable header found) — use default path
+    return XLSX.utils.sheet_to_json(ws, { defval: '' })
+  }
+
+  // Found the real header row at a non-zero index — log and rebuild
+  observe.info(DOMAIN.INGESTION, 'Header row shifted — metadata rows detected', {
+    bank: bankHint,
+    headerRowIdx,
+    detectedHeaders: raw[headerRowIdx].map(c => String(c || '').trim()).filter(Boolean),
+    skippedRows: raw.slice(0, headerRowIdx).map(r => r.filter(c => c !== '').join(' | ')),
+  })
+  const headers = raw[headerRowIdx].map(c => String(c || '').trim())
+  return raw
+    .slice(headerRowIdx + 1)
+    .filter(row => row.some(cell => cell !== '' && cell !== null && cell !== undefined))
+    .map(row => {
+      const obj = {}
+      headers.forEach((h, i) => { if (h) obj[h] = row[i] !== undefined ? row[i] : '' })
+      return obj
+    })
+}
+
 // ── Deterministic parser (existing logic — unchanged) ─────────────────────────
 // Returns { txns: [], confidence: 'high'|'low', columns: {} }
 // confidence 'high'  = descCol + amount source found → continue as before
@@ -347,8 +401,13 @@ export default function ImportTransactions({ onImportComplete }) {
         try {
           const wb = XLSX.read(e.target.result, { type: 'array', cellDates: false })
           const ws = wb.Sheets[wb.SheetNames[0]]
-          const rows = XLSX.utils.sheet_to_json(ws, { defval: '' })
-          if (rows.length === 0) { setError('No data found in file'); return }
+          // parseSheetSmartHeaders detects metadata rows that precede the real header row
+          // (common in SA bank XLSX exports — bank name, account number, statement period, etc.)
+          const rows = parseSheetSmartHeaders(ws, bank)
+          observe.info(DOMAIN.INGESTION, 'XLSX parsed', {
+            bank, rowCount: rows.length, headers: rows.length > 0 ? Object.keys(rows[0]) : [],
+          })
+          if (rows.length === 0) { setError('No data found in file — try exporting as CSV or use a different date range.'); return }
 
           // ── Step 1: deterministic parse (fast, no AI cost) ──────────────
           const { txns: deterministicTxns, confidence } = parseRowsDeterministic(rows, bank)
@@ -362,15 +421,18 @@ export default function ImportTransactions({ onImportComplete }) {
           let mappingFound = false
 
           if (confidence === 'low') {
+            const inferHeaders = Object.keys(rows[0])
             observe.info(DOMAIN.INGESTION, 'Parser confidence low — invoking schema inference', {
-              bank, headers: Object.keys(rows[0]), rowCount: rows.length,
+              bank, headers: inferHeaders, rowCount: rows.length,
+              sampleRow: rows[0],
             })
             inferenceAttempted = true
             setInferring(true)
             try {
-              const headers = Object.keys(rows[0])
+              const headers = inferHeaders
               // inferSchema never throws — failures are observed internally and null is returned
               const mapping = await inferSchema(headers, rows, bank)
+              observe.info(DOMAIN.INGESTION, 'Schema inference response', { bank, mapping })
 
               if (mapping) {
                 mappingFound = true
