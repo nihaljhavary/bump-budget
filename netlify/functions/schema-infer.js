@@ -136,14 +136,32 @@ export async function handler(event) {
     }
   }
 
-  // ── Guard: must have at least descCol to be useful ────────────────────────
+  // ── Guard: must have descCol to be useful ────────────────────────────────
   if (!mapping.descCol) {
+    console.log('[schema-infer] No description column identified:', JSON.stringify({ headers, bankHint }))
     return {
       statusCode: 200,
       body: JSON.stringify({ mapping: null, reason: 'Could not identify a description column' }),
     }
   }
 
+  // ── Guard: must have at least one usable amount column ────────────────────
+  // If all amount fields are null (e.g. balance_ledger with no amount column),
+  // extractRows() in the client would return 0 rows — return null now with a
+  // useful reason rather than letting the client silently get 0 rows.
+  const hasAmountCol = !!(mapping.amtCol || mapping.debitCol || mapping.creditCol)
+  if (!hasAmountCol) {
+    const reason = mapping.structureType === 'balance_ledger'
+      ? 'Statement uses a running-balance format — individual transaction amounts could not be identified'
+      : 'Could not identify a transaction amount column'
+    console.log('[schema-infer] No amount column identified:', JSON.stringify({ structureType: mapping.structureType, headers, bankHint }))
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ mapping: null, reason }),
+    }
+  }
+
+  console.log('[schema-infer] Mapping resolved:', JSON.stringify({ descCol: mapping.descCol, amtCol: mapping.amtCol, debitCol: mapping.debitCol, creditCol: mapping.creditCol, structureType: mapping.structureType }))
   return {
     statusCode: 200,
     headers: { 'Content-Type': 'application/json' },

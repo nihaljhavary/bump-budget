@@ -741,3 +741,67 @@ All 4 check suites pass with zero delta:
 2. School fee inflation: `schoolFees_year = base * (1 + 0.08)^yearsIntoEvent` exactly
 3. Children cost inflation: `childCosts_year = base * (1 + 0.07)^yearsIntoEvent` exactly
 4. Optimised path always >= current path in every year (zero-event base case)
+
+---
+
+## AI schema inference fallback — hardened lifecycle (2026-05 debug session)
+
+### What was broken (and why users saw "Couldn't find transaction columns" too early)
+
+The fallback flow was architecturally correct (fallback DID run before the hard-stop), but had four silent failure modes that made it appear as if the hard-stop fired prematurely:
+
+1. **`inferSchema` swallowed all HTTP errors silently** — a 401 (expired session), 404 (function not deployed), or 502 (Claude API error) all returned `null` with no log entry. The outer `catch` block in `handleFile` was never reached because `inferSchema` caught its own errors internally. Result: user always saw the generic "Couldn't find transaction columns" message.
+
+2. **No timeout on the schema-infer fetch** — if the Netlify function cold-started or the Claude API was slow, the `inferring` state would stay `true` indefinitely, leaving the user stuck on "Analysing statement format…".
+
+3. **`schema-infer.js` returned unusable mappings** — if Claude identified a description column but no amount columns (e.g. a balance-ledger style statement), `validateMapping()` passed the mapping through with all amount fields null. `parseWithMapping` → `extractRows` then returned 0 rows silently, hitting the hard-stop with no useful diagnostics.
+
+4. **No distinction in the error message between failure modes** — the same error string appeared whether inference was never attempted, returned null, or returned a mapping that produced 0 rows.
+
+### What was fixed
+
+**`ImportTransactions.jsx` — `inferSchema` function:**
+- Added 30 s `AbortController` timeout — clears in `finally` to prevent leaks
+- On HTTP error (non-2xx): `observe.warn(DOMAIN.INGESTION, 'Schema inference HTTP error', { status, bank })`
+- On null mapping from server: `observe.warn(..., 'Schema inference returned null mapping', { reason, headers })`
+- On timeout: `observe.warn(..., 'Schema inference timed out after 30 s')`
+- On network/fetch error: `observe.warn(..., 'Schema inference fetch error', { error })`
+- Function still never throws — all failures observed internally, `null` returned
+
+**`ImportTransactions.jsx` — `handleFile` Step 2 block:**
+- Added `inferenceAttempted` and `mappingFound` booleans to track fallback outcome
+- When mapping is found but `parseWithMapping` returns 0 rows: `observe.warn` with sample values from the mapped columns (descCol, amtCol, debitCol, creditCol) for debugging
+- The `mapping === null` case is now logged *inside* `inferSchema` (not in the outer catch)
+
+**`ImportTransactions.jsx` — Step 3 hard-stop error message:**
+Three distinct messages based on outcome:
+- `!inferenceAttempted`: "The file appears to have no transaction rows" (parser found columns but data empty)
+- `mappingFound && txns.length === 0`: "The column structure was identified but no transactions could be extracted — amount column may be formatted unexpectedly"
+- `!mappingFound` (inference ran but returned null): "The statement format could not be recognised"
+
+**`schema-infer.js` — amount column guard:**
+After `validateMapping()`, added check: `const hasAmountCol = !!(safe.amtCol || safe.debitCol || safe.creditCol)`.
+If false, returns `{ mapping: null, reason: '...' }` immediately — either "Statement uses a running-balance format" (balance_ledger) or "Could not identify a transaction amount column". This prevents the client from attempting `parseWithMapping` with a mapping that has no amount data.
+
+### Canonical execution lifecycle (post-fix)
+
+```
+Upload file
+  → parseRowsDeterministic()
+    → confidence 'high' + txns.length > 0 → continue to categorisation  [happy path]
+    → confidence 'low' OR txns.length === 0 → schema inference fallback
+        → inferSchema() [30s timeout, full observability]
+            → HTTP error         → observe.warn → mapping = null
+            → null mapping       → observe.warn(reason) → mapping = null
+            → valid mapping      → parseWithMapping() → extractRows()
+                → txns.length > 0  → add auto-detect warning → continue  [fallback success]
+                → txns.length === 0 → observe.warn(sample values) → hard-stop with specific msg
+            → mapping = null     → hard-stop with "format not recognised" msg
+  → integrity validation → categorisation → preview
+```
+
+### What was NOT changed
+- `parseRowsDeterministic`, `extractRows`, `parseWithMapping` — logic unchanged
+- `categoriseWithClaude` / `parse-bulk-transactions.js` — unchanged
+- Ledger, analytics, budgeting, projections, recurring obligations — unchanged
+- Upload success path — existing supported bank uploads unaffected (inference only fires on low confidence)

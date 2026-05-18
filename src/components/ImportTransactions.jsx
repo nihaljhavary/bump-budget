@@ -271,22 +271,46 @@ async function getToken() {
 // ── AI schema inference (called only when deterministic parser has low confidence) ──
 // Sends headers + up to 5 sample rows to schema-infer.js.
 // Returns column mapping or null on failure.
+// Never throws — all failures are observed and null is returned.
 async function inferSchema(headers, sampleRows, bankHint) {
+  // 30 s hard timeout — prevents the spinner hanging on cold-start or slow Claude response
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 30_000)
   try {
     const token = await getToken()
     const res = await fetch('/.netlify/functions/schema-infer', {
       method: 'POST',
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({ headers, sampleRows: sampleRows.slice(0, 5), bankHint }),
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      // Log HTTP-level failures (401 = session expired, 404 = function not deployed, 502 = Claude error)
+      observe.warn(DOMAIN.INGESTION, 'Schema inference HTTP error', { status: res.status, bank: bankHint })
+      return null
+    }
     const data = await res.json()
+    if (!data.mapping) {
+      // Function returned explicitly null — log reason if provided
+      observe.warn(DOMAIN.INGESTION, 'Schema inference returned null mapping', {
+        reason: data.reason || 'no reason provided',
+        bank: bankHint,
+        headers,
+      })
+    }
     return data.mapping || null
-  } catch {
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      observe.warn(DOMAIN.INGESTION, 'Schema inference timed out after 30 s', { bank: bankHint })
+    } else {
+      observe.warn(DOMAIN.INGESTION, 'Schema inference fetch error', { error: err?.message, bank: bankHint })
+    }
     return null
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
 
@@ -333,42 +357,70 @@ export default function ImportTransactions({ onImportComplete }) {
           const extraWarnings = []
 
           // ── Step 2: AI schema inference fallback (only when confidence is low) ──
+          // Track outcome for the error message at Step 3
+          let inferenceAttempted = false
+          let mappingFound = false
+
           if (confidence === 'low') {
             observe.info(DOMAIN.INGESTION, 'Parser confidence low — invoking schema inference', {
               bank, headers: Object.keys(rows[0]), rowCount: rows.length,
             })
+            inferenceAttempted = true
             setInferring(true)
             try {
               const headers = Object.keys(rows[0])
+              // inferSchema never throws — failures are observed internally and null is returned
               const mapping = await inferSchema(headers, rows, bank)
 
               if (mapping) {
+                mappingFound = true
                 txns = parseWithMapping(rows, mapping)
-                observe.info(DOMAIN.INGESTION, 'Schema inference succeeded', {
-                  bank, mapping, inferredRowCount: txns.length,
-                })
                 if (txns.length > 0) {
+                  observe.info(DOMAIN.INGESTION, 'Schema inference succeeded', {
+                    bank, mapping, inferredRowCount: txns.length,
+                  })
                   extraWarnings.push(
                     'Statement format was auto-detected. Please verify the dates, amounts, and descriptions in the preview before importing.'
                   )
+                } else {
+                  // Mapping was returned but extractRows produced nothing — usually means the
+                  // amount column was identified but all values were blank/zero/unparseable.
+                  observe.warn(DOMAIN.INGESTION, 'Schema inference mapping found but no rows extracted', {
+                    bank,
+                    descCol: mapping.descCol,
+                    amtCol: mapping.amtCol,
+                    debitCol: mapping.debitCol,
+                    creditCol: mapping.creditCol,
+                    structureType: mapping.structureType,
+                    sampleValues: rows.slice(0, 3).map(r => ({
+                      desc: r[mapping.descCol],
+                      amt: r[mapping.amtCol],
+                      debit: r[mapping.debitCol],
+                      credit: r[mapping.creditCol],
+                    })),
+                  })
                 }
               }
-            } catch (inferErr) {
-              observe.warn(DOMAIN.INGESTION, 'Schema inference error', { error: inferErr?.message })
-              // Inference failed — fall through to the hard error below
+              // mapping === null is already logged inside inferSchema
             } finally {
               setInferring(false)
             }
           }
 
-          // ── Step 3: hard fail with a helpful message ──────────────────────
+          // ── Step 3: hard fail — only reached after BOTH deterministic and AI paths exhausted ──
           if (txns.length === 0) {
-            setError(
-              "Couldn't find transaction columns. " +
-              (confidence === 'low'
-                ? 'The statement format could not be recognised automatically. Try selecting a different bank, export as CSV from your banking app, or use "Other / Generic".'
-                : 'Try selecting a different bank or use "Other / Generic".')
-            )
+            let msg = "Couldn't read this statement. "
+            if (!inferenceAttempted) {
+              // Parser had high confidence but got 0 rows — column names matched but data was empty
+              msg += 'The file appears to have no transaction rows. Try a different export format or date range.'
+            } else if (mappingFound) {
+              // AI found a schema mapping but still got 0 rows — amount parsing likely failed
+              msg += 'The column structure was identified but no transactions could be extracted — the amount column may be formatted unexpectedly. Try exporting as CSV, or use "Other / Generic" and check your column headers.'
+            } else {
+              // AI fallback also returned no mapping — truly unrecognised format
+              msg += 'The statement format could not be recognised. Try selecting a different bank, exporting as CSV from your banking app, or use "Other / Generic".'
+            }
+            setError(msg)
             return
           }
 
