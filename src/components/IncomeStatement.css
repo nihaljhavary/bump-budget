@@ -23,11 +23,11 @@
 .is-table tr.is-section-head td { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; background: var(--bg-alt); padding: 8px 14px 4px; }
 .is-table tr.is-total td { font-weight: 700; color: var(--text); border-top: 1px solid var(--border); font-size: 14px; }
 .is-table tr.is-subtotal td { font-weight: 600; color: var(--text); border-top: 1px solid var(--border); }
-.is-val.green { color: #1D9E75; }
-.is-val.red { color: #D85A30; }
+.is-val.green { color: var(--green); }
+.is-val.red { color: var(--red); }
 .is-delta { font-size: 11px; }
-.is-delta.up { color: #D85A30; }
-.is-delta.down { color: #1D9E75; }
+.is-delta.up { color: var(--red); }
+.is-delta.down { color: var(--green); }
 
 .is-ai-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-top: 8px; }
 .is-ai-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }

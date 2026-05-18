@@ -519,18 +519,18 @@ export default function Dashboard({ onNavigate }) {
       {/* MOBILE BOTTOM NAV — primary 5-tab navigation for small screens */}
       <nav className="mobile-bottom-nav">
         {[
-          { id: 'overview',      icon: '🏠', label: 'Overview' },
-          { id: 'analytics',     icon: '📊', label: 'Analytics' },
-          { id: 'groceries',     icon: '🛒', label: 'Groceries' },
-          { id: 'budget',        icon: '🧠', label: 'Budget' },
-          { id: 'transactions',  icon: '📋', label: 'Transactions' },
-        ].map(({ id, icon, label }) => (
+          { id: 'overview', label: 'Overview', svg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
+          { id: 'analytics', label: 'Analytics', svg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg> },
+          { id: 'groceries', label: 'Groceries', svg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg> },
+          { id: 'budget', label: 'Budget', svg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
+          { id: 'transactions', label: 'Txns', svg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> },
+        ].map(({ id, svg, label }) => (
           <button
             key={id}
             className={`mbn-item ${tab === id ? 'active' : ''}`}
             onClick={() => setTab(id)}
           >
-            <span className="mbn-icon">{icon}</span>
+            <span className="mbn-icon">{svg}</span>
             <span className="mbn-label">{label}</span>
           </button>
         ))}

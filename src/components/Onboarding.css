@@ -33,7 +33,7 @@
   transition: background 0.3s, width 0.3s;
 }
 .ob-dot.active {
-  background: #D85A30;
+  background: var(--coral);
   width: 24px;
   border-radius: 4px;
 }
@@ -53,7 +53,7 @@
   font-family: 'Syne', sans-serif;
   font-size: 28px;
   font-weight: 800;
-  color: #D85A30;
+  color: var(--coral);
   letter-spacing: -0.5px;
   margin-bottom: 20px;
 }
@@ -63,7 +63,7 @@
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #D85A30;
+  color: var(--coral);
   margin-bottom: 10px;
 }
 
@@ -114,7 +114,7 @@
   color: #C8A882;
 }
 
-.ob-req { color: #D85A30; }
+.ob-req { color: var(--coral); }
 
 .ob-hint {
   font-size: 11.5px;
@@ -137,7 +137,7 @@
 
 .ob-input:focus {
   outline: none;
-  border-color: #D85A30;
+  border-color: var(--coral);
 }
 
 .ob-input-wrap {
@@ -179,7 +179,7 @@
 }
 
 .ob-bank-pill:hover { border-color: #5A3020; color: #F5EDE4; }
-.ob-bank-pill.selected { border-color: #D85A30; background: rgba(216,90,48,0.12); color: #F5EDE4; }
+.ob-bank-pill.selected { border-color: var(--coral); background: rgba(29, 122, 90, 0.10); color: #F5EDE4; }
 
 /* Cashback grid */
 .ob-cashback-grid {
@@ -243,7 +243,7 @@
 
 /* Buttons */
 .ob-btn-primary {
-  background: #D85A30;
+  background: var(--coral);
   color: white;
   border: none;
   border-radius: 12px;
@@ -291,8 +291,8 @@
 
 /* Error */
 .ob-error {
-  background: rgba(216, 90, 48, 0.1);
-  border: 1px solid rgba(216, 90, 48, 0.3);
+  background: rgba(29, 122, 90, 0.08);
+  border: 1px solid rgba(29, 122, 90, 0.22);
   border-radius: 8px;
   padding: 10px 14px;
   font-size: 13px;
@@ -309,7 +309,7 @@
 
 .ob-done-icon {
   font-size: 48px;
-  color: #D85A30;
+  color: var(--coral);
   margin-bottom: 16px;
   animation: ob-pulse 2s ease-in-out infinite;
 }
@@ -352,8 +352,8 @@
 
 /* Usage type selector */
 .ob-usage-option { background: var(--card-bg, #1A1008); border: 1px solid var(--border, #2C1F14); border-radius: 10px; padding: 12px 14px; cursor: pointer; margin-bottom: 8px; transition: border-color 0.15s; }
-.ob-usage-option:hover { border-color: #D85A30; }
-.ob-usage-option.selected { border-color: #D85A30; background: rgba(216,90,48,0.08); }
+.ob-usage-option:hover { border-color: var(--coral); }
+.ob-usage-option.selected { border-color: var(--coral); background: rgba(29, 122, 90, 0.07); }
 .ob-usage-label { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
 .ob-usage-desc { font-size: 12px; color: var(--muted); }
 .ob-hint { font-size: 12px; color: var(--muted); margin: 8px 0 16px; line-height: 1.5; }

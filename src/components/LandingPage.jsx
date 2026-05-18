@@ -36,32 +36,32 @@ const FEATURES = [
 
 const ICONS = {
   lightning: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FF6B6B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
     </svg>
   ),
   bank: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FF6B6B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="10" width="18" height="11" rx="1" /><path d="M3 10l9-7 9 7"/><line x1="12" y1="10" x2="12" y2="21"/>
     </svg>
   ),
   chat: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FF6B6B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>
   ),
   cart: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FF6B6B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
     </svg>
   ),
   chart: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FF6B6B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/>
     </svg>
   ),
   people: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FF6B6B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
     </svg>
   ),
@@ -128,14 +128,14 @@ export default function LandingPage() {
 
       {/* HERO */}
       <section className="lp-hero">
-        <span className="lp-hero-eyebrow">AI-powered budgeting for South Africa</span>
-        <h1>Your money, finally making sense.</h1>
+        <span className="lp-hero-eyebrow">Financial intelligence for South Africa</span>
+        <h1>Your financial manager in your pocket.</h1>
         <p className="lp-hero-sub">
-          Ask questions. Import statements. Track groceries. Book a real consultant.
-          bump. brings everything you need to take control of your finances — in plain English.
+          Import statements, track spending, model your future, and get answers from an AI that
+          understands South African money — all in one calm, intelligent platform.
         </p>
         <div className="lp-hero-actions">
-          <Link to="/auth" className="btn-coral-lg">Get Started Free</Link>
+          <Link to="/auth" className="btn-coral-lg">Get started free</Link>
           <Link to="/auth" className="btn-ghost-lg">Log in</Link>
         </div>
       </section>
@@ -145,7 +145,7 @@ export default function LandingPage() {
       {/* FEATURES */}
       <section className="lp-section">
         <p className="lp-section-label">What bump. does</p>
-        <h2 className="lp-section-title">Everything 22seven doesn&apos;t.</h2>
+        <h2 className="lp-section-title">One platform. Every financial decision.</h2>
         <div className="lp-features-grid">
           {FEATURES.map((f) => (
             <div className="lp-feature-card" key={f.title}>
@@ -186,9 +186,9 @@ export default function LandingPage() {
 
       {/* TAGLINE */}
       <div className="lp-tagline">
-        <h2>Say it. <span className="coral">Send it.</span> Done.</h2>
+        <h2>Built for <span className="coral">South Africa.</span><br />Designed for clarity.</h2>
         <p className="lp-tagline-sub">
-          No spreadsheets. No jargon. Just you, your budget, and an AI that actually understands South African money.
+          No spreadsheets. No jargon. Intelligent financial visibility — built around how South Africans actually earn, spend, and save.
         </p>
         <Link to="/auth" className="btn-coral-lg">Start for free</Link>
       </div>

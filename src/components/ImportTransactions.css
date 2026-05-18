@@ -519,10 +519,9 @@
   color: #16a34a;
   font-size: 1.8rem;
   display: flex;
-  align-items: center;
+align-items: center;
   justify-content: center;
-  margin-bottom: 20px;
-  font-weight: 700;
+  font-size: 1.8rem;
 }
 
 .import-done h2 {

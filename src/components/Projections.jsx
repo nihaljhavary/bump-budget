@@ -184,7 +184,7 @@ function ProjectionChart({ currentPath, optimisedPath, customPath, view }) {
     <svg viewBox={`0 0 ${W} ${H}`} className="proj-svg">
       {minVal < 0 && maxVal > 0 && (
         <line x1={PAD.left} y1={zeroY} x2={W - PAD.right} y2={zeroY}
-          stroke="#D85A30" strokeWidth="0.8" strokeDasharray="3,2" opacity="0.5" />
+          stroke="#DC2626" strokeWidth="0.8" strokeDasharray="3,2" opacity="0.5" />
       )}
       {yTicks.map((t, i) => (
         <g key={i}>
@@ -246,7 +246,7 @@ function YearChart({ models }) {
     <svg viewBox={`0 0 ${W} ${H}`} className="proj-svg">
       {minVal < 0 && maxVal > 0 && (
         <line x1={PAD.left} y1={zeroY} x2={W - PAD.right} y2={zeroY}
-          stroke="#D85A30" strokeWidth="0.8" strokeDasharray="3,2" opacity="0.5" />
+          stroke="#DC2626" strokeWidth="0.8" strokeDasharray="3,2" opacity="0.5" />
       )}
       {yTicks.map((t, i) => (
         <g key={i}>
@@ -278,7 +278,7 @@ function YearChart({ models }) {
 function ScenarioComparisonPanel({ models, horizonYears }) {
   const scenarios = [
     { key: 'current',   label: 'Current Path', color: 'var(--coral)' },
-    { key: 'optimised', label: 'Optimised',    color: '#1D9E75'      },
+    { key: 'optimised', label: 'Optimised',    color: 'var(--green)'      },
     { key: 'custom',    label: 'Custom',        color: '#7F77DD'      },
   ]
 
@@ -351,25 +351,25 @@ function LongTermMetricsPanel({ yearModels, horizonYears, debitOrders, netIncome
     {
       label: `Net worth (${horizonYears}yr)`,
       value: fmtK(nwTarget),
-      color: nwTarget < 0 ? '#D85A30' : '#1D9E75',
+      color: nwTarget < 0 ? 'var(--red)' : 'var(--green)',
       hint: 'current path',
     },
     {
       label: 'Investment growth',
       value: fmtK(cumulGrowth),
-      color: '#1D9E75',
+      color: 'var(--green)',
       hint: `over ${horizonYears} years`,
     },
     {
       label: 'Annual free cash flow',
       value: fmtK(yr1FCF),
-      color: yr1FCF < 0 ? '#D85A30' : 'var(--text)',
+      color: yr1FCF < 0 ? 'var(--red)' : 'var(--text)',
       hint: 'year 1',
     },
     {
       label: 'Obligation burden',
       value: obligationBurden + '%',
-      color: obligationBurden > 65 ? '#D85A30' : obligationBurden > 45 ? '#BA7517' : 'var(--text)',
+      color: obligationBurden > 65 ? 'var(--red)' : obligationBurden > 45 ? '#BA7517' : 'var(--text)',
       hint: 'of net income',
     },
     // Wealth decomposition: how much of net worth came from discipline vs compound growth
@@ -377,25 +377,25 @@ function LongTermMetricsPanel({ yearModels, horizonYears, debitOrders, netIncome
     {
       label: 'From discipline',
       value: fmtK(cumulFCF),
-      color: cumulFCF < 0 ? '#D85A30' : 'var(--text)',
+      color: cumulFCF < 0 ? 'var(--red)' : 'var(--text)',
       hint: `cumulative FCF (${horizonYears}yr)`,
     },
     {
       label: 'From growth',
       value: fmtK(cumulGrowth),
-      color: '#1D9E75',
+      color: 'var(--green)',
       hint: 'compound returns',
     },
     ...(runway !== null ? [{
       label: 'Savings runway',
       value: runway + ' mo',
-      color: runway < 6 ? '#D85A30' : runway < 12 ? '#BA7517' : 'var(--text)',
+      color: runway < 6 ? 'var(--red)' : runway < 12 ? '#BA7517' : 'var(--text)',
       hint: 'at current burn',
     }] : []),
     ...(horizonYears > 5 ? [{
       label: '5yr net worth',
       value: fmtK(yr5NW),
-      color: yr5NW < 0 ? '#D85A30' : 'var(--muted)',
+      color: yr5NW < 0 ? 'var(--red)' : 'var(--muted)',
       hint: 'milestone',
     }] : []),
   ]
@@ -965,7 +965,7 @@ export default function Projections({ recurringMonthly }) {
         </div>
         <div className="proj-chart-legend">
           <span className="proj-legend-dot" style={{ background: 'var(--coral)' }} /> Current
-          <span className="proj-legend-dot" style={{ background: '#1D9E75', marginLeft: 12 }} /> Optimised
+          <span className="proj-legend-dot" style={{ background: 'var(--green)', marginLeft: 12 }} /> Optimised
           {customMonthlyProjection && (
             <span><span className="proj-legend-dot" style={{ background: '#7F77DD', marginLeft: 12 }} /> Custom</span>
           )}
@@ -990,7 +990,7 @@ export default function Projections({ recurringMonthly }) {
         </div>
         <div className="proj-chart-legend">
           <span className="proj-legend-dot" style={{ background: 'var(--coral)' }} /> Current
-          <span className="proj-legend-dot" style={{ background: '#1D9E75', marginLeft: 12 }} /> Optimised
+          <span className="proj-legend-dot" style={{ background: 'var(--green)', marginLeft: 12 }} /> Optimised
           {customEvents.length > 0 && (
             <span><span className="proj-legend-dot" style={{ background: '#7F77DD', marginLeft: 12 }} /> Custom</span>
           )}

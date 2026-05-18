@@ -54,18 +54,19 @@
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 14px;
+  box-shadow: var(--shadow);
 }
 
 .proj-card-highlight {
-  border-color: rgba(29,158,117,0.3);
-  background: rgba(29,158,117,0.05);
+  border-color: rgba(29, 122, 90, 0.25);
+  background: rgba(29, 122, 90, 0.04);
 }
 
-.proj-card-lbl { font-size: 10.5px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+.proj-card-lbl { font-size: 10.5px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 6px; }
 .proj-card-val { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 3px; }
 .proj-card-sub { font-size: 11px; color: var(--muted); }
-.proj-card-val.green { color: #1D9E75; }
-.proj-card-val.red { color: #D85A30; }
+.proj-card-val.green { color: var(--green); }
+.proj-card-val.red { color: var(--red); }
 
 /* Annual strip */
 .proj-annual-strip {
@@ -87,8 +88,8 @@
 
 .proj-annual-lbl { color: var(--muted); }
 .proj-annual-val { font-weight: 600; color: var(--text); }
-.proj-annual-val.green { color: #1D9E75; }
-.proj-annual-val.red { color: #D85A30; }
+.proj-annual-val.green { color: var(--green); }
+.proj-annual-val.red { color: var(--red); }
 
 /* Chart card */
 .proj-chart-card {
@@ -406,7 +407,7 @@
   border-radius: 999px;
   flex-shrink: 0;
 }
-.proj-event-year-badge.income  { background: rgba(29,158,117,0.12); color: #1D9E75; }
+.proj-event-year-badge.income  { background: rgba(29,158,117,0.12); color: var(--green); }
 .proj-event-year-badge.expense { background: rgba(216,90,48,0.10);  color: var(--coral); }
 .proj-event-item-label  { font-size: 12px; color: var(--text);  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
 .proj-event-item-amount { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; }
@@ -506,8 +507,8 @@
   white-space: nowrap;
 }
 .proj-cell-muted  { color: var(--muted); }
-.proj-cell-green  { color: #1D9E75; font-weight: 600; }
-.proj-cell-red    { color: #D85A30; font-weight: 600; }
+.proj-cell-green  { color: var(--green); font-weight: 600; }
+.proj-cell-red    { color: var(--red); font-weight: 600; }
 
 .proj-table-row { border-bottom: 1px solid var(--border); }
 .proj-table-row:last-child { border-bottom: none; }
@@ -615,7 +616,7 @@
   font-weight: 700;
   color: var(--text);
 }
-.proj-compare-metric-value.red { color: #D85A30; }
+.proj-compare-metric-value.red { color: var(--red); }
 
 @media (max-width: 600px) {
   .proj-compare-grid { grid-template-columns: 1fr; gap: 8px; }
@@ -676,12 +677,12 @@
 .proj-ai-prompt-btn.loading { opacity: 0.7; }
 .proj-ai-prompt-error {
   font-size: 11.5px;
-  color: #D85A30;
+  color: var(--red);
   line-height: 1.5;
 }
 .proj-ai-prompt-explanation {
   font-size: 11.5px;
-  color: #1D9E75;
+  color: var(--green);
   line-height: 1.5;
   padding: 6px 8px;
   background: rgba(29,158,117,0.06);
@@ -720,7 +721,7 @@
   align-self: flex-start;
   transition: all 0.15s;
 }
-.proj-events-clear-btn:hover { color: #D85A30; border-color: rgba(216,90,48,0.3); }
+.proj-events-clear-btn:hover { color: var(--red); border-color: rgba(216,90,48,0.3); }
 
 /* ── Extended year table (new granular rows) ────────────────────── */
 .proj-tr-income  { background: rgba(29,158,117,0.02); }
@@ -872,7 +873,7 @@
     content: '';
     display: block;
     height: 2px;
-    background: linear-gradient(90deg, transparent, rgba(216,90,48,0.12), transparent);
+    background: linear-gradient(90deg, transparent, rgba(29, 122, 90, 0.10), transparent);
     margin-top: 4px;
   }
   .proj-longterm-grid { grid-template-columns: repeat(2, 1fr); }

@@ -426,7 +426,7 @@
   font-weight: 800;
 }
 
-.rec-cut-val.red { color: var(--coral); }
+.rec-cut-val.red { color: var(--red); }
 .rec-cut-val.green { color: var(--success); }
 
 .rec-cut-arrow {

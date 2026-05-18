@@ -1,0 +1,86 @@
+/*
+ * ══════════════════════════════════════════════════════
+ * bump. — LEGACY THEME v1 (archived 2026-05-18)
+ * ══════════════════════════════════════════════════════
+ *
+ * This file preserves the original v1 color palette
+ * before the 2026-05 premium branding evolution.
+ *
+ * TO REVERT: Copy the :root block below back into
+ * src/index.css, replacing the current :root block.
+ * Then restore LandingPage.css hardcoded values
+ * from the LANDING PAGE LEGACY section below.
+ *
+ * ══════════════════════════════════════════════════════
+ */
+
+/* ── APP THEME — original v1 palette ── */
+:root {
+  /* Primary accent: bright coral-orange */
+  --coral:        #FF6B6B;
+  --coral-deep:   #E84A4A;
+  --coral-light:  rgba(255, 107, 107, 0.12);
+
+  /* Dark backgrounds (used in old dark-mode references, now removed) */
+  --ember:        #110A08;
+  --ember-surface:#2A1512;
+  --ember-mid:    #1A0C09;
+
+  /* Light backgrounds */
+  --bg:           #FFF2EE;   /* peach white */
+  --bg-alt:       #F5EDE8;   /* peach off-white */
+  --surface:      #FFFFFF;
+  --border:       #EAD8D2;
+  --text:         #1A0600;   /* dark brown */
+  --muted:        #9E8278;   /* warm muted */
+  --dusty-rose:   #C4A49A;
+
+  /* Semantic */
+  --success:      #4ADE80;
+  --success-light:rgba(74, 222, 128, 0.14);
+  --amber:        #F59E0B;
+  --red:          #E84A4A;
+  --red-light:    #FFECEC;
+
+  --radius: 12px;
+  --shadow: 0 1px 4px rgba(26, 6, 0, 0.07);
+
+  /* Aliases */
+  --card:      var(--surface);
+  --accent:    var(--coral);
+  --card-bg:   var(--surface);
+  --hover-bg:  var(--bg-alt);
+  --input-bg:  var(--bg);
+  --green:     #16a34a;
+}
+
+/*
+ * ── LANDING PAGE LEGACY (hardcoded values in LandingPage.css) ──
+ *
+ * .lp background:         #110A08
+ * .lp-nav background:     #110A08
+ * .lp-nav border-bottom:  rgba(255,107,107,0.12)
+ * .lp-nav-logo span:      #FF6B6B
+ * .lp-hero-eyebrow color: #FF6B6B
+ * .lp-feature-card bg:    #2A1512
+ * .lp-feature-card border:#FF6B6B
+ * .lp-section-label:      #FF6B6B
+ * .lp-pricing-card bg:    #2A1512
+ * .lp-pricing-tier:       #FF6B6B
+ * .lp-tagline bg:         #0D0705
+ * .lp-tagline .coral:     #FF6B6B
+ * btn-coral bg:           #FF6B6B
+ * btn-coral-lg bg:        #FF6B6B
+ * muted text:             #C4A49A
+ * SVG stroke in ICONS:    #FF6B6B
+ *
+ * ── LANDING PAGE HERO TEXT — original ──
+ * eyebrow:    "AI-powered budgeting for South Africa"
+ * h1:         "Your money, finally making sense."
+ * sub:        "Ask questions. Import statements. Track groceries. Book a real consultant.
+ *              bump. brings everything you need to take control of your finances — in plain English."
+ * tagline h2: "Say it. <span>Send it.</span> Done."
+ * tagline-sub:"No spreadsheets. No jargon. Just you, your budget, and an AI that actually
+ *              understands South African money."
+ * section-title: "Everything 22seven doesn't."
+ */

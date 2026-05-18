@@ -169,6 +169,35 @@ All components must use only defined CSS variables. Aliases defined in `index.cs
 - `--green` → `#16a34a`
 Never use undefined variable names — they silently fall through to browser defaults.
 
+### Theme evolution — v2 premium palette (2026-05)
+The v1 orange/coral palette was evolved to a premium financial identity. **Original v1 palette is preserved in `src/theme-legacy-v1.css`** — copy that file's `:root` block back into `index.css` to revert.
+
+**Key v2 palette values (index.css):**
+- `--coral: #1D7A5A` — primary accent is now **deep emerald** (was bright coral `#FF6B6B`)
+- `--coral-deep: #155E45` — hover state
+- `--coral-light: rgba(29, 122, 90, 0.09)` — tinted backgrounds
+- `--bg: #F7F4F0` — warm linen (was aggressive peach `#FFF2EE`)
+- `--bg-alt: #EEEAE5` — deeper linen
+- `--border: #E3DDD7` — warm stone border
+- `--text: #1C1714` — deep warm charcoal
+- `--muted: #8A7D76` — warm stone muted
+- `--success: #16A34A` — calm forest green (was neon `#4ADE80`)
+- `--red: #DC2626`, `--red-light: #FEF2F2`
+
+**Landing page (LandingPage.css):** Uses its own dark-mode palette via `:root` override with `--lp-*` variables. Landing accent is `#34D399` (bright emerald on dark) — NOT `var(--coral)`. Background is `#0D110E` (deep charcoal-forest).
+
+**Semantic color rules (critical):**
+- Negative/expense values: always use `var(--red)` — NEVER `var(--coral)` (it was previously abused for both accent and negative states)
+- Positive/income values: always use `var(--green)` or `var(--success)`
+- SVG `stroke`/`fill` attributes cannot use `var()` — use `#DC2626` for red, `#1D9E75` for chart series green
+- Inline React `style` props CAN use `'var(--red)'` syntax
+
+**Mobile bottom nav:** Now uses SVG icons (not emoji). Defined inline in Dashboard.jsx nav array. `mbn-icon` class sized to 20×20px, renders SVG with `currentColor`.
+
+**Card border pattern (v2):** Metric cards use `border-top: 2px solid var(--coral)` (top accent bar). Category cards use plain `border: 1px solid var(--border)` — no colored left border. AI panel uses plain border + `box-shadow: var(--shadow)`.
+
+**CSS file integrity rule:** After any `sed` or Edit-tool modification of CSS files, always run the brace balance check: `python3 -c "css=open('file.css').read(); print(css.count('{'), css.count('}'))"`. Truncation is common. Fix with Python append, not Edit tool.
+
 ### Desktop avatar dropdown: stacking context bug
 On desktop, `.nav` (z-index: 10) and `.tabs` (z-index: 11) are siblings. A `.profile-dropdown` inside `.nav` inherits the nav's stacking context, so it renders BELOW `.tabs` regardless of its own z-index.
 **Fix:** `.nav` must have `z-index: 20` (higher than tabs) in the desktop media query. Dropdown must use `left: 0; right: auto` (not `right: 0`) on desktop because `.avatar-wrap` is only 32px wide — right-anchoring causes the menu to render off-screen to the left. `.avatar-wrap` must be `width: 100%` on desktop so the dropdown has a sensible anchor.
@@ -194,7 +223,7 @@ Both components are self-contained (load their own data). They are embedded as e
 - `Projections` → expandable at the bottom of `Recommendations.jsx` (controlled by `showProjections` state, toggle class `.rec-section-toggle`). Wrapped in `canProjections` tier check — non-growth users see `<LockedFeature>`.
 
 ### Dark-mode CSS rule (session 2026-05)
-`IncomeStatement.css` and `Projections.css` were written for a dark ember theme. They used hardcoded dark colors (`#1A1008`, `#120C07`, `#D4C4B8`) and rgba-white borders (`rgba(255,255,255,0.04)`). All fixed to use CSS variables: `var(--surface)`, `var(--input-bg)`, `var(--border)`, `var(--text)`, `var(--muted)`, `var(--bg-alt)`. Never reintroduce hardcoded dark colors — this app uses a light peach theme only.
+`IncomeStatement.css` and `Projections.css` were written for a dark ember theme. They used hardcoded dark colors (`#1A1008`, `#120C07`, `#D4C4B8`) and rgba-white borders (`rgba(255,255,255,0.04)`). All fixed to use CSS variables: `var(--surface)`, `var(--input-bg)`, `var(--border)`, `var(--text)`, `var(--muted)`, `var(--bg-alt)`. Never reintroduce hardcoded dark colors — the app shell uses a light warm-linen theme only. The dark theme lives exclusively in `LandingPage.css` via `--lp-*` variables.
 
 ### AI prompt design (merchant-aware)
 `buildInsightPrompt` in `_context.js` now instructs the AI to name specific merchants and exact rand amounts. Generic statements ("you spent a lot on dining") are anti-patterns. The context string includes `MERCHANT BREAKDOWN BY CATEGORY` with per-merchant totals for Eating out, Groceries, Entertainment, Clothing, Transport, Health — so the AI can produce outputs like "Uber Eats at R1 200, Vida e Caffe at R800".
