@@ -805,3 +805,139 @@ Upload file
 - `categoriseWithClaude` / `parse-bulk-transactions.js` — unchanged
 - Ledger, analytics, budgeting, projections, recurring obligations — unchanged
 - Upload success path — existing supported bank uploads unaffected (inference only fires on low confidence)
+
+---
+
+## Subscription conversion & trial lifecycle (2026-05 Session)
+
+### Landing page auto-scroll fix
+Root cause: `<SupportChat />` was rendered globally in `App.jsx` (outside all routes), so it mounted on the landing page. Its `useEffect` called `endRef.current?.scrollIntoView()` with the initial welcome message, hijacking the page scroll on load.
+
+**Fix — two parts:**
+1. **Removed `<SupportChat />` from `App.jsx`** — it was redundant there; Dashboard already renders it when the `support` tab is active.
+2. **Added `mountedRef` guard in `SupportChat.jsx`** — the scroll effect now skips the initial render and only fires when new messages are added after mount.
+
+### Upgrade / payment CTA flows — all wired up
+
+All upgrade CTAs previously pointed nowhere (`href="#upgrade"`, "Contact support" dead-ends, LockedFeature overlays with no action). Now all route through a central `UpgradeModal`:
+
+**New: `src/components/UpgradeModal.jsx` + `UpgradeModal.css`**
+- Shows plan cards (Starter / Growth / Pro) with feature lists
+- "Start 30-day free trial →" CTA
+- Flow: server initialises Paystack transaction with `start_date` = 30 days out → client opens PaystackPop via `access_code` (no charge today) → on success, server activates with `trialing` status
+- Simulation-mode guard: when admin is simulating a tier, shows an informational panel instead of opening real checkout
+- Props: `{ isOpen, onClose, defaultPlan, onSuccess, simulating }`
+
+**Wiring in `Dashboard.jsx`:**
+- `openUpgrade(plan)` convenience function sets `upgradePlanHint` + `showUpgradeModal`
+- `UpgradeModal` rendered once in Dashboard, controlled centrally
+- All LockedFeature instances now receive `onUpgrade={openUpgrade}`
+- Tier-nudge "Upgrade from R49/mo" `<a href="#upgrade">` → `<button onClick>` calling `openUpgrade`
+- Transaction locked banner: same fix
+- AccountCentre gets `onUpgrade={(plan) => openUpgrade(plan)}` prop
+
+**Wiring in `AccountCentre.jsx` (SubscriptionSection):**
+- Free-plan upgrade block: replaced "Contact support" dead-end with real plan cards (clickable, each calls `onUpgrade(planId)`) and a "Start 30-day free trial →" primary button
+- Plan cards show Popular badge on Growth (featured)
+- Trial banner: when `sub.isTrialing === true`, shows green alert with `trial_ends_at` date
+- `onUpgrade` threaded: `AccountCentre` → `SubscriptionSection` → plan card clicks / CTA
+
+**Wiring in `LockedFeature.jsx`:**
+- Optional `onUpgrade` prop — when provided, shows "Start free trial →" button inside the lock overlay badge
+
+### 30-day free trial lifecycle
+
+**Flow:** Free → tap Upgrade → select plan → PaystackPop opens (card entry) → no charge today → Pro/Growth/Starter features unlock immediately → first charge in 30 days → auto-billing begins.
+
+**create-subscription.js — new `initialize` action:**
+```
+POST { plan, action: 'initialize', trial: true }
+→ calls Paystack /transaction/initialize with start_date = now + 30 days
+→ returns { access_code, reference, email }
+```
+Client uses `access_code` with `PaystackPop.setup()` — defers first charge to `start_date`.
+
+**Activation (POST { plan, reference, trial: true }):**
+- Sets `subscription_status: 'trialing'`, `trial_ends_at: now + 30 days`
+- Logs `event_type: 'trial_started'` in `subscription_events`
+
+**paystack-webhook.js updates:**
+- `subscription.create`: preserves `trialing` status if already set by create-subscription.js (doesn't overwrite with `active`)
+- `charge.success`: detects `wasTrialing` → clears `trial_ends_at`, sets status `active` (trial → active transition on first real charge)
+
+**Supabase migration:** `supabase/migrations/20260518_add_trial_columns.sql`
+- `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ`
+- Index on `trial_ends_at` for admin queries
+
+### Structured subscription lifecycle states
+
+**New `LIFECYCLE_STATES` export in `TierContext.jsx`:**
+```
+free | trialing | active | downgrade_pending | cancel_pending | payment_failed | expired
+```
+
+**`buildSubscriptionLifecycle()` now returns:**
+- `lifecycleState` — the clean enum value above
+- `isTrialing` — boolean
+- `trialEndsAt` — Date | null
+
+**`effectivePlan` logic extended:**
+```js
+const effectivePlan = (
+  status === 'active' || status === 'trialing' || status === 'payment_failed' ||
+  profile.cancel_at_period_end
+) ? plan : 'free'
+```
+`trialing` and `payment_failed` both preserve feature access.
+
+### Simulation-mode upgrade flow
+
+Admins simulating a tier (via the `bumpSimPlan` localStorage key) see the full upgrade modal UI but real checkout is blocked: `UpgradeModal` checks `simulating` prop and shows an informational panel explaining they're in simulation mode, with guidance to use a test account for the real flow.
+
+### profiles subscription columns (complete list)
+```
+paystack_sub_code      TEXT
+paystack_cust_code     TEXT
+next_billing_date      TIMESTAMPTZ
+billing_cycle_start    TIMESTAMPTZ
+billing_cycle_end      TIMESTAMPTZ
+cancel_at_period_end   BOOLEAN
+scheduled_plan         TEXT
+trial_ends_at          TIMESTAMPTZ   ← NEW (migration 20260518)
+```
+
+### Paystack checkout pattern (canonical, from UpgradeModal)
+```js
+// 1. Server-side init (for trial with start_date)
+POST create-subscription { plan, action: 'initialize', trial: true }
+→ { access_code, reference, email }
+
+// 2. Client opens popup
+const handler = window.PaystackPop.setup({
+  key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY,
+  email, access_code,
+  onSuccess: async (response) => { /* activate with response.reference */ },
+  onCancel: () => { /* return to select */ },
+})
+handler.openIframe()
+
+// 3. Activate
+POST create-subscription { plan, reference: response.reference, trial: true }
+→ sets trialing status, unlocks features
+```
+
+### Files changed (this session)
+- `src/App.jsx` — removed global `<SupportChat />`
+- `src/components/SupportChat.jsx` — mountedRef scroll guard
+- `src/context/TierContext.jsx` — LIFECYCLE_STATES, trialing/payment_failed in effectivePlan, expanded lifecycle object
+- `netlify/functions/create-subscription.js` — `initialize` action, trial activation
+- `netlify/functions/paystack-webhook.js` — trialing preservation, trial→active on charge.success
+- `src/components/UpgradeModal.jsx` — NEW
+- `src/components/UpgradeModal.css` — NEW
+- `src/components/LockedFeature.jsx` — `onUpgrade` prop + button
+- `src/components/LockedFeature.css` — `.locked-upgrade-btn`
+- `src/components/AccountCentre.jsx` — `onUpgrade` prop, real checkout CTAs, trial banner
+- `src/components/AccountCentre.css` — featured plan card styles
+- `src/components/Dashboard.jsx` — `openUpgrade`, UpgradeModal, wired all CTAs
+- `src/components/Dashboard.css` — `.tier-nudge-link` button reset
+- `supabase/migrations/20260518_add_trial_columns.sql` — NEW

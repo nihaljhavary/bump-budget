@@ -55,6 +55,22 @@
   color: #6b7280;
 }
 
+.locked-upgrade-btn {
+  margin-top: 4px;
+  background: var(--coral, #e85d26);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+}
+.locked-upgrade-btn:hover { opacity: 0.88; }
+
 /* Row-level blur — no overlay badge, just a soft mask */
 .locked-row {
   filter: blur(3px);

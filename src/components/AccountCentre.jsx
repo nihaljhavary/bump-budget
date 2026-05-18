@@ -46,7 +46,7 @@ async function apiFetch(path, opts = {}) {
 }
 
 // ── AccountCentre ─────────────────────────────────────────────────────
-export default function AccountCentre({ user, profile, tier, onClose, onNavigate, onDataChange }) {
+export default function AccountCentre({ user, profile, tier, onClose, onNavigate, onDataChange, onUpgrade }) {
   const { updateProfile } = useAuth()
   const [section, setSection] = useState('profile')
 
@@ -76,7 +76,7 @@ export default function AccountCentre({ user, profile, tier, onClose, onNavigate
 
         <div className="acc-body">
           {section === 'profile'      && <ProfileSection user={user} profile={profile} updateProfile={updateProfile} />}
-          {section === 'subscription' && <SubscriptionSection tier={tier} onClose={onClose} onNavigate={onNavigate} />}
+          {section === 'subscription' && <SubscriptionSection tier={tier} onClose={onClose} onNavigate={onNavigate} onUpgrade={onUpgrade} />}
           {section === 'uploads'      && <UploadsSection user={user} onDataChange={onDataChange} />}
           {section === 'export'       && <ExportSection user={user} />}
           {section === 'data'         && <DataSection user={user} onClose={onClose} />}
@@ -154,7 +154,7 @@ function ProfileSection({ user, profile, updateProfile }) {
 }
 
 // ── Subscription Section ────────────────────────────────────────────────────────────
-function SubscriptionSection({ tier, onClose, onNavigate }) {
+function SubscriptionSection({ tier, onClose, onNavigate, onUpgrade }) {
   const [busy,    setBusy]    = useState(false)
   const [msg,     setMsg]     = useState(null)   // { type: 'ok'|'err', text }
   const [confirm, setConfirm] = useState(null)   // 'cancel' | 'downgrade:starter' | 'downgrade:growth'
@@ -165,6 +165,7 @@ function SubscriptionSection({ tier, onClose, onNavigate }) {
   const isDowngrade   = sub.cancelAtPeriodEnd && sub.scheduledTier && sub.scheduledTier !== 'free'
   const isCancel      = sub.cancelAtPeriodEnd && (!sub.scheduledTier || sub.scheduledTier === 'free')
   const hasPending    = isDowngrade || isCancel
+  const isTrialing    = sub.isTrialing === true
 
   const planLabel = {
     free:    'Free',
@@ -198,6 +199,15 @@ function SubscriptionSection({ tier, onClose, onNavigate }) {
         <span className="acc-plan-label">Current plan</span>
         <span className="acc-plan-value">{planLabel[tier.plan] || tier.plan}</span>
       </div>
+
+      {/* Trial banner */}
+      {isTrialing && (
+        <div className="acc-alert ok" style={{ marginBottom: 12 }}>
+          <strong>30-day free trial active</strong>
+          {sub.trialEndsAt ? ` — first payment on ${fmtDate(sub.trialEndsAt)}` : ''}.
+          Cancel anytime before then for no charge.
+        </div>
+      )}
 
       {/* Billing cycle dates */}
       {(sub.billingCycleStart || sub.billingCycleEnd || sub.nextBillingDate) && (
@@ -249,27 +259,38 @@ function SubscriptionSection({ tier, onClose, onNavigate }) {
 
       {msg && <div className={`acc-alert ${msg.type}`}>{msg.text}</div>}
 
-      {/* Free: upgrade */}
+      {/* Free: upgrade — real checkout flow */}
       {!tier.isAdmin && tier.plan === 'free' && (
         <div className="acc-box">
           <p className="acc-box-text">Upgrade to unlock full history, AI analytics, and projections.</p>
           <div className="acc-plan-cards">
             {[
               { id: 'starter', price: 'R49/mo', desc: '90 days history, analytics' },
-              { id: 'growth',  price: 'R99/mo', desc: '1 year history, AI projections' },
+              { id: 'growth',  price: 'R99/mo', desc: '1 year history, AI projections',  featured: true },
               { id: 'pro',     price: 'R199/mo',desc: 'Full history, consultant access' },
             ].map(p => (
-              <div key={p.id} className="acc-plan-card">
+              <div
+                key={p.id}
+                className={`acc-plan-card${p.featured ? ' acc-plan-card--featured' : ''}`}
+                onClick={() => onUpgrade && onUpgrade(p.id)}
+                style={onUpgrade ? { cursor: 'pointer' } : undefined}
+              >
+                {p.featured && <span className="acc-plan-card-badge">Popular</span>}
                 <span className="acc-plan-card-name">{p.id.charAt(0).toUpperCase() + p.id.slice(1)}</span>
                 <span className="acc-plan-card-price">{p.price}</span>
                 <span className="acc-plan-card-desc">{p.desc}</span>
               </div>
             ))}
           </div>
-          <p className="acc-hint">Contact support to upgrade.</p>
-          <button className="acc-primary-btn" onClick={() => { onClose(); onNavigate && onNavigate('support') }}>
-            Contact support
+          <button
+            className="acc-primary-btn"
+            onClick={() => onUpgrade && onUpgrade('growth')}
+          >
+            Start 30-day free trial &rarr;
           </button>
+          <p className="acc-hint" style={{ textAlign: 'center', marginTop: 6 }}>
+            No charge today &middot; cancel anytime &middot; secured by Paystack
+          </p>
         </div>
       )}
 

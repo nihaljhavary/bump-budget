@@ -282,6 +282,13 @@
 .acc-plan-card-name  { font-size: 0.78rem; font-weight: 700; color: var(--text); }
 .acc-plan-card-price { font-size: 0.75rem; font-weight: 600; color: var(--coral); }
 .acc-plan-card-desc  { font-size: 0.68rem; color: var(--muted); line-height: 1.4; margin-top: 2px; }
+.acc-plan-card--featured { border-color: var(--coral); background: color-mix(in srgb, var(--coral) 5%, var(--surface)); }
+.acc-plan-card:hover { border-color: var(--coral); }
+.acc-plan-card-badge {
+  font-size: 0.62rem; font-weight: 700; color: var(--coral);
+  background: color-mix(in srgb, var(--coral) 12%, transparent);
+  padding: 1px 7px; border-radius: 10px; margin-bottom: 2px;
+}
 .acc-manage-row {
   display: flex;
   align-items: center;

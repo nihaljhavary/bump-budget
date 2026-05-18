@@ -16,8 +16,14 @@ export default function SupportChat() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const endRef = useRef(null)
+  // Guard: don't scroll on the very first render (initial welcome message).
+  // Only scroll when the user or bot adds a new message after mount.
+  const mountedRef = useRef(false)
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  useEffect(() => {
+    if (!mountedRef.current) { mountedRef.current = true; return }
+    endRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
   async function send(text) {
     const q = (text || input).trim()

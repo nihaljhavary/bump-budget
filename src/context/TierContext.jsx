@@ -42,6 +42,27 @@ const TierContext = createContext({})
  * @param {Object} profile
  * @returns {Object} subscription lifecycle object
  */
+/**
+ * Structured lifecycle states — use these for UI decisions, not raw status strings.
+ *
+ * 'free'               — no paid plan
+ * 'trialing'           — paid plan, within 30-day free trial (no billing yet)
+ * 'active'             — paid plan, billing active
+ * 'downgrade_pending'  — paid plan, downgrade scheduled at period end
+ * 'cancel_pending'     — paid plan, cancellation scheduled at period end (access until then)
+ * 'payment_failed'     — billing failed, access at risk
+ * 'expired'            — plan ended (post-cancel or trial ended without payment)
+ */
+export const LIFECYCLE_STATES = {
+  FREE:              'free',
+  TRIALING:          'trialing',
+  ACTIVE:            'active',
+  DOWNGRADE_PENDING: 'downgrade_pending',
+  CANCEL_PENDING:    'cancel_pending',
+  PAYMENT_FAILED:    'payment_failed',
+  EXPIRED:           'expired',
+}
+
 function buildSubscriptionLifecycle(profile) {
   if (!profile) return buildEmptyLifecycle()
 
@@ -52,6 +73,24 @@ function buildSubscriptionLifecycle(profile) {
   const nextBillingDate    = profile.next_billing_date    ? new Date(profile.next_billing_date)    : null
   const cancelAtPeriodEnd  = profile.cancel_at_period_end === true
   const scheduledTier      = profile.scheduled_plan || null   // plan that applies at next cycle
+  const trialEndsAt        = profile.trial_ends_at         ? new Date(profile.trial_ends_at)         : null
+  const rawStatus          = profile.subscription_status  || 'active'
+  const isTrialing         = rawStatus === 'trialing'
+
+  // Derive a clean lifecycle state
+  const isDowngrade  = cancelAtPeriodEnd && scheduledTier && scheduledTier !== 'free'
+  const isCancelPend = cancelAtPeriodEnd && (!scheduledTier || scheduledTier === 'free')
+
+  let lifecycleState = LIFECYCLE_STATES.FREE
+  const plan = profile.subscription_plan || 'free'
+  if (plan !== 'free') {
+    if (isTrialing)                         lifecycleState = LIFECYCLE_STATES.TRIALING
+    else if (rawStatus === 'payment_failed') lifecycleState = LIFECYCLE_STATES.PAYMENT_FAILED
+    else if (rawStatus === 'cancelled')     lifecycleState = LIFECYCLE_STATES.EXPIRED
+    else if (isDowngrade)                   lifecycleState = LIFECYCLE_STATES.DOWNGRADE_PENDING
+    else if (isCancelPend)                  lifecycleState = LIFECYCLE_STATES.CANCEL_PENDING
+    else                                    lifecycleState = LIFECYCLE_STATES.ACTIVE
+  }
 
   return {
     billingCycleStart,
@@ -59,6 +98,9 @@ function buildSubscriptionLifecycle(profile) {
     nextBillingDate,
     cancelAtPeriodEnd,
     scheduledTier,
+    trialEndsAt,
+    isTrialing,
+    lifecycleState,
     // Is a downgrade or cancellation scheduled?
     hasPendingChange: cancelAtPeriodEnd || (scheduledTier !== null && scheduledTier !== profile?.subscription_plan),
     // Human-readable renewal or end date
@@ -73,6 +115,9 @@ function buildEmptyLifecycle() {
     nextBillingDate:    null,
     cancelAtPeriodEnd:  false,
     scheduledTier:      null,
+    trialEndsAt:        null,
+    isTrialing:         false,
+    lifecycleState:     LIFECYCLE_STATES.FREE,
     hasPendingChange:   false,
     renewalDate:        null,
   }
@@ -117,8 +162,15 @@ export function TierProvider({ children }) {
 
     const plan   = profile.subscription_plan   || 'free'
     const status = profile.subscription_status || 'active'
-    // cancelAtPeriodEnd: keep current plan active until cycle ends
-    const effectivePlan = (status === 'active' || profile.cancel_at_period_end) ? plan : 'free'
+    // cancelAtPeriodEnd: keep current plan active until cycle ends.
+    // trialing: user is within their free trial — features fully unlocked.
+    // payment_failed: keep access briefly while Paystack retries billing.
+    const effectivePlan = (
+      status === 'active' ||
+      status === 'trialing' ||
+      status === 'payment_failed' ||
+      profile.cancel_at_period_end
+    ) ? plan : 'free'
 
     return {
       ...buildTier(effectivePlan, false),

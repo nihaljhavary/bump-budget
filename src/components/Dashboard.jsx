@@ -20,6 +20,7 @@ import LockedFeature, { LockedRow } from './LockedFeature'
 import IncomeStatement from './IncomeStatement'
 import SupportChat from './SupportChat'
 import FAQ from './FAQ'
+import UpgradeModal from './UpgradeModal'
 import './Dashboard.css'
 
 // Default budget fallbacks — used when user hasn't set budgets in Analytics yet.
@@ -74,6 +75,15 @@ export default function Dashboard({ onNavigate }) {
   const [aiBudgets, setAiBudgets] = useState({})
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [showAccountCentre, setShowAccountCentre] = useState(false)
+  // Upgrade modal — opened by tier nudge, locked feature overlays, and Account Centre
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false)
+  const [upgradePlanHint,  setUpgradePlanHint]  = useState('growth')
+
+  // Convenience: open upgrade modal targeting a specific plan
+  const openUpgrade = (plan = 'growth') => {
+    setUpgradePlanHint(plan)
+    setShowUpgradeModal(true)
+  }
   // Real user-set budgets from Supabase (set in the Analytics tab).
   // Overrides DEFAULT_BUDGETS for the category cards in Overview.
   const [userBudgets, setUserBudgets] = useState(DEFAULT_BUDGETS)
@@ -839,7 +849,7 @@ export default function Dashboard({ onNavigate }) {
           </div>
 
           {/* Book a Consultation CTA — Pro only */}
-          <LockedFeature locked={!tier.canConsult} feature="consult" label="Upgrade to Pro — R199/mo">
+          <LockedFeature locked={!tier.canConsult} feature="consult" label="Upgrade to Pro — R199/mo" onUpgrade={openUpgrade}>
             <button className="book-consult-btn" onClick={() => onNavigate('book-consult')}>
               Book a financial consultation
             </button>
@@ -848,7 +858,11 @@ export default function Dashboard({ onNavigate }) {
           {/* Tier upgrade nudge for free users */}
           {!tier.isAdmin && tier.plan === 'free' && (
             <div className="tier-nudge">
-              🚀 <strong>Free plan:</strong> showing last 30 days. <a href="#upgrade" className="tier-nudge-link">Upgrade from R49/mo</a> for full history, bump. insights & more.
+              🚀 <strong>Free plan:</strong> showing last 30 days.{' '}
+              <button className="tier-nudge-link" onClick={() => openUpgrade('starter')}>
+                Start free trial from R49/mo
+              </button>{' '}
+              for full history, bump. insights & more.
             </div>
           )}
 
@@ -867,7 +881,7 @@ export default function Dashboard({ onNavigate }) {
         tier.canAnalytics
           ? <Analytics preferDeclared={excludeSalary} />
           : <div className="tab-body">
-              <LockedFeature locked feature="analytics">
+              <LockedFeature locked feature="analytics" onUpgrade={openUpgrade}>
                 <div className="locked-placeholder">
                   <div className="locked-placeholder-title">Spend analytics</div>
                   <p className="locked-placeholder-sub">Detailed category breakdowns, trends and spending patterns over your full history.</p>
@@ -881,7 +895,7 @@ export default function Dashboard({ onNavigate }) {
         <div className="tab-body">
           {tier.canProjections
             ? <Projections />
-            : <LockedFeature locked feature="projections">
+            : <LockedFeature locked feature="projections" onUpgrade={openUpgrade}>
                 <div className="locked-placeholder">
                   <div className="locked-placeholder-title">Financial projections</div>
                   <p className="locked-placeholder-sub">Model your savings, debt payoff and investment growth over 1, 5 or 10 years.</p>
@@ -896,7 +910,7 @@ export default function Dashboard({ onNavigate }) {
         <div className="tab-body">
           {tier.canGroceries
             ? <GroceryComparison />
-            : <LockedFeature locked feature="groceries">
+            : <LockedFeature locked feature="groceries" onUpgrade={openUpgrade}>
                 <div className="locked-placeholder">
                   <div className="locked-placeholder-title">Grocery price comparison</div>
                   <p className="locked-placeholder-sub">See whether Checkers, Pick n Pay, Woolworths or Shoprite is cheaper for your actual shopping list.</p>
@@ -1034,7 +1048,10 @@ export default function Dashboard({ onNavigate }) {
               {hasLockedTransactions && (
                 <div className="txn-locked-banner">
                   🔒 Older transactions are hidden on your current plan.{' '}
-                  <strong>Upgrade from {PLAN_PRICES['starter']}</strong> to unlock your full history.
+                  <button className="tier-nudge-link" onClick={() => openUpgrade('starter')}>
+                    Start free trial from {PLAN_PRICES['starter']}
+                  </button>{' '}
+                  to unlock your full history.
                 </div>
               )}
             </>
@@ -1066,7 +1083,26 @@ export default function Dashboard({ onNavigate }) {
           }}
         />
       )}
-    {showAccountCentre && <AccountCentre user={user} profile={profile} tier={tier} onClose={() => setShowAccountCentre(false)} onNavigate={onNavigate} onDataChange={() => { loadTransactions(); setImportSignal(s => s + 1) }} />}
+    {showAccountCentre && (
+      <AccountCentre
+        user={user}
+        profile={profile}
+        tier={tier}
+        onClose={() => setShowAccountCentre(false)}
+        onNavigate={onNavigate}
+        onDataChange={() => { loadTransactions(); setImportSignal(s => s + 1) }}
+        onUpgrade={(plan) => { setShowAccountCentre(false); openUpgrade(plan) }}
+      />
+    )}
+
+    {/* Upgrade / Trial modal — controlled centrally by Dashboard */}
+    <UpgradeModal
+      isOpen={showUpgradeModal}
+      onClose={() => setShowUpgradeModal(false)}
+      defaultPlan={upgradePlanHint}
+      simulating={tier.simulating}
+      onSuccess={() => setShowUpgradeModal(false)}
+    />
 
       {/* PRIVACY */}
       {tab === 'privacy' && (

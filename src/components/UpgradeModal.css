@@ -1,0 +1,302 @@
+/* UpgradeModal.css — Upgrade / trial checkout modal */
+
+.upm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  padding: 16px;
+}
+
+.upm-modal {
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+  padding: 32px 28px 28px;
+  width: 100%;
+  max-width: 680px;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+}
+
+.upm-close {
+  position: absolute;
+  top: 16px;
+  right: 18px;
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+.upm-close:hover { background: var(--hover-bg); }
+
+/* ── Header ── */
+.upm-header { margin-bottom: 20px; }
+
+.upm-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 8px;
+}
+
+.upm-subtitle {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── Plan cards ── */
+.upm-plans {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 600px) {
+  .upm-plans { grid-template-columns: 1fr; }
+}
+
+.upm-plan-card {
+  position: relative;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+}
+
+.upm-plan-card:hover {
+  border-color: var(--coral);
+  box-shadow: 0 2px 12px rgba(232, 93, 38, 0.08);
+}
+
+.upm-plan-card.selected {
+  border-color: var(--coral);
+  background: color-mix(in srgb, var(--coral) 6%, var(--surface));
+  box-shadow: 0 2px 16px rgba(232, 93, 38, 0.12);
+}
+
+.upm-plan-card.featured {
+  border-color: var(--coral);
+}
+
+.upm-plan-badge {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--coral);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+  letter-spacing: 0.03em;
+}
+
+.upm-plan-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+
+.upm-plan-label {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text);
+}
+
+.upm-plan-price {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--coral);
+}
+
+.upm-plan-suffix {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.upm-plan-tagline {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.upm-plan-features {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.upm-plan-features li {
+  font-size: 12px;
+  color: var(--text);
+  padding: 2px 0 2px 16px;
+  position: relative;
+  line-height: 1.4;
+}
+
+.upm-plan-features li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: var(--coral);
+  font-weight: 700;
+  font-size: 11px;
+}
+
+/* ── CTA ── */
+.upm-cta-wrap {
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.upm-btn-primary {
+  background: var(--coral);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 24px;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  font-family: inherit;
+}
+
+.upm-btn-primary:hover { opacity: 0.88; }
+.upm-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.upm-btn-lg {
+  padding: 14px 32px;
+  font-size: 16px;
+  border-radius: 12px;
+}
+
+.upm-cta-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.upm-trust {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ── Processing state ── */
+.upm-processing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 40px 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.upm-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--coral);
+  border-radius: 50%;
+  animation: upm-spin 0.7s linear infinite;
+}
+
+@keyframes upm-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Success state ── */
+.upm-success {
+  text-align: center;
+  padding: 32px 0;
+}
+
+.upm-success-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.upm-success h3 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 12px;
+}
+
+.upm-success p {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── Error state ── */
+.upm-error-view {
+  text-align: center;
+  padding: 32px 0;
+}
+
+.upm-error-icon { font-size: 40px; margin-bottom: 12px; }
+
+.upm-error-msg {
+  font-size: 14px;
+  color: #dc2626;
+  margin: 0 0 20px;
+  line-height: 1.5;
+}
+
+/* ── Simulation notice ── */
+.upm-sim-notice {
+  text-align: center;
+  padding: 24px 0;
+}
+
+.upm-sim-icon { font-size: 40px; margin-bottom: 12px; }
+
+.upm-sim-notice h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 12px;
+}
+
+.upm-sim-notice p {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+
+.upm-sim-hint {
+  font-size: 13px;
+  background: var(--hover-bg);
+  border-radius: 8px;
+  padding: 10px 14px;
+  text-align: left;
+  margin: 0 0 20px !important;
+}

@@ -9,9 +9,11 @@ import { PLAN_PRICES, FEATURE_UNLOCKED_BY } from '../context/TierContext'
  *  feature     – string key from FEATURE_UNLOCKED_BY (for upgrade copy)
  *  label       – override the lock label text
  *  blurOnly    – if true, just blurs without showing children (for row-level blur)
+ *  onUpgrade   – optional fn(plan) — called when user taps the upgrade button.
+ *                When not provided, the lock is display-only (no action).
  *  children    – the feature UI to show/blur
  */
-export default function LockedFeature({ locked, feature, label, blurOnly = false, children }) {
+export default function LockedFeature({ locked, feature, label, blurOnly = false, onUpgrade, children }) {
   if (!locked) return children
 
   const requiredPlan = feature ? FEATURE_UNLOCKED_BY[feature] : 'starter'
@@ -30,6 +32,14 @@ export default function LockedFeature({ locked, feature, label, blurOnly = false
           <span className="locked-icon">🔒</span>
           <span className="locked-label">{label || `Upgrade to ${planLabel}`}</span>
           <span className="locked-price">from {price}</span>
+          {onUpgrade && (
+            <button
+              className="locked-upgrade-btn"
+              onClick={() => onUpgrade(requiredPlan)}
+            >
+              Start free trial &rarr;
+            </button>
+          )}
         </div>
       </div>
     </div>

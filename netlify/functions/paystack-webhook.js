@@ -72,14 +72,14 @@ export async function handler(event) {
     return { statusCode: 200, body: 'User not found, skipping' }
   }
 
-  const userId = authUser.id
+  const userId  = authUser.id
   const planCode = data?.plan?.plan_code || data?.plan_code || ''
   const planName = data?.plan?.name || ''
-  const plan = planFromPaystack(planName, planCode)
-  const subCode = data?.subscription_code || data?.data?.subscription_code || null
+  const plan     = planFromPaystack(planName, planCode)
+  const subCode  = data?.subscription_code || data?.data?.subscription_code || null
   const custCode = data?.customer?.customer_code || null
   const reference = data?.reference || null
-  const amount = data?.amount || 0
+  const amount   = data?.amount || 0
 
   // Log the event
   await adminClient.from('subscription_events').insert({
@@ -95,14 +95,25 @@ export async function handler(event) {
   switch (eventType) {
 
     case 'subscription.create': {
-      // New subscription — activate immediately
+      // New subscription created by Paystack.
+      // If create-subscription.js already set status to 'trialing' (deferred start_date),
+      // preserve that status — do not overwrite with 'active'.
       const nextDate = data?.next_payment_date
         ? new Date(data.next_payment_date).toISOString()
         : null
 
+      // Read current status to avoid overwriting a 'trialing' status
+      const { data: currentProfile } = await adminClient
+        .from('profiles')
+        .select('subscription_status, trial_ends_at')
+        .eq('id', userId)
+        .single()
+
+      const isAlreadyTrialing = currentProfile?.subscription_status === 'trialing'
+
       await adminClient.from('profiles').update({
         subscription_plan:   plan,
-        subscription_status: 'active',
+        subscription_status: isAlreadyTrialing ? 'trialing' : 'active',
         paystack_sub_code:   subCode,
         paystack_cust_code:  custCode,
         next_billing_date:   nextDate,
@@ -111,32 +122,44 @@ export async function handler(event) {
     }
 
     case 'charge.success': {
-      // Recurring payment received — keep active, update billing date
+      // Recurring payment received — keep active, update billing date.
+      // Also transitions trialing → active when the first real charge fires after trial ends.
       const nextDate = data?.paid_at
         ? new Date(new Date(data.paid_at).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
         : null
 
-      await adminClient.from('profiles').update({
+      // Detect trial → active transition
+      const { data: currentProfile } = await adminClient
+        .from('profiles')
+        .select('subscription_status')
+        .eq('id', userId)
+        .single()
+      const wasTrialing = currentProfile?.subscription_status === 'trialing'
+
+      const chargeUpdates = {
         subscription_status: 'active',
         subscription_plan:   plan || undefined,
         next_billing_date:   nextDate,
-      }).eq('id', userId)
+      }
+      // Clear trial column when transitioning out of trial
+      if (wasTrialing) chargeUpdates.trial_ends_at = null
+
+      await adminClient.from('profiles').update(chargeUpdates).eq('id', userId)
       break
     }
 
     case 'invoice.payment_failed': {
-      // Payment failed — downgrade to free
+      // Payment failed — mark as payment_failed (TierContext keeps access briefly)
       await adminClient.from('profiles').update({
         subscription_status: 'payment_failed',
-        subscription_plan:   'free',
       }).eq('id', userId)
       break
     }
 
     case 'subscription.disable':
     case 'subscription.not_renew': {
-      // Cancelled or not renewing — apply scheduled_plan if set, otherwise free
-      // scheduled_plan is written by manage-subscription.js when a user downgrades
+      // Cancelled or not renewing — apply scheduled_plan if set, otherwise free.
+      // scheduled_plan is written by manage-subscription.js when a user downgrades.
       const { data: profileRow } = await adminClient
         .from('profiles')
         .select('scheduled_plan')
