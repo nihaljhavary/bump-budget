@@ -31,49 +31,80 @@ function ResetPassword({ onDone }) {
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
 
+  function validatePassword(pwd) {
+    if (pwd.length < 8)            return 'At least 8 characters required'
+    if (!/[A-Z]/.test(pwd))        return 'Must include an uppercase letter'
+    if (!/[a-z]/.test(pwd))        return 'Must include a lowercase letter'
+    if (!/[0-9]/.test(pwd))        return 'Must include a number'
+    if (!/[^A-Za-z0-9]/.test(pwd)) return 'Must include a special character'
+    return null
+  }
+
+  function pwdRules(pwd) {
+    return [
+      { ok: pwd.length >= 8,           label: '8+ characters' },
+      { ok: /[A-Z]/.test(pwd),         label: 'Uppercase' },
+      { ok: /[a-z]/.test(pwd),         label: 'Lowercase' },
+      { ok: /[0-9]/.test(pwd),         label: 'Number' },
+      { ok: /[^A-Za-z0-9]/.test(pwd),  label: 'Special character' },
+    ]
+  }
+
   async function handleReset() {
-    if (!password || password.length < 6) { setError('Password must be at least 6 characters'); return }
+    const err = validatePassword(password)
+    if (err) { setError(err); return }
     if (password !== confirm) { setError('Passwords do not match'); return }
     setSubmitting(true); setError('')
-    const { error: err } = await supabase.auth.updateUser({ password })
-    if (err) { setError(err.message); setSubmitting(false); return }
+    const { error: supaErr } = await supabase.auth.updateUser({ password })
+    if (supaErr) { setError(supaErr.message); setSubmitting(false); return }
     setDone(true)
     setTimeout(onDone, 1500)
   }
 
-  const inputStyle = {
-    width: '100%', boxSizing: 'border-box', padding: '10px 12px',
-    background: '#231816', border: '1px solid #3a2e2a', borderRadius: 8,
-    color: '#e8d5c4', fontSize: 14, outline: 'none',
+  const s = {
+    shell:   { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg)', fontFamily: 'DM Sans, sans-serif' },
+    card:    { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: '40px 32px', width: 360, boxShadow: 'var(--shadow)' },
+    logo:    { fontSize: 24, fontWeight: 700, color: 'var(--text)', marginBottom: 16, fontFamily: 'Syne, sans-serif' },
+    logoDot: { color: 'var(--coral)' },
+    h2:      { color: 'var(--text)', fontSize: 18, marginTop: 0, marginBottom: 8 },
+    sub:     { color: 'var(--muted)', fontSize: 14, marginBottom: 24 },
+    input:   { width: '100%', boxSizing: 'border-box', padding: '11px 14px', background: 'var(--bg)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontSize: 14, outline: 'none', fontFamily: 'DM Sans, sans-serif' },
+    err:     { color: 'var(--red)', fontSize: 13, marginBottom: 12, background: 'var(--red-light)', padding: '8px 12px', borderRadius: 8 },
+    rules:   { display: 'flex', flexWrap: 'wrap', gap: '4px 10px', margin: '6px 0 14px', padding: '0 2px' },
+    btn:     { width: '100%', padding: '12px', background: 'var(--coral)', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' },
+    ok:      { color: 'var(--success)', fontSize: 15, textAlign: 'center' },
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#110A08' }}>
-      <div style={{ background: '#1a1210', borderRadius: 16, padding: '40px 32px', width: 360, fontFamily: 'DM Sans, sans-serif' }}>
-        <div style={{ fontSize: 24, fontWeight: 700, color: '#e8d5c4', marginBottom: 16 }}>
-          bump<span style={{ color: '#e85d26' }}>.</span>
-        </div>
-        <h2 style={{ color: '#e8d5c4', fontSize: 18, marginTop: 0, marginBottom: 8 }}>Set new password</h2>
-        <p style={{ color: '#999', fontSize: 14, marginBottom: 24 }}>Choose a new password for your account.</p>
+    <div style={s.shell}>
+      <div style={s.card}>
+        <div style={s.logo}>bump<span style={s.logoDot}>.</span></div>
+        <h2 style={s.h2}>Set new password</h2>
+        <p style={s.sub}>Choose a strong password for your account.</p>
         {done ? (
-          <p style={{ color: '#4ade80', textAlign: 'center', fontSize: 15 }}>Password updated. Taking you in...</p>
+          <p style={s.ok}>Password updated. Taking you in...</p>
         ) : (
           <>
-            {error && <div style={{ color: '#e85d26', fontSize: 13, marginBottom: 12 }}>{error}</div>}
-            <div style={{ marginBottom: 12 }}>
-              <input type="password" placeholder="New password (6+ chars)" value={password}
-                onChange={e => setPassword(e.target.value)} style={inputStyle} />
+            {error && <div style={s.err}>{error}</div>}
+            <div style={{ marginBottom: 4 }}>
+              <input type="password" placeholder="New password" value={password}
+                onChange={e => setPassword(e.target.value)} style={s.input} />
             </div>
+            {password.length > 0 && (
+              <div style={s.rules}>
+                {pwdRules(password).map(r => (
+                  <span key={r.label} style={{ fontSize: 12, color: r.ok ? 'var(--success)' : 'var(--muted)', fontWeight: r.ok ? 600 : 400 }}>
+                    {r.ok ? '✓' : '·'} {r.label}
+                  </span>
+                ))}
+              </div>
+            )}
             <div style={{ marginBottom: 20 }}>
               <input type="password" placeholder="Confirm new password" value={confirm}
                 onChange={e => setConfirm(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleReset()} style={inputStyle} />
+                onKeyDown={e => e.key === 'Enter' && handleReset()} style={s.input} />
             </div>
-            <button onClick={handleReset} disabled={submitting} style={{
-              width: '100%', padding: '12px', background: '#e85d26', border: 'none',
-              borderRadius: 8, color: '#fff', fontWeight: 600, fontSize: 15,
-              cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.7 : 1,
-            }}>
+            <button onClick={handleReset} disabled={submitting} style={{ ...s.btn, opacity: submitting ? 0.65 : 1 }}>
               {submitting ? 'Updating...' : 'Update password'}
             </button>
           </>

@@ -313,3 +313,28 @@
   flex-shrink: 0;
   cursor: pointer;
 }
+
+/* ── Password strength rules ── */
+.auth-pwd-rules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 8px;
+  padding: 0 2px;
+}
+.auth-pwd-rule {
+  font-size: 0.73rem;
+  color: var(--muted);
+  transition: color 0.2s;
+}
+.auth-pwd-rule.ok {
+  color: var(--success);
+  font-weight: 600;
+}
+
+/* ── Fix focus ring to use v3 coral rgba ── */
+.auth-input:focus {
+  border-color: var(--coral);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px rgba(192, 118, 107, 0.12);
+}

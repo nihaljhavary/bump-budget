@@ -131,6 +131,15 @@ export default function Recommendations({ onImportSignal = 0 }) {
   const [fixedMonthly, setFixedMonthly] = useState(0)
   const [showProjections, setShowProjections] = useState(false)
   const [needsReanalysis, setNeedsReanalysis] = useState(false)
+  // hydrated: true once Supabase profile has been checked. Fast-path: true if LS already has a result.
+  const [hydrated, setHydrated] = useState(() => {
+    try {
+      if (!user?.id) return false
+      const raw = localStorage.getItem(LS_KEY(user.id))
+      if (!raw) return false
+      return !!(JSON.parse(raw)?.result)
+    } catch { return false }
+  })
   const { canProjections } = useTier()
 
   // Ref so import-signal effect can check result without adding it to deps
@@ -195,7 +204,7 @@ export default function Recommendations({ onImportSignal = 0 }) {
   useEffect(() => {
     if (!user?.id) return
     const saved = loadSaved(user.id)
-    if (!saved) return
+    if (!saved?.result) return  // guard: only restore if result is present
     setAnswers(saved.answers || {})
     setResult(saved.result)
     setStep('results')
@@ -206,9 +215,8 @@ export default function Recommendations({ onImportSignal = 0 }) {
     if (gDate) setGoalsDate(new Date(gDate))
   }, [user?.id])
 
-  // Supabase hydration -- fires when profile.planning_profile is available.
-  // Resolves cross-device sync: Supabase wins if its timestamp is newer than localStorage.
-  // Also silently pushes localStorage data to Supabase for devices that had pre-existing answers.
+  // Supabase hydration -- fires when profile loads (authoritative cross-device sync).
+  // Sets hydrated=true so UI knows it can gate correctly on planning_completed.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!user?.id || !profile) return
@@ -233,7 +241,7 @@ export default function Recommendations({ onImportSignal = 0 }) {
     } else if (lsTs > dbTs && lsData?.result) {
       // localStorage has newer data -- silently push to Supabase (new-column bootstrap)
       supabase.from('profiles')
-        .upsert({ id: user.id, planning_profile: {
+        .upsert({ id: user.id, planning_completed: true, planning_profile: {
           answers:          lsData.answers,
           result:           lsData.result,
           answersUpdatedAt: lsData.answersUpdatedAt || lsTs,
@@ -241,7 +249,8 @@ export default function Recommendations({ onImportSignal = 0 }) {
         }}, { onConflict: 'id' })
         .catch(() => {})
     }
-  }, [user?.id, profile?.planning_profile])  // eslint-disable-line react-hooks/exhaustive-deps
+    setHydrated(true)  // hydration complete
+  }, [user?.id, profile?.planning_profile, profile?.planning_completed])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pre-fill income + savings goal from profile if not already set by user
   useEffect(() => {
@@ -336,9 +345,9 @@ export default function Recommendations({ onImportSignal = 0 }) {
       setAnalysisDate(new Date(now))
       if (isNewGoals) setGoalsDate(new Date(now))
       persist(user?.id, finalAnswers, d.result, { answersUpdatedAt, analysisRunAt: now })
-      // Also sync to Supabase for cross-device persistence (fire-and-forget, no profile refetch)
+      // Sync to Supabase: planning_completed is the canonical flag — saved even if content sync fails.
       supabase.from('profiles')
-        .upsert({ id: user.id, planning_profile: {
+        .upsert({ id: user.id, planning_completed: true, planning_profile: {
           answers:          finalAnswers,
           result:           d.result,
           answersUpdatedAt: answersUpdatedAt,
@@ -381,7 +390,7 @@ export default function Recommendations({ onImportSignal = 0 }) {
     // Also clear Supabase so other devices see the reset
     if (user?.id) {
       supabase.from('profiles')
-        .upsert({ id: user.id, planning_profile: null }, { onConflict: 'id' })
+        .upsert({ id: user.id, planning_profile: null, planning_completed: false }, { onConflict: 'id' })
         .catch(() => {})
     }
     setResult(null)
@@ -395,9 +404,20 @@ export default function Recommendations({ onImportSignal = 0 }) {
     setStep('intro')
   }
 
+  // ── Hydration gate: prevents 'Start analysis' flashing on device B ───────────
+  if (!hydrated) {
+    return (
+      <div className="rec-shell">
+        <div className="rec-hydrating" aria-label="Restoring your plan" />
+      </div>
+    )
+  }
+
   if (step === 'intro') {
     const totalSpend = spendingData ? Object.values(spendingData).reduce((a, b) => a + b, 0) : 0
     const hasSaved = result != null
+    // planning_completed=true but no result content = sync failed on previous device
+    const isRestoreFailed = !hasSaved && profile?.planning_completed === true
     return (
       <div className="rec-shell">
         <div className="rec-intro-card">
@@ -416,6 +436,11 @@ export default function Recommendations({ onImportSignal = 0 }) {
               ℹ️ Import your bank statement first for the best recommendations. You can still get general advice without it.
             </div>
           )}
+          {isRestoreFailed && (
+            <div className="rec-restore-notice">
+              Your previous analysis could not be restored on this device. Re-run the questions to get your plan back.
+            </div>
+          )}
           {hasSaved && analysisDate && (
             <div className="rec-saved-notice">
               You have results from {analysisDate.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}.{' '}
@@ -423,7 +448,7 @@ export default function Recommendations({ onImportSignal = 0 }) {
             </div>
           )}
           <button className="rec-start-btn" onClick={startQuiz}>
-            {hasSaved ? 'Start new analysis →' : 'Start analysis →'}
+            {hasSaved ? 'Start new analysis →' : isRestoreFailed ? 'Re-run analysis →' : 'Start analysis →'}
           </button>
         </div>
       </div>

@@ -437,3 +437,70 @@
   .acc-plan-cards { flex-direction: column; }
   .acc-preset-btn { font-size: 0.72rem; padding: 4px 9px; }
 }
+
+/* ── Account Security / Password Section ── */
+.acc-pwd-section {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.acc-pwd-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.acc-pwd-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 3px;
+}
+.acc-pwd-sub {
+  font-size: 0.76rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.acc-pwd-toggle {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  background: none;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.acc-pwd-toggle:hover { border-color: var(--coral); color: var(--coral); }
+
+.acc-pwd-form { display: flex; flex-direction: column; gap: 0; }
+.acc-pwd-err {
+  font-size: 0.78rem;
+  color: var(--red);
+  background: var(--red-light);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+}
+.acc-pwd-rules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 6px;
+  padding: 0 2px;
+}
+.acc-pwd-rule {
+  font-size: 0.72rem;
+  color: var(--muted);
+  transition: color 0.2s;
+}
+.acc-pwd-rule.ok { color: var(--success); font-weight: 600; }
+.acc-pwd-done {
+  font-size: 0.8rem;
+  color: var(--success);
+  font-weight: 600;
+  padding: 10px 0 4px;
+}

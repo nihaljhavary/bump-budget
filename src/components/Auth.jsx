@@ -100,6 +100,26 @@ export default function Auth({ termsOnly = false }) {
     )
   }
 
+  // Strong password rules — 8+ chars, upper, lower, digit, special
+  function validatePassword(pwd) {
+    if (pwd.length < 8)            return ['At least 8 characters required']
+    if (!/[A-Z]/.test(pwd))        return ['Must include an uppercase letter']
+    if (!/[a-z]/.test(pwd))        return ['Must include a lowercase letter']
+    if (!/[0-9]/.test(pwd))        return ['Must include a number']
+    if (!/[^A-Za-z0-9]/.test(pwd)) return ['Must include a special character (!@#$%^&* etc.)']
+    return []
+  }
+
+  function pwdStrength(pwd) {
+    return [
+      { ok: pwd.length >= 8,            label: '8+ characters' },
+      { ok: /[A-Z]/.test(pwd),          label: 'Uppercase letter' },
+      { ok: /[a-z]/.test(pwd),          label: 'Lowercase letter' },
+      { ok: /[0-9]/.test(pwd),          label: 'Number' },
+      { ok: /[^A-Za-z0-9]/.test(pwd),   label: 'Special character' },
+    ]
+  }
+
   async function sendMagicLink() {
     if (!email) { setError('Enter your email first'); return }
     if (submittingRef.current) return
@@ -134,7 +154,8 @@ export default function Auth({ termsOnly = false }) {
 
   async function signUp() {
     if (!email || !password) { setError('Fill in your email and password'); return }
-    if (password.length < 6) { setError('Password must be at least 6 characters'); return }
+    const pwdErrors = validatePassword(password)
+    if (pwdErrors.length > 0) { setError('Password: ' + pwdErrors[0]); return }
     if (submittingRef.current) return
     submittingRef.current = true
     setLoading(true); setError('')
@@ -213,10 +234,19 @@ export default function Auth({ termsOnly = false }) {
             <div className="auth-field">
               <label className="auth-field-label">Password</label>
               <input className="auth-input" type="password"
-                placeholder={authTab === 'signup' ? 'Choose a password (6+ chars)' : 'Your password'}
+                placeholder={authTab === 'signup' ? 'Choose a strong password' : 'Your password'}
                 value={password} onChange={e => setPassword(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && (authTab === 'signin' ? signIn() : signUp())}
                 autoComplete={authTab === 'signin' ? 'current-password' : 'new-password'} />
+              {authTab === 'signup' && password.length > 0 && (
+                <div className="auth-pwd-rules">
+                  {pwdStrength(password).map(r => (
+                    <span key={r.label} className={`auth-pwd-rule ${r.ok ? 'ok' : ''}`}>
+                      {r.ok ? '✓' : '·'} {r.label}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             {authTab === 'signin'
               ? <button className="btn-primary" onClick={signIn} disabled={loading}>{loading ? 'Signing in...' : 'Sign in'}</button>

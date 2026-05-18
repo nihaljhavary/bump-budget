@@ -149,6 +149,106 @@ function ProfileSection({ user, profile, updateProfile }) {
       <button className="acc-primary-btn" onClick={saveProfile} disabled={saving}>
         {saving ? 'Saving...' : saved ? 'Saved!' : 'Save changes'}
       </button>
+
+      {/* ── Account Security ── */}
+      <PasswordSection profile={profile} />
+    </div>
+  )
+}
+
+// ── Password Section (set/change password for magic-link users) ─────────────
+function PasswordSection({ profile }) {
+  const [open, setOpen]   = useState(false)
+  const [pwd, setPwd]     = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [busy, setBusy]   = useState(false)
+  const [done, setDone]   = useState(false)
+  const [err, setErr]     = useState('')
+  const { updateProfile } = useAuth()
+
+  const hasPassword = !!profile?.has_password_set
+
+  function validate(p) {
+    if (p.length < 8)            return 'At least 8 characters required'
+    if (!/[A-Z]/.test(p))        return 'Must include an uppercase letter'
+    if (!/[a-z]/.test(p))        return 'Must include a lowercase letter'
+    if (!/[0-9]/.test(p))        return 'Must include a number'
+    if (!/[^A-Za-z0-9]/.test(p)) return 'Must include a special character'
+    return null
+  }
+
+  function pwdRules(p) {
+    return [
+      { ok: p.length >= 8,           label: '8+ chars' },
+      { ok: /[A-Z]/.test(p),         label: 'Uppercase' },
+      { ok: /[a-z]/.test(p),         label: 'Lowercase' },
+      { ok: /[0-9]/.test(p),         label: 'Number' },
+      { ok: /[^A-Za-z0-9]/.test(p),  label: 'Special' },
+    ]
+  }
+
+  async function handleSave() {
+    const e = validate(pwd)
+    if (e) { setErr(e); return }
+    if (pwd !== confirm) { setErr('Passwords do not match'); return }
+    setBusy(true); setErr('')
+    const { error: supaErr } = await supabase.auth.updateUser({ password: pwd })
+    if (supaErr) { setErr(supaErr.message); setBusy(false); return }
+    await updateProfile({ has_password_set: true })
+    setDone(true); setBusy(false); setPwd(''); setConfirm('')
+    setTimeout(() => { setDone(false); setOpen(false) }, 2500)
+  }
+
+  return (
+    <div className="acc-pwd-section">
+      <div className="acc-pwd-header">
+        <div>
+          <div className="acc-pwd-title">Account security</div>
+          <div className="acc-pwd-sub">
+            {hasPassword ? 'Password authentication is enabled.' : 'Add a password for quick sign-in — magic links will still work.'}
+          </div>
+        </div>
+        <button className="acc-pwd-toggle" onClick={() => { setOpen(o => !o); setErr('') }}>
+          {hasPassword ? (open ? 'Cancel' : 'Change') : (open ? 'Cancel' : 'Set password')}
+        </button>
+      </div>
+
+      {open && !done && (
+        <div className="acc-pwd-form">
+          {err && <div className="acc-pwd-err">{err}</div>}
+          <div className="acc-field">
+            <label className="acc-field-label">New password</label>
+            <input className="acc-input" type="password" value={pwd}
+              onChange={e => { setPwd(e.target.value); setErr('') }}
+              autoComplete="new-password" placeholder="Strong password" />
+            {pwd.length > 0 && (
+              <div className="acc-pwd-rules">
+                {pwdRules(pwd).map(r => (
+                  <span key={r.label} className={`acc-pwd-rule ${r.ok ? 'ok' : ''}`}>
+                    {r.ok ? '\u2713' : '\u00b7'} {r.label}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="acc-field">
+            <label className="acc-field-label">Confirm password</label>
+            <input className="acc-input" type="password" value={confirm}
+              onChange={e => setConfirm(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSave()}
+              autoComplete="new-password" placeholder="Confirm password" />
+          </div>
+          <button className="acc-primary-btn" onClick={handleSave} disabled={busy}>
+            {busy ? 'Saving...' : hasPassword ? 'Update password' : 'Set password'}
+          </button>
+        </div>
+      )}
+
+      {done && (
+        <div className="acc-pwd-done">
+          ✓ Password {hasPassword ? 'updated' : 'set'} — you can now sign in with email + password.
+        </div>
+      )}
     </div>
   )
 }

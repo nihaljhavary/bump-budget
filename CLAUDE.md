@@ -719,6 +719,68 @@ Normal uploads never wipe planning continuity — only explicit "Start fresh" or
 
 ---
 
+## Planning continuity & auth maturity (2026-05 refinement session)
+
+### SQL migration
+`supabase/migrations/20260518_add_planning_completed.sql`
+Run in the Supabase SQL editor. Adds:
+- `planning_completed BOOLEAN DEFAULT FALSE` — canonical Smart Money Analysis completion flag
+- `has_password_set BOOLEAN DEFAULT FALSE` — tracks whether user has a password credential
+Back-fills `planning_completed = TRUE` for any profile that already has `planning_profile.result`.
+
+### Canonical planning completion state
+`profiles.planning_completed` is the authoritative boolean for whether a user has completed Smart Money Analysis.
+- Set to `true` in `getRecommendations()` on every successful analysis (included in the same Supabase upsert as `planning_profile` content)
+- Set to `false` only by explicit user "Start fresh" action
+- NEVER reset by uploads, refreshes, navigation, or billing webhook updates
+- Back-filled for existing users via SQL migration
+
+**Why this matters:** `planning_profile` content can fail to sync (fire-and-forget). `planning_completed` is a lighter boolean that has a better chance of persisting even when the content sync fails. On cross-device restore, if content is unavailable but `planning_completed = true`, the app shows a "Re-run analysis" state rather than the "Start analysis" intro.
+
+### Planning hydration lifecycle (Recommendations.jsx)
+Two-phase hydration:
+1. **LS hydration** (fires on `[user?.id]`): fast same-device restore. Guard: only restores if `saved?.result` is truthy — prevents blank screen on partial LS saves.
+2. **Supabase hydration** (fires on `[user?.id, profile?.planning_profile, profile?.planning_completed]`): authoritative cross-device sync. After resolving (either branch or neither), sets `hydrated = true`.
+
+**Hydration gate:** `hydrated` state (lazy-initialised: `true` if LS already has a result, `false` otherwise). The intro screen is NOT rendered until `hydrated = true`. This prevents "Start analysis" from flashing on device B where LS is empty but Supabase may have data.
+
+**Restore-failed state:** if `hydrated = true`, `result = null`, and `profile.planning_completed = true`, shows a "Re-run analysis" variant of the intro card with an amber notice. The user is not misled into thinking they're a first-time user.
+
+**Fast-path (same device):** lazy `useState(() => !!LS_result)` means `hydrated` starts `true` → no loading flash → LS hydration sets step='results' → Supabase hydration may refine → seamless.
+
+### LS→Supabase bootstrap
+When LS has newer data than Supabase (e.g. user's first cross-device login), the Supabase hydration effect pushes the LS content to Supabase AND sets `planning_completed: true` in the same upsert. This heals the DB for all future devices.
+
+### Authentication maturity (Auth.jsx + App.jsx)
+**Password validation — strong rules enforced everywhere:**
+```
+validatePassword(pwd):
+  - length >= 8
+  - /[A-Z]/ (uppercase)
+  - /[a-z]/ (lowercase)
+  - /[0-9]/ (number)
+  - /[^A-Za-z0-9]/ (special character)
+```
+Applied in: `Auth.jsx signUp()`, `App.jsx ResetPassword handleReset()`.
+
+**Inline strength feedback:** When `authTab === 'signup'` and password field is non-empty, `pwdStrength()` renders a row of 5 mini-rules that turn green as the user types. CSS classes: `.auth-pwd-rules`, `.auth-pwd-rule`, `.auth-pwd-rule.ok`.
+
+**Password mode vs magic link:** The Auth.jsx UI already supports both. Magic link is the default tab. Users switch to password mode via "Use password instead". The `signIn()` function uses `supabase.auth.signInWithPassword()`.
+
+**ResetPassword (App.jsx):** Upgraded from hardcoded dark brand colors to CSS variables (`var(--bg)`, `var(--coral)`, etc.) + same strong password rules + inline strength indicators. No more `#e85d26` / `#110A08` hardcoded.
+
+### Post-magic-link password creation (AccountCentre.jsx)
+`PasswordSection` component appended to `ProfileSection` in AccountCentre.
+- Only shows "Set password" button when `!profile?.has_password_set`
+- Shows "Change password" button when `profile?.has_password_set`
+- On save: calls `supabase.auth.updateUser({ password })` + `updateProfile({ has_password_set: true })`
+- Inline strength rules (`.acc-pwd-rules` / `.acc-pwd-rule.ok`)
+- Non-blocking: users can ignore it entirely; magic links always work
+- `has_password_set` requires the `20260518_add_planning_completed.sql` migration
+
+
+---
+
 ## Scenario Planning Session 8 (2026-05 — structured expansion)
 
 ### What was added (surgical, not a rewrite)

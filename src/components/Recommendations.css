@@ -697,3 +697,29 @@
   font-size: 11px;
   color: var(--muted);
 }
+
+/* ── Hydration gate skeleton ── */
+.rec-hydrating {
+  height: 180px;
+  background: linear-gradient(90deg, var(--bg-alt) 25%, var(--border) 50%, var(--bg-alt) 75%);
+  background-size: 200% 100%;
+  animation: rec-shimmer 1.4s infinite;
+  border-radius: 14px;
+  margin: 16px;
+}
+@keyframes rec-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Restore-failed notice ── */
+.rec-restore-notice {
+  font-size: 0.8rem;
+  color: var(--amber);
+  background: rgba(196, 133, 48, 0.09);
+  border: 1px solid rgba(196, 133, 48, 0.25);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
