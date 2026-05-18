@@ -1,17 +1,18 @@
-/* ── LandingPage.css — v2 premium (2026-05) ─────────────────────────────────── */
+/* ── LandingPage.css — v3 warm coral (2026-05) ──────────────────────────────── */
+/* v2 emerald backup: src/theme-legacy-v2.css                                   */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* Landing page accent on dark: bright emerald */
+/* Landing page: warm espresso dark + muted salmon accent — calm premium editorial */
 :root {
-  --lp-accent:  #34D399;
-  --lp-accent2: #2BBD87;
-  --lp-bg:      #0D110E;
-  --lp-surface: #141C19;
-  --lp-surface2:#1A2520;
-  --lp-muted:   #8FA89E;
-  --lp-text:    #E8F0EC;
-  --lp-deeper:  #090D0B;
+  --lp-accent:  #E8A49A;   /* warm salmon — Bump coral on dark, readable + warm */
+  --lp-accent2: #D4887C;   /* deeper salmon for hover */
+  --lp-bg:      #100E0B;   /* warm espresso charcoal (warmer than cold fintech dark) */
+  --lp-surface: #1C1916;   /* warm dark card surface */
+  --lp-surface2:#241F1B;   /* slightly lighter warm surface */
+  --lp-muted:   #9A8C83;   /* warm stone muted */
+  --lp-text:    #F4EFE9;   /* warm ivory text */
+  --lp-deeper:  #0C0A08;   /* deepest bg for tagline section */
 }
 
 .lp {
@@ -27,10 +28,10 @@
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgba(13, 17, 14, 0.92);
+  background: rgba(16, 14, 11, 0.92);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(52, 211, 153, 0.08);
+  border-bottom: 1px solid rgba(232, 164, 154, 0.10);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -52,7 +53,7 @@
 
 .btn-ghost {
   background: transparent;
-  border: 1px solid rgba(255,255,255,0.14);
+  border: 1px solid rgba(255,255,255,0.12);
   color: var(--lp-muted);
   font-family: 'DM Sans', sans-serif;
   font-size: 0.875rem;
@@ -69,7 +70,7 @@
 .btn-coral {
   background: var(--lp-accent);
   border: 1px solid var(--lp-accent);
-  color: #0D110E;
+  color: #1A1410;
   font-family: 'DM Sans', sans-serif;
   font-size: 0.875rem;
   font-weight: 700;
@@ -98,7 +99,7 @@
   text-transform: uppercase;
   color: var(--lp-accent);
   margin-bottom: 28px;
-  opacity: 0.9;
+  opacity: 0.85;
 }
 
 .lp-hero h1 {
@@ -131,7 +132,7 @@
 .btn-coral-lg {
   background: var(--lp-accent);
   border: none;
-  color: #0D110E;
+  color: #1A1410;
   font-family: 'DM Sans', sans-serif;
   font-size: 1rem;
   font-weight: 700;
@@ -147,7 +148,7 @@
 
 .btn-ghost-lg {
   background: transparent;
-  border: 1px solid rgba(255,255,255,0.14);
+  border: 1px solid rgba(255,255,255,0.12);
   color: var(--lp-muted);
   font-family: 'DM Sans', sans-serif;
   font-size: 1rem;
@@ -175,7 +176,7 @@
   text-transform: uppercase;
   color: var(--lp-accent);
   margin-bottom: 16px;
-  opacity: 0.9;
+  opacity: 0.85;
 }
 
 .lp-section-title {
@@ -198,13 +199,13 @@
   background: var(--lp-surface);
   border-radius: 12px;
   padding: 28px 26px;
-  border: 1px solid rgba(52, 211, 153, 0.08);
-  border-top: 2px solid rgba(52, 211, 153, 0.18);
-  transition: transform 0.2s, border-color 0.2s;
+  border: 1px solid rgba(232, 164, 154, 0.08);
+  border-top: 2px solid rgba(232, 164, 154, 0.20);
+  transition: transform 0.2s, border-top-color 0.2s;
 }
 .lp-feature-card:hover {
   transform: translateY(-2px);
-  border-top-color: rgba(52, 211, 153, 0.35);
+  border-top-color: rgba(232, 164, 154, 0.40);
 }
 
 .lp-feature-icon {
@@ -233,7 +234,7 @@
 /* DIVIDER */
 .lp-divider {
   border: none;
-  border-top: 1px solid rgba(52, 211, 153, 0.07);
+  border-top: 1px solid rgba(232, 164, 154, 0.07);
   margin: 0 48px;
 }
 
@@ -248,18 +249,18 @@
   background: var(--lp-surface);
   border-radius: 12px;
   padding: 36px 32px;
-  border: 1px solid rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.04);
   display: flex;
   flex-direction: column;
   gap: 16px;
   transition: border-color 0.2s;
 }
 .lp-pricing-card.featured {
-  border: 1px solid rgba(52, 211, 153, 0.25);
+  border: 1px solid rgba(232, 164, 154, 0.22);
   background: var(--lp-surface2);
 }
 .lp-pricing-card:hover {
-  border-color: rgba(52, 211, 153, 0.2);
+  border-color: rgba(232, 164, 154, 0.18);
 }
 
 .lp-pricing-tier {
@@ -309,7 +310,7 @@
   text-align: center;
   padding: 108px 48px;
   background: var(--lp-deeper);
-  border-top: 1px solid rgba(52, 211, 153, 0.07);
+  border-top: 1px solid rgba(232, 164, 154, 0.07);
 }
 .lp-tagline h2 {
   font-family: 'Syne', sans-serif;
@@ -332,7 +333,7 @@
 
 /* FOOTER */
 .lp-footer {
-  border-top: 1px solid rgba(52, 211, 153, 0.06);
+  border-top: 1px solid rgba(232, 164, 154, 0.07);
   padding: 40px 48px;
   display: flex;
   align-items: center;
@@ -355,7 +356,7 @@
 .lp-footer-links a:hover { color: var(--lp-accent); }
 .lp-footer-copy {
   font-size: 0.73rem;
-  color: rgba(143, 168, 158, 0.4);
+  color: rgba(154, 140, 131, 0.45);
   width: 100%;
   text-align: center;
   margin-top: 8px;

@@ -1,43 +1,39 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* ── bump. brand palette — v2 premium (2026-05) ── */
-  /* Backup of v1 palette in src/theme-legacy-v1.css  */
+  /* ── bump. brand palette — v3 warm coral (2026-05) ── */
+  /* v2 emerald backup: src/theme-legacy-v2.css          */
+  /* v1 original backup: src/theme-legacy-v1.css         */
 
-  /* Primary accent: deep emerald — premium, financially credible */
-  --coral:        #1D7A5A;   /* primary accent (emerald) */
-  --coral-deep:   #155E45;   /* hover / active */
-  --coral-light:  rgba(29, 122, 90, 0.09);
+  /* Primary accent: muted terracotta coral — warm, premium, distinctly Bump */
+  --coral:        #C0766B;   /* warm terracotta coral */
+  --coral-deep:   #A46058;   /* hover / active */
+  --coral-light:  rgba(192, 118, 107, 0.10);
 
-  --ember:        #0D110E;   /* deep charcoal-forest (landing page bg) */
-  --ember-surface:#141C19;   /* refined dark card surface */
-  --ember-mid:    #0A0E0C;   /* deeper surface */
-
-  /* Light backgrounds: warm linen — less aggressive than v1 peach */
-  --bg:           #F7F4F0;
-  --bg-alt:       #EEEAE5;
+  /* Light backgrounds: warm ivory & bone — calm, financially trustworthy */
+  --bg:           #F8F5F0;   /* warm ivory */
+  --bg-alt:       #EDE8E1;   /* warm stone secondary */
   --surface:      #FFFFFF;
-  --border:       #E3DDD7;   /* warm stone border */
-  --text:         #1C1714;   /* deep warm charcoal */
-  --muted:        #8A7D76;   /* warm stone muted */
-  --dusty-rose:   #B8A9A2;   /* toned-down dusty accent */
+  --border:       #E4DDD6;   /* warm stone border */
+  --text:         #1A1410;   /* deep espresso */
+  --muted:        #8C7E76;   /* warm stone muted */
 
-  --success:      #16A34A;   /* calm forest green */
+  --success:      #16A34A;   /* calm forest green — positive indicators */
   --success-light:rgba(22, 163, 74, 0.11);
-  --amber:        #D97706;
-  --red:          #DC2626;
+  --amber:        #C48530;   /* warm amber for warnings */
+  --red:          #DC2626;   /* clear red for negative financial values */
   --red-light:    #FEF2F2;
 
   --radius: 12px;
-  --shadow: 0 1px 3px rgba(28, 23, 20, 0.07), 0 2px 8px rgba(28, 23, 20, 0.04);
+  --shadow: 0 1px 3px rgba(26, 20, 16, 0.07), 0 2px 8px rgba(26, 20, 16, 0.04);
 
   /* ── Alias variables — fills fallback gaps used across components ── */
-  --card:      var(--surface);   /* cards that reference --card directly */
-  --accent:    var(--coral);     /* accent buttons using --accent */
-  --card-bg:   var(--surface);   /* drawers / strips using --card-bg */
-  --hover-bg:  var(--bg-alt);    /* hover states */
-  --input-bg:  var(--bg);        /* input backgrounds */
-  --green:     #16a34a;          /* positive labels */
+  --card:      var(--surface);
+  --accent:    var(--coral);
+  --card-bg:   var(--surface);
+  --hover-bg:  var(--bg-alt);
+  --input-bg:  var(--bg);
+  --green:     #16a34a;      /* positive labels — income, surpluses */
 }
 
 html, body, #root {
@@ -72,19 +68,4 @@ input, textarea { font-family: inherit; }
   margin-left: 2px;
   vertical-align: 0.15em;
   flex-shrink: 0;
-}
-
-/* ── fix stray duplicate ── */
-
-/* ── Responsive base ── */
-@media (min-width: 768px) {
-  body {
-    font-size: 15.5px;
-  }
-
-  /* Scrollbar styling on desktop */
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--dusty-rose); }
 }

@@ -70,14 +70,14 @@
 }
 
 .tier-card:hover {
-  border-color: rgba(29, 122, 90, 0.35);
-  box-shadow: 0 2px 8px rgba(29, 122, 90, 0.08);
+  border-color: rgba(192, 118, 107, 0.35);
+  box-shadow: 0 2px 8px rgba(192, 118, 107, 0.08);
 }
 
 .tier-card.selected {
   border-color: var(--coral);
   border-left-color: var(--coral);
-  box-shadow: 0 0 0 3px rgba(29, 122, 90, 0.10);
+  box-shadow: 0 0 0 3px rgba(192, 118, 107, 0.10);
 }
 
 .tier-card.highlight {
@@ -94,7 +94,7 @@
 }
 
 .tier-card.subscription.selected {
-  box-shadow: 0 0 0 3px rgba(29, 122, 90, 0.15);
+  box-shadow: 0 0 0 3px rgba(192, 118, 107, 0.15);
 }
 
 .tier-popular {
@@ -317,7 +317,7 @@
   gap: 6px;
   background: var(--coral-light);
   color: var(--coral-deep);
-  border: 1px solid rgba(29, 122, 90, 0.25);
+  border: 1px solid rgba(192, 118, 107, 0.25);
   border-radius: 20px;
   padding: 4px 14px;
   font-size: 0.78rem;

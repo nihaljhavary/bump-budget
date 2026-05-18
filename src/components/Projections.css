@@ -58,8 +58,8 @@
 }
 
 .proj-card-highlight {
-  border-color: rgba(29, 122, 90, 0.25);
-  background: rgba(29, 122, 90, 0.04);
+  border-color: rgba(192, 118, 107, 0.25);
+  background: rgba(192, 118, 107, 0.04);
 }
 
 .proj-card-lbl { font-size: 10.5px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 6px; }
@@ -873,7 +873,7 @@
     content: '';
     display: block;
     height: 2px;
-    background: linear-gradient(90deg, transparent, rgba(29, 122, 90, 0.10), transparent);
+    background: linear-gradient(90deg, transparent, rgba(192, 118, 107, 0.10), transparent);
     margin-top: 4px;
   }
   .proj-longterm-grid { grid-template-columns: repeat(2, 1fr); }

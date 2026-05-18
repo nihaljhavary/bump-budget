@@ -179,7 +179,7 @@
 }
 
 .ob-bank-pill:hover { border-color: #5A3020; color: #F5EDE4; }
-.ob-bank-pill.selected { border-color: var(--coral); background: rgba(29, 122, 90, 0.10); color: #F5EDE4; }
+.ob-bank-pill.selected { border-color: var(--coral); background: rgba(192, 118, 107, 0.10); color: #F5EDE4; }
 
 /* Cashback grid */
 .ob-cashback-grid {
@@ -291,8 +291,8 @@
 
 /* Error */
 .ob-error {
-  background: rgba(29, 122, 90, 0.08);
-  border: 1px solid rgba(29, 122, 90, 0.22);
+  background: rgba(192, 118, 107, 0.08);
+  border: 1px solid rgba(192, 118, 107, 0.22);
   border-radius: 8px;
   padding: 10px 14px;
   font-size: 13px;
@@ -353,7 +353,7 @@
 /* Usage type selector */
 .ob-usage-option { background: var(--card-bg, #1A1008); border: 1px solid var(--border, #2C1F14); border-radius: 10px; padding: 12px 14px; cursor: pointer; margin-bottom: 8px; transition: border-color 0.15s; }
 .ob-usage-option:hover { border-color: var(--coral); }
-.ob-usage-option.selected { border-color: var(--coral); background: rgba(29, 122, 90, 0.07); }
+.ob-usage-option.selected { border-color: var(--coral); background: rgba(192, 118, 107, 0.07); }
 .ob-usage-label { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
 .ob-usage-desc { font-size: 12px; color: var(--muted); }
 .ob-hint { font-size: 12px; color: var(--muted); margin: 8px 0 16px; line-height: 1.5; }

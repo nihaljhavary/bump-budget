@@ -1,0 +1,78 @@
+/*
+ * bump. — Legacy Theme Palette — v2 (2026-05 emerald session)
+ *
+ * This file preserves the v2 premium emerald palette that was set in the
+ * brand-evolution session of 2026-05. The v2 direction used deep emerald as
+ * the primary accent — a premium fintech signal that ultimately drifted too
+ * close to generic dark-fintech / crypto aesthetics.
+ *
+ * v3 (2026-05 warm coral session) reverts the accent to a muted warm
+ * terracotta coral that is distinctly Bump and emotionally warmer.
+ *
+ * TO REVERT TO v2: copy the :root block below into src/index.css,
+ * and copy the :root block from the LANDING PAGE section into
+ * src/components/LandingPage.css.
+ *
+ * v1 palette: see src/theme-legacy-v1.css
+ */
+
+/* ── App palette (src/index.css :root) ── */
+/*
+:root {
+  --coral:        #1D7A5A;
+  --coral-deep:   #155E45;
+  --coral-light:  rgba(29, 122, 90, 0.09);
+
+  --ember:        #0D110E;
+  --ember-surface:#141C19;
+  --ember-mid:    #0A0E0C;
+
+  --bg:           #F7F4F0;
+  --bg-alt:       #EEEAE5;
+  --surface:      #FFFFFF;
+  --border:       #E3DDD7;
+  --text:         #1C1714;
+  --muted:        #8A7D76;
+  --dusty-rose:   #B8A9A2;
+
+  --success:      #16A34A;
+  --success-light:rgba(22, 163, 74, 0.11);
+  --amber:        #D97706;
+  --red:          #DC2626;
+  --red-light:    #FEF2F2;
+
+  --radius: 12px;
+  --shadow: 0 1px 3px rgba(28, 23, 20, 0.07), 0 2px 8px rgba(28, 23, 20, 0.04);
+
+  --card:      var(--surface);
+  --accent:    var(--coral);
+  --card-bg:   var(--surface);
+  --hover-bg:  var(--bg-alt);
+  --input-bg:  var(--bg);
+  --green:     #16a34a;
+}
+*/
+
+/* ── Landing page palette (src/components/LandingPage.css :root) ── */
+/*
+:root {
+  --lp-accent:  #34D399;
+  --lp-accent2: #2BBD87;
+  --lp-bg:      #0D110E;
+  --lp-surface: #141C19;
+  --lp-surface2:#1A2520;
+  --lp-muted:   #8FA89E;
+  --lp-text:    #E8F0EC;
+  --lp-deeper:  #090D0B;
+}
+*/
+
+/* ── Hardcoded rgba values in component CSS files (v2) ── */
+/*
+  Dashboard.css line 146:  border: 1px solid rgba(29, 122, 90, 0.25);
+  Dashboard.css line 892:  border: 1.5px solid rgba(29, 122, 90, 0.22);
+  Dashboard.css line 903:  background: rgba(29, 122, 90, 0.13);
+  Projections.css line 61: border-color: rgba(29, 122, 90, 0.25);
+  Projections.css line 62: background: rgba(29, 122, 90, 0.04);
+  Projections.css line 876: background: linear-gradient(90deg, transparent, rgba(29, 122, 90, 0.10), transparent);
+*/

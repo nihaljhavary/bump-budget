@@ -169,22 +169,39 @@ All components must use only defined CSS variables. Aliases defined in `index.cs
 - `--green` → `#16a34a`
 Never use undefined variable names — they silently fall through to browser defaults.
 
-### Theme evolution — v2 premium palette (2026-05)
-The v1 orange/coral palette was evolved to a premium financial identity. **Original v1 palette is preserved in `src/theme-legacy-v1.css`** — copy that file's `:root` block back into `index.css` to revert.
+### Theme evolution — v3 warm coral (2026-05)
+Bump has gone through three palette evolutions. All previous palettes are recoverable:
+- **v1 recovery**: copy `:root` from `src/theme-legacy-v1.css` into `index.css`
+- **v2 recovery**: copy `:root` blocks from `src/theme-legacy-v2.css` (also covers LandingPage.css)
+- **v3 is current** (the palette values below)
 
-**Key v2 palette values (index.css):**
-- `--coral: #1D7A5A` — primary accent is now **deep emerald** (was bright coral `#FF6B6B`)
-- `--coral-deep: #155E45` — hover state
-- `--coral-light: rgba(29, 122, 90, 0.09)` — tinted backgrounds
-- `--bg: #F7F4F0` — warm linen (was aggressive peach `#FFF2EE`)
-- `--bg-alt: #EEEAE5` — deeper linen
-- `--border: #E3DDD7` — warm stone border
-- `--text: #1C1714` — deep warm charcoal
-- `--muted: #8A7D76` — warm stone muted
-- `--success: #16A34A` — calm forest green (was neon `#4ADE80`)
+**Brand direction (v3):** v2 used deep emerald (`#1D7A5A`) as the primary accent — this drifted toward generic dark-fintech / crypto aesthetics. v3 returns to Bump's warm identity: muted terracotta coral as primary, with sage/forest green reserved purely for positive financial states (income, surpluses). The result is calm, warm, premium — not fintech-cold.
+
+**Key v3 palette values (index.css):**
+- `--coral: #C0766B` — primary accent: **muted warm terracotta coral** (was emerald `#1D7A5A` in v2, bright coral `#FF6B6B` in v1)
+- `--coral-deep: #A46058` — hover / active
+- `--coral-light: rgba(192, 118, 107, 0.10)` — tinted backgrounds
+- `--bg: #F8F5F0` — warm ivory (slightly lighter than v2 linen)
+- `--bg-alt: #EDE8E1` — warm stone secondary
+- `--border: #E4DDD6` — warm stone border
+- `--text: #1A1410` — deep espresso
+- `--muted: #8C7E76` — warm stone muted
+- `--success: #16A34A` — calm forest green (positive indicators)
+- `--green: #16a34a` — income / surplus labels
 - `--red: #DC2626`, `--red-light: #FEF2F2`
+- `--amber: #C48530` — warm amber for warnings
+- `--shadow: 0 1px 3px rgba(26, 20, 16, 0.07), 0 2px 8px rgba(26, 20, 16, 0.04)`
 
-**Landing page (LandingPage.css):** Uses its own dark-mode palette via `:root` override with `--lp-*` variables. Landing accent is `#34D399` (bright emerald on dark) — NOT `var(--coral)`. Background is `#0D110E` (deep charcoal-forest).
+**Landing page (LandingPage.css):** Uses its own dark-mode palette via `:root` override with `--lp-*` variables. Landing accent is `#E8A49A` (warm salmon coral on dark — matches Bump's warm identity) — NOT a cold emerald. Background is `#100E0B` (warm espresso charcoal — not cold fintech dark). Think premium editorial / high-end hospitality, not crypto exchange.
+
+**Key landing page v3 values:**
+- `--lp-accent: #E8A49A` — warm salmon coral
+- `--lp-bg: #100E0B` — warm espresso dark
+- `--lp-surface: #1C1916`, `--lp-surface2: #241F1B` — warm dark surfaces
+- `--lp-text: #F4EFE9` — warm ivory
+- `--lp-muted: #9A8C83` — warm stone muted
+
+**Hardcoded rgba in component CSS:** When using `var(--coral)` opacity variants in CSS (focus rings, hover states, selected pills), the hardcoded rgba must use `rgba(192, 118, 107, ...)` — updated in Dashboard.css, Projections.css, BookConsult.css, Onboarding.css. Do NOT use the old `rgba(29, 122, 90, ...)` (v2 emerald) or `rgba(255, 107, 107, ...)` (v1 coral).
 
 **Semantic color rules (critical):**
 - Negative/expense values: always use `var(--red)` — NEVER `var(--coral)` (it was previously abused for both accent and negative states)
@@ -921,52 +938,4 @@ const effectivePlan = (
 
 ### Simulation-mode upgrade flow
 
-Admins simulating a tier (via the `bumpSimPlan` localStorage key) see the full upgrade modal UI but real checkout is blocked: `UpgradeModal` checks `simulating` prop and shows an informational panel explaining they're in simulation mode, with guidance to use a test account for the real flow.
-
-### profiles subscription columns (complete list)
-```
-paystack_sub_code      TEXT
-paystack_cust_code     TEXT
-next_billing_date      TIMESTAMPTZ
-billing_cycle_start    TIMESTAMPTZ
-billing_cycle_end      TIMESTAMPTZ
-cancel_at_period_end   BOOLEAN
-scheduled_plan         TEXT
-trial_ends_at          TIMESTAMPTZ   ← NEW (migration 20260518)
-```
-
-### Paystack checkout pattern (canonical, from UpgradeModal)
-```js
-// 1. Server-side init (for trial with start_date)
-POST create-subscription { plan, action: 'initialize', trial: true }
-→ { access_code, reference, email }
-
-// 2. Client opens popup
-const handler = window.PaystackPop.setup({
-  key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY,
-  email, access_code,
-  onSuccess: async (response) => { /* activate with response.reference */ },
-  onCancel: () => { /* return to select */ },
-})
-handler.openIframe()
-
-// 3. Activate
-POST create-subscription { plan, reference: response.reference, trial: true }
-→ sets trialing status, unlocks features
-```
-
-### Files changed (this session)
-- `src/App.jsx` — removed global `<SupportChat />`
-- `src/components/SupportChat.jsx` — mountedRef scroll guard
-- `src/context/TierContext.jsx` — LIFECYCLE_STATES, trialing/payment_failed in effectivePlan, expanded lifecycle object
-- `netlify/functions/create-subscription.js` — `initialize` action, trial activation
-- `netlify/functions/paystack-webhook.js` — trialing preservation, trial→active on charge.success
-- `src/components/UpgradeModal.jsx` — NEW
-- `src/components/UpgradeModal.css` — NEW
-- `src/components/LockedFeature.jsx` — `onUpgrade` prop + button
-- `src/components/LockedFeature.css` — `.locked-upgrade-btn`
-- `src/components/AccountCentre.jsx` — `onUpgrade` prop, real checkout CTAs, trial banner
-- `src/components/AccountCentre.css` — featured plan card styles
-- `src/components/Dashboard.jsx` — `openUpgrade`, UpgradeModal, wired all CTAs
-- `src/components/Dashboard.css` — `.tier-nudge-link` button reset
-- `supabase/migrations/20260518_add_trial_columns.sql` — NEW
+Admins simulating a tier (via the `bumpSimPlan` localStorage key) see
