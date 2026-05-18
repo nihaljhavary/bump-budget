@@ -10,15 +10,20 @@
  * This module only contains the lightweight baseline arithmetic that is
  * shared across features. No AI involved anywhere in this file.
  *
- * All amounts in rands. Pure functions — no React, no Supabase.
+ * All amounts in rands. Pure functions -- no React, no Supabase.
  */
 
 // Conservative SA-realistic defaults.
 // Shared so Projections.jsx and Recommendations.jsx stay in sync.
+// schoolFeeInflation and childCostInflation are separate from general inflation --
+// SA school fees historically inflate 8-10%/yr, child costs ~7%/yr.
+// These apply to multi-year school_fees and children events in buildYearModel().
 export const DEFAULT_PROJECTION_ASSUMPTIONS = {
-  salaryGrowth:     5,  // % per year
-  inflation:        6,  // % per year
-  investmentReturn: 8,  // % per year
+  salaryGrowth:       5,  // % per year
+  inflation:          6,  // % per year (general cost of living)
+  investmentReturn:   8,  // % per year (return on savings balance)
+  schoolFeeInflation: 8,  // % per year (SA school fees -- separate from general CPI)
+  childCostInflation: 7,  // % per year (child / childcare costs)
 }
 
 /**

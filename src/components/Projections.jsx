@@ -26,12 +26,21 @@ function getMonthLabel(monthsFromNow) {
 // Deterministic year-by-year financial engine.
 // No AI involved -- pure arithmetic on user-supplied assumptions.
 // All inputs in rands; outputs in rands.
+//
+// Session 8 additions:
+//   - schoolFeeInflation applied to school_fees events spanning multiple years
+//   - childCostInflation applied to children events spanning multiple years
+//   - cumulativeFCF / cumulativeGrowth tracked per year (wealth decomposition)
+//   - otherEventIncome now properly tracked and emitted
 // ---------------------------------------------------------------------------
 function buildYearModel({ netIncomeMonthly, fixedMonthly, variableMonthly,
   startingSavings, assumptions, events, varReduction = 1.0, horizonYears = 10 }) {
   const startYear = new Date().getFullYear()
-  const { salaryGrowth, inflation, investmentReturn } = assumptions
-  let balance = startingSavings
+  const { salaryGrowth, inflation, investmentReturn,
+          schoolFeeInflation = 8, childCostInflation = 7 } = assumptions
+  let balance    = startingSavings
+  let cumulFCF   = 0   // running sum of freeCashFlow -- measures saving discipline
+  let cumulGrowth = 0  // running sum of investmentGrowth -- measures compound returns
   const rows = []
 
   for (let i = 0; i < horizonYears; i++) {
@@ -44,11 +53,15 @@ function buildYearModel({ netIncomeMonthly, fixedMonthly, variableMonthly,
     const annualVariable = Math.round(variableMonthly   * 12 * inf * varReduction)
 
     // Events for this year -- granular tracking by type
+    // Multi-year events (endYear set) apply in every year from startYear to endYear.
+    // school_fees and children events have their own inflation rates applied on top
+    // of the user-input base amount as years progress past the event start year.
     const yearEvents = (events || []).filter(e => {
       const startY = Number(e.year)
       const endY = e.endYear ? Number(e.endYear) : startY
       return year >= startY && year <= endY
     })
+
     let eventIncome = 0, eventExpense = 0
     let bonusIncome = 0, salaryEventIncome = 0
     let vehicleCosts = 0, schoolFees = 0, childCosts = 0
@@ -56,29 +69,51 @@ function buildYearModel({ netIncomeMonthly, fixedMonthly, variableMonthly,
     let vehicleSaleIncome = 0, debtPayoffSaving = 0, otherEventIncome = 0
 
     for (const ev of yearEvents) {
-      const amt = ev.monthly ? Number(ev.amount) * 12 : Number(ev.amount)
+      // Base annual amount from user input
+      let amt = ev.monthly ? Number(ev.amount) * 12 : Number(ev.amount)
+
+      // Apply category-specific inflation for multi-year expense events.
+      // yearsIntoEvent = 0 in the event's starting year (no inflation yet).
+      // This reflects real-world escalation: SA school fees run ~8%/yr,
+      // childcare costs ~7%/yr -- significantly above general CPI.
+      const yearsIntoEvent = year - Number(ev.year)
+      if (!ev.income && yearsIntoEvent > 0) {
+        if (ev.type === 'school_fees') {
+          amt = Math.round(amt * Math.pow(1 + schoolFeeInflation / 100, yearsIntoEvent))
+        } else if (ev.type === 'children') {
+          amt = Math.round(amt * Math.pow(1 + childCostInflation / 100, yearsIntoEvent))
+        }
+      }
+
       if (ev.income) {
         eventIncome += amt
-        if (ev.type === 'bonus' || ev.type === 'income')       bonusIncome       += amt
-        else if (ev.type === 'vehicle_sell')                    vehicleSaleIncome += amt
-        else if (ev.type === 'salary_change')                   salaryEventIncome += amt
-        else if (ev.type === 'debt_payoff')                     debtPayoffSaving  += amt
-        else                                                     otherEventIncome  += amt
+        if (ev.type === 'bonus' || ev.type === 'income')    bonusIncome       += amt
+        else if (ev.type === 'vehicle_sell')                 vehicleSaleIncome += amt
+        else if (ev.type === 'salary_change')                salaryEventIncome += amt
+        else if (ev.type === 'debt_payoff')                  debtPayoffSaving  += amt
+        else                                                  otherEventIncome  += amt
       } else {
         eventExpense += amt
-        if (ev.type === 'vehicle_buy')                          vehicleCosts      += amt
-        else if (ev.type === 'school_fees')                     schoolFees        += amt
-        else if (ev.type === 'children')                        childCosts        += amt
-        else if (ev.type === 'investment')                      investmentContrib += amt
-        else if (ev.type === 'bond_payment')                    bondPayments      += amt
-        else                                                     otherEventExpense += amt
+        if (ev.type === 'vehicle_buy' || ev.type === 'property') vehicleCosts += amt
+        else if (ev.type === 'school_fees')                  schoolFees        += amt
+        else if (ev.type === 'children')                     childCosts        += amt
+        else if (ev.type === 'investment')                   investmentContrib += amt
+        else if (ev.type === 'bond_payment')                 bondPayments      += amt
+        else                                                  otherEventExpense += amt
       }
     }
 
     // Investment growth on existing balance (compound annually)
     const investmentGrowth = Math.round(Math.max(balance, 0) * (investmentReturn / 100))
     const freeCashFlow     = annualIncome + eventIncome - annualFixed - annualVariable - eventExpense
-    balance = balance + freeCashFlow + investmentGrowth
+    balance  = balance + freeCashFlow + investmentGrowth
+
+    // Cumulative wealth decomposition:
+    // cumulativeFCF    = total wealth created by saving discipline (FCF >= 0) or destroyed (FCF < 0)
+    // cumulativeGrowth = total wealth created by compound investment returns
+    // Invariant: netWorth == startingSavings + cumulativeFCF + cumulativeGrowth
+    cumulFCF    += freeCashFlow
+    cumulGrowth += investmentGrowth
 
     rows.push({
       year,
@@ -102,6 +137,9 @@ function buildYearModel({ netIncomeMonthly, fixedMonthly, variableMonthly,
       eventExpense:       Math.round(eventExpense),
       freeCashFlow:       Math.round(freeCashFlow),
       netWorth:           Math.round(balance),
+      // Wealth decomposition (Session 8)
+      cumulativeFCF:      Math.round(cumulFCF),
+      cumulativeGrowth:   Math.round(cumulGrowth),
     })
   }
   return rows
@@ -281,27 +319,33 @@ function ScenarioComparisonPanel({ models, horizonYears }) {
 // Long-term financial metrics panel.
 // All values sourced directly from the deterministic buildYearModel() engine.
 // No AI involved -- pure arithmetic display.
+//
+// Session 8: Added wealth decomposition metrics (from discipline vs from growth).
+// Invariant: startingSavings + cumulativeFCF + cumulativeGrowth == netWorth (final year)
 // ---------------------------------------------------------------------------
 function LongTermMetricsPanel({ yearModels, horizonYears, debitOrders, netIncome, currentSavings, monthlyFreeCashFlow, recurringMonthly }) {
   const rows = yearModels?.current
   if (!rows?.length || !netIncome) return null
 
-  const yr5NW     = rows[Math.min(4, rows.length - 1)]?.netWorth || 0
-  const yr10NW    = rows[Math.min(9, rows.length - 1)]?.netWorth || 0
-  const horizonNW = rows[rows.length - 1]?.netWorth || 0
-  const yr1FCF    = rows[0]?.freeCashFlow || 0
+  const lastRow  = rows[rows.length - 1]
+  const yr5Row   = rows[Math.min(4, rows.length - 1)]
+  const yr1Row   = rows[0]
 
-  // Accumulated investment growth over the projection horizon
-  const totalInvGrowth = rows.reduce((s, r) => s + (r.investmentGrowth || 0), 0)
+  const horizonNW       = lastRow?.netWorth || 0
+  const yr5NW           = yr5Row?.netWorth || 0
+  const yr1FCF          = yr1Row?.freeCashFlow || 0
+  const cumulFCF        = lastRow?.cumulativeFCF || 0
+  const cumulGrowth     = lastRow?.cumulativeGrowth || 0
 
-  // Obligation burden: fixed debit orders as % of net income
-  const obligationBurden = netIncome > 0 ? Math.round((debitOrders + (recurringMonthly || 0)) / netIncome * 100) : 0
+  // Obligation burden: debit orders + detected recurring obligations as % of net income
+  const obligationBurden = netIncome > 0
+    ? Math.round((debitOrders + (recurringMonthly || 0)) / netIncome * 100) : 0
 
   // Savings runway: months current savings cover if FCF is negative
   const runway = monthlyFreeCashFlow < 0 && currentSavings > 0
     ? Math.round(currentSavings / Math.abs(monthlyFreeCashFlow)) : null
 
-  const nwTarget = horizonYears <= 5 ? yr5NW : horizonYears <= 10 ? yr10NW : horizonNW
+  const nwTarget = horizonYears <= 5 ? yr5NW : horizonNW
 
   const metrics = [
     {
@@ -312,8 +356,8 @@ function LongTermMetricsPanel({ yearModels, horizonYears, debitOrders, netIncome
     },
     {
       label: 'Investment growth',
-      value: fmtK(totalInvGrowth),
-      color: 'var(--text)',
+      value: fmtK(cumulGrowth),
+      color: '#1D9E75',
       hint: `over ${horizonYears} years`,
     },
     {
@@ -327,6 +371,20 @@ function LongTermMetricsPanel({ yearModels, horizonYears, debitOrders, netIncome
       value: obligationBurden + '%',
       color: obligationBurden > 65 ? '#D85A30' : obligationBurden > 45 ? '#BA7517' : 'var(--text)',
       hint: 'of net income',
+    },
+    // Wealth decomposition: how much of net worth came from discipline vs compound growth
+    // Invariant: startingSavings + cumulativeFCF + cumulativeGrowth == netWorth (final year)
+    {
+      label: 'From discipline',
+      value: fmtK(cumulFCF),
+      color: cumulFCF < 0 ? '#D85A30' : 'var(--text)',
+      hint: `cumulative FCF (${horizonYears}yr)`,
+    },
+    {
+      label: 'From growth',
+      value: fmtK(cumulGrowth),
+      color: '#1D9E75',
+      hint: 'compound returns',
     },
     ...(runway !== null ? [{
       label: 'Savings runway',
@@ -344,7 +402,7 @@ function LongTermMetricsPanel({ yearModels, horizonYears, debitOrders, netIncome
 
   return (
     <div className="proj-longterm-panel">
-      <div className="proj-longterm-header">Long-term outlook <span className="proj-longterm-sub">current path · deterministic</span></div>
+      <div className="proj-longterm-header">Long-term outlook <span className="proj-longterm-sub">current path &middot; deterministic</span></div>
       <div className="proj-longterm-grid">
         {metrics.map(m => (
           <div key={m.label} className="proj-longterm-metric">
@@ -361,27 +419,39 @@ function LongTermMetricsPanel({ yearModels, horizonYears, debitOrders, netIncome
 // ---------------------------------------------------------------------------
 // Year-by-year financial table (sticky left col, horizontal scroll on mobile)
 // Shows only rows with non-zero values across any year.
+//
+// Session 8 additions:
+//   - otherEventIncome row (was tracked in buildYearModel but missing from table -- bug fixed)
+//   - cumulativeFCF row (wealth from discipline -- running sum of FCF)
+//   - cumulativeGrowth row (wealth from compound returns -- running sum of investment growth)
 // ---------------------------------------------------------------------------
 const ALL_TABLE_ROWS = [
-  { key: 'annualIncome',       label: 'Salary income',           type: 'income'   },
-  { key: 'bonusIncome',        label: 'Bonuses / windfalls',     type: 'income'   },
-  { key: 'salaryEventIncome',  label: 'Salary increase gains',   type: 'income'   },
-  { key: 'vehicleSaleIncome',  label: 'Vehicle sale proceeds',   type: 'income'   },
-  { key: 'debtPayoffSaving',   label: 'Debt cleared (saving)',   type: 'income'   },
-  { key: 'investmentGrowth',   label: 'Investment growth',       type: 'income'   },
-  { key: 'annualFixed',        label: 'Fixed obligations',       type: 'expense'  },
-  { key: 'annualVariable',     label: 'Living expenses',         type: 'expense'  },
-  { key: 'vehicleCosts',       label: 'Vehicle costs',           type: 'expense'  },
-  { key: 'schoolFees',         label: 'School fees',             type: 'expense'  },
-  { key: 'childCosts',         label: 'Child / childcare',       type: 'expense'  },
-  { key: 'investmentContrib',  label: 'Investment contributions',type: 'expense'  },
-  { key: 'bondPayments',       label: 'Bond repayments',         type: 'expense'  },
-  { key: 'otherEventExpense',  label: 'Other event costs',       type: 'expense'  },
-  { key: 'freeCashFlow',       label: 'Free cash flow',          type: 'net'      },
-  { key: 'netWorth',           label: 'Net worth',               type: 'networth' },
+  { key: 'annualIncome',       label: 'Salary income',              type: 'income'   },
+  { key: 'bonusIncome',        label: 'Bonuses / windfalls',        type: 'income'   },
+  { key: 'salaryEventIncome',  label: 'Salary increase gains',      type: 'income'   },
+  { key: 'vehicleSaleIncome',  label: 'Vehicle sale proceeds',      type: 'income'   },
+  { key: 'debtPayoffSaving',   label: 'Debt cleared (saving)',      type: 'income'   },
+  { key: 'otherEventIncome',   label: 'Other event income',         type: 'income'   },
+  { key: 'investmentGrowth',   label: 'Investment growth',          type: 'income'   },
+  { key: 'cumulativeGrowth',   label: 'Cumulative inv. growth',     type: 'income'   },
+  { key: 'annualFixed',        label: 'Fixed obligations',          type: 'expense'  },
+  { key: 'annualVariable',     label: 'Living expenses',            type: 'expense'  },
+  { key: 'vehicleCosts',       label: 'Vehicle costs',              type: 'expense'  },
+  { key: 'schoolFees',         label: 'School fees (inflated)',     type: 'expense'  },
+  { key: 'childCosts',         label: 'Child / childcare (inflated)',type: 'expense' },
+  { key: 'investmentContrib',  label: 'Investment contributions',   type: 'expense'  },
+  { key: 'bondPayments',       label: 'Bond repayments',            type: 'expense'  },
+  { key: 'otherEventExpense',  label: 'Other event costs',          type: 'expense'  },
+  { key: 'freeCashFlow',       label: 'Free cash flow',             type: 'net'      },
+  { key: 'cumulativeFCF',      label: 'Cumulative savings (FCF)',   type: 'net'      },
+  { key: 'netWorth',           label: 'Net worth',                  type: 'networth' },
 ]
 
-const ALWAYS_SHOW = new Set(['annualIncome','annualFixed','annualVariable','investmentGrowth','freeCashFlow','netWorth'])
+const ALWAYS_SHOW = new Set([
+  'annualIncome', 'annualFixed', 'annualVariable',
+  'investmentGrowth', 'cumulativeGrowth',
+  'freeCashFlow', 'cumulativeFCF', 'netWorth',
+])
 
 function YearlyTable({ model }) {
   if (!model?.length) return null
@@ -426,21 +496,22 @@ function YearlyTable({ model }) {
 // ---------------------------------------------------------------------------
 // DEFAULT_PROJECTION_ASSUMPTIONS imported from src/utils/projection.js
 // -- shared with Recommendations.jsx so both components reconcile on base case.
+// Session 8: Now includes schoolFeeInflation (8%) and childCostInflation (7%).
 const DEFAULT_ASSUMPTIONS = DEFAULT_PROJECTION_ASSUMPTIONS
 
 const EVENT_TEMPLATES = [
-  { type: 'bonus',         label: 'Bonus / windfall',             income: true,  monthly: false, icon: '💰' },
-  { type: 'salary_change', label: 'Salary increase (net/mo)',     income: true,  monthly: true,  icon: '📈' },
-  { type: 'vehicle_buy',   label: 'Vehicle purchase',             income: false, monthly: false, icon: '🚗' },
-  { type: 'vehicle_sell',  label: 'Vehicle sale proceeds',        income: true,  monthly: false, icon: '🚗' },
-  { type: 'property',      label: 'Property deposit / costs',     income: false, monthly: false, icon: '🏠' },
-  { type: 'bond_payment',  label: 'Bond repayment (mo)',          income: false, monthly: true,  icon: '🏠' },
-  { type: 'children',      label: 'Child costs (mo)',             income: false, monthly: true,  icon: '👶' },
-  { type: 'school_fees',   label: 'School fees (annual)',         income: false, monthly: false, icon: '📚' },
-  { type: 'debt_payoff',   label: 'Debt cleared - saves (mo)',    income: true,  monthly: true,  icon: '✂' },
-  { type: 'investment',    label: 'Investment contribution (mo)', income: false, monthly: true,  icon: '📊' },
-  { type: 'expense',       label: 'One-off expense',              income: false, monthly: false, icon: '💸' },
-  { type: 'income',        label: 'One-off income',               income: true,  monthly: false, icon: '💰' },
+  { type: 'bonus',         label: 'Bonus / windfall',             income: true,  monthly: false, icon: '\u{1f4b0}' },
+  { type: 'salary_change', label: 'Salary increase (net/mo)',     income: true,  monthly: true,  icon: '\u{1f4c8}' },
+  { type: 'vehicle_buy',   label: 'Vehicle purchase',             income: false, monthly: false, icon: '\u{1f697}' },
+  { type: 'vehicle_sell',  label: 'Vehicle sale proceeds',        income: true,  monthly: false, icon: '\u{1f697}' },
+  { type: 'property',      label: 'Property deposit / costs',     income: false, monthly: false, icon: '\u{1f3e0}' },
+  { type: 'bond_payment',  label: 'Bond repayment (mo)',          income: false, monthly: true,  icon: '\u{1f3e0}' },
+  { type: 'children',      label: 'Child costs (mo)',             income: false, monthly: true,  icon: '\u{1f476}' },
+  { type: 'school_fees',   label: 'School fees (annual)',         income: false, monthly: false, icon: '\u{1f4da}' },
+  { type: 'debt_payoff',   label: 'Debt cleared - saves (mo)',    income: true,  monthly: true,  icon: '\u{2702}' },
+  { type: 'investment',    label: 'Investment contribution (mo)', income: false, monthly: true,  icon: '\u{1f4ca}' },
+  { type: 'expense',       label: 'One-off expense',              income: false, monthly: false, icon: '\u{1f4b8}' },
+  { type: 'income',        label: 'One-off income',               income: true,  monthly: false, icon: '\u{1f4b0}' },
 ]
 
 // ---------------------------------------------------------------------------
@@ -454,7 +525,6 @@ function lsGet(key, fallback) {
     const raw = localStorage.getItem(LS_PREFIX + key)
     if (raw === null) return fallback
     const parsed = JSON.parse(raw)
-    // Basic type check: if parsed is an object/array, verify it's not empty-corrupted
     return parsed !== null && parsed !== undefined ? parsed : fallback
   } catch { return fallback }
 }
@@ -478,9 +548,17 @@ export default function Projections({ recurringMonthly }) {
   const [currentSavingsInput,setCurrentSavingsInput]= useState(() => lsGet('currentSavings', ''))
 
   const [forecastMode,     setForecastMode]    = useState(() => lsGet('forecastMode', 'current'))
-  const [assumptions,      setAssumptions]     = useState(() => lsGet('assumptions', DEFAULT_ASSUMPTIONS))
+
+  // Session 8: assumptions state merges DEFAULT_ASSUMPTIONS first so new fields
+  // (schoolFeeInflation, childCostInflation) get their defaults for existing users
+  // whose localStorage has the old 3-field schema.
+  const [assumptions,      setAssumptions]     = useState(() => ({
+    ...DEFAULT_ASSUMPTIONS,
+    ...lsGet('assumptions', {}),
+  }))
   const [showAssumptions,  setShowAssumptions] = useState(false)
-  const [showYearTable,    setShowYearTable]   = useState(false)
+  // Session 8: showYearTable persisted to LS so users don't re-expand every visit
+  const [showYearTable,    setShowYearTable]   = useState(() => lsGet('showYearTable', false))
   const [showCompare,      setShowCompare]     = useState(false)
   const [horizonYears,     setHorizonYears]    = useState(() => lsGet('horizonYears', 10))
   const [customEvents,     setCustomEvents]    = useState(() => lsGet('customEvents', []))
@@ -488,13 +566,13 @@ export default function Projections({ recurringMonthly }) {
   const [eventDraft,       setEventDraft]      = useState({
     type: 'bonus', year: new Date().getFullYear() + 1, amount: '', description: '', endYear: null,
   })
-  const [editingId,        setEditingId]       = useState(null)   // id of event being edited inline
+  const [editingId,        setEditingId]       = useState(null)
   const [editDraft,        setEditDraft]       = useState({})
 
   // Cross-device Supabase persistence refs
-  const scenarioHydrated  = useRef(false)  // true once profile.scenario_state hydration resolves
-  const saveScenarioTimer = useRef(null)   // debounce handle for Supabase scenario saves
-  const scenarioInitialized = useRef(false) // armed after initial mount; guards the updatedAt LS write
+  const scenarioHydrated   = useRef(false)
+  const saveScenarioTimer  = useRef(null)
+  const scenarioInitialized= useRef(false)
 
   const [aiPrompt,       setAiPrompt]       = useState('')
   const [aiLoading,      setAiLoading]      = useState(false)
@@ -506,53 +584,41 @@ export default function Projections({ recurringMonthly }) {
     if (profile.net_income) setNetIncomeInput(String(Math.round(profile.net_income / 100)))
     const debitBase = recurringMonthly || (profile.monthly_debit_orders ? profile.monthly_debit_orders / 100 : 0)
     if (debitBase) setDebitOrdersInput(String(Math.round(debitBase)))
-    // Seed starting savings from profile only when user hasn't manually set one yet
     if (profile.savings_balance && !lsGet('currentSavings', '')) {
       setCurrentSavingsInput(String(Math.round(profile.savings_balance / 100)))
     }
   }, [profile, recurringMonthly])
 
   useEffect(() => { loadTransactions() }, [user?.id, tier])
-  // Persist scenario planning state across sessions.
-  // Only meaningful state is persisted -- inputs derived from profile/ledger are not.
   useEffect(() => { lsSet('forecastMode',   forecastMode)       }, [forecastMode])
   useEffect(() => { lsSet('assumptions',    assumptions)        }, [assumptions])
   useEffect(() => { lsSet('horizonYears',   horizonYears)       }, [horizonYears])
   useEffect(() => { lsSet('customEvents',   customEvents)       }, [customEvents])
   useEffect(() => { lsSet('currentSavings', currentSavingsInput)}, [currentSavingsInput])
+  useEffect(() => { lsSet('showYearTable',  showYearTable)      }, [showYearTable])
 
-  // Track LS scenario freshness so cross-device sync can compare timestamps.
-  // IMPORTANT: skip on the initial mount. React fires useEffect after every
-  // first render, even when deps equal their lazy-initialised LS values.
-  // Writing Date.now() on mount would make lsTs appear newer than any Supabase
-  // db.updatedAt, permanently breaking cross-device hydration for returning users.
-  // scenarioInitialized guards this: it arms to true on the first run and returns
-  // early, so only genuine user-driven state changes update the timestamp.
+  // Guard LS timestamp write: skip on initial mount to avoid corrupting cross-device sync
   useEffect(() => {
     if (!scenarioInitialized.current) { scenarioInitialized.current = true; return }
     lsSet('updatedAt', Date.now())
   }, [forecastMode, assumptions, horizonYears, customEvents, currentSavingsInput])
 
-  // Supabase hydration: resolves cross-device sync for scenario planning state.
-  // Runs once when profile first becomes available. scenarioHydrated guards re-runs.
-  // Strategy: compare updatedAt timestamps -- whichever is newer wins.
+  // Supabase hydration: cross-device sync for scenario planning state
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!user?.id || !profile || scenarioHydrated.current) return
-    scenarioHydrated.current = true  // set before any state changes to arm the save effect
+    scenarioHydrated.current = true
 
     const db = profile.scenario_state
-    if (!db?.updatedAt) return  // No Supabase scenario data -- localStorage initialised above is correct
+    if (!db?.updatedAt) return
 
     const lsTs = lsGet('updatedAt', 0)
 
     if (db.updatedAt <= lsTs) {
-      // localStorage is newer (or equal) -- push current LS state to Supabase silently
-      // so it becomes available on other devices without waiting for user interaction
       supabase.from('profiles')
         .upsert({ id: user.id, scenario_state: {
           forecastMode:   lsGet('forecastMode',   'current'),
-          assumptions:    lsGet('assumptions',    DEFAULT_ASSUMPTIONS),
+          assumptions:    { ...DEFAULT_ASSUMPTIONS, ...lsGet('assumptions', {}) },
           horizonYears:   lsGet('horizonYears',   10),
           customEvents:   lsGet('customEvents',   []),
           currentSavings: lsGet('currentSavings', ''),
@@ -562,24 +628,23 @@ export default function Projections({ recurringMonthly }) {
       return
     }
 
-    // Supabase is newer -- hydrate React state (cross-device case: no/stale LS data)
+    // Supabase is newer -- hydrate React state
     if (db.forecastMode)                 setForecastMode(db.forecastMode)
-    if (db.assumptions)                  setAssumptions(db.assumptions)
+    // Merge db assumptions with defaults so new fields always have values
+    if (db.assumptions)                  setAssumptions({ ...DEFAULT_ASSUMPTIONS, ...db.assumptions })
     if (db.horizonYears)                 setHorizonYears(db.horizonYears)
     if (Array.isArray(db.customEvents))  setCustomEvents(db.customEvents)
     if (db.currentSavings !== undefined) setCurrentSavingsInput(String(db.currentSavings || ''))
 
-    // Sync back to localStorage so same-device refreshes see the hydrated state
     lsSet('forecastMode',   db.forecastMode   || 'current')
-    lsSet('assumptions',    db.assumptions    || DEFAULT_ASSUMPTIONS)
+    lsSet('assumptions',    { ...DEFAULT_ASSUMPTIONS, ...db.assumptions } || DEFAULT_ASSUMPTIONS)
     lsSet('horizonYears',   db.horizonYears   || 10)
     lsSet('customEvents',   db.customEvents   || [])
     lsSet('currentSavings', String(db.currentSavings || ''))
     lsSet('updatedAt',      db.updatedAt)
   }, [user?.id, profile?.scenario_state])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Persist scenario state to Supabase (debounced 3 s, only after hydration resolves).
-  // Fire-and-forget: no profile refetch, no UI side effects.
+  // Debounced Supabase save (3s) -- only after hydration resolves
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!user?.id || !scenarioHydrated.current) return
@@ -694,15 +759,13 @@ export default function Projections({ recurringMonthly }) {
   const currentYear = new Date().getFullYear()
   const yearOptions = Array.from({ length: 15 }, (_, i) => currentYear + i)
 
-  // Pre-computed metrics for the scenario commentary card.
-  // All values sourced from the deterministic buildYearModel engine -- no AI.
   const scenarioCardMetrics = useMemo(() => {
     const c  = yearModels.current
     const o  = yearModels.optimised
     const cu = yearModels.custom
     const last = arr => arr[arr.length - 1]
     const at5  = arr => arr[Math.min(4, arr.length - 1)]
-    const totalInvGrowth = c.reduce((s, r) => s + (r.investmentGrowth || 0), 0)
+    const totalInvGrowth = c[c.length - 1]?.cumulativeGrowth || 0
     const salaryIn5yr    = at5(c)?.annualIncome || 0
     const optimisedNW    = last(o)?.netWorth || 0
     const optimisedDelta = optimisedNW - (last(c)?.netWorth || 0)
@@ -712,7 +775,6 @@ export default function Projections({ recurringMonthly }) {
     return { totalInvGrowth, salaryIn5yr, optimisedNW, optimisedDelta, yr5Delta, customNW, customDelta }
   }, [yearModels])
 
-  // Top custom event by annual impact (for the scenario commentary card)
   const topCustomEvent = useMemo(() => {
     if (customEvents.length === 0) return null
     return customEvents.reduce((a, b) => {
@@ -757,7 +819,7 @@ export default function Projections({ recurringMonthly }) {
   function addEvent() {
     const tmpl = EVENT_TEMPLATES.find(t => t.type === eventDraft.type) || EVENT_TEMPLATES[0]
     const ev = { ...eventDraft, income: tmpl.income, monthly: tmpl.monthly, id: Date.now() }
-    if (!tmpl.monthly) delete ev.endYear  // one-off events don't use endYear
+    if (!tmpl.monthly) delete ev.endYear
     setCustomEvents(prev => [...prev, ev])
     setShowEventForm(false)
     setEventDraft({ type: 'bonus', year: currentYear + 1, amount: '', description: '', endYear: null })
@@ -782,6 +844,11 @@ export default function Projections({ recurringMonthly }) {
     setEditingId(null)
     setEditDraft({})
   }
+
+  // Determine which extra assumption fields to show in the assumptions panel
+  const hasSchoolFees = customEvents.some(e => e.type === 'school_fees')
+  const hasChildren   = customEvents.some(e => e.type === 'children')
+  // Always show all 5 assumptions so users can understand the model even before adding events
 
   return (
     <div className="proj-shell">
@@ -811,7 +878,7 @@ export default function Projections({ recurringMonthly }) {
       <p className="proj-mode-desc">
         {forecastMode === 'current'   && "Your financial trajectory if today's income and spending continue unchanged. Salary grows at your assumed rate; variable costs inflate annually."}
         {forecastMode === 'optimised' && 'Models a 10% reduction in variable spending -- the equivalent of small consistent cuts across groceries, eating out, and lifestyle. Fixed obligations and salary are unchanged.'}
-        {forecastMode === 'custom'    && 'Add life events to stress-test your future: salary changes, vehicle purchases, bond repayments, children, school fees, or any major income or expense. Recurring events span multiple years automatically.'}
+        {forecastMode === 'custom'    && 'Add life events to stress-test your future: salary changes, vehicle purchases, bond repayments, children, school fees, or any major income or expense. Recurring events span multiple years automatically. School fees and child costs use their own inflation rates.'}
       </p>
 
       <div className="proj-inputs">
@@ -946,16 +1013,18 @@ export default function Projections({ recurringMonthly }) {
         <button className="proj-assumptions-toggle" onClick={() => setShowAssumptions(v => !v)}>
           <span className="proj-assumptions-toggle-title">Growth assumptions</span>
           <span className="proj-assumptions-hint">
-            salary {assumptions.salaryGrowth}% · inflation {assumptions.inflation}% · returns {assumptions.investmentReturn}%
+            salary {assumptions.salaryGrowth}% &middot; inflation {assumptions.inflation}% &middot; returns {assumptions.investmentReturn}%
           </span>
           <span className="proj-toggle-arrow">{showAssumptions ? '▲' : '▼'}</span>
         </button>
         {showAssumptions && (
           <div className="proj-assumptions-body">
             {[
-              { key: 'salaryGrowth',    label: 'Annual salary growth (%)',       hint: 'Expected net income increase per year' },
-              { key: 'inflation',       label: 'Inflation / cost of living (%)', hint: 'How fast your expenses grow annually'  },
-              { key: 'investmentReturn',label: 'Investment return (%)',           hint: 'Annual return on savings balance'      },
+              { key: 'salaryGrowth',       label: 'Annual salary growth (%)',          hint: 'Expected net income increase per year'                       },
+              { key: 'inflation',           label: 'Inflation / cost of living (%)',    hint: 'How fast your general expenses grow annually'                },
+              { key: 'investmentReturn',    label: 'Investment return (%)',             hint: 'Annual return on savings balance'                            },
+              { key: 'schoolFeeInflation',  label: 'School fee inflation (%)',          hint: 'SA school fees inflate faster than CPI -- applied to school_fees events across years' },
+              { key: 'childCostInflation',  label: 'Child / childcare inflation (%)',   hint: 'Applied to children events in subsequent years'              },
             ].map(({ key, label, hint }) => (
               <div key={key} className="proj-assumption-row">
                 <div className="proj-assumption-text">
@@ -965,7 +1034,7 @@ export default function Projections({ recurringMonthly }) {
                 <div className="proj-assumption-input-wrap">
                   <input
                     className="proj-assumption-input" type="number" min="0" max="50" step="0.5"
-                    value={assumptions[key]}
+                    value={assumptions[key] ?? DEFAULT_ASSUMPTIONS[key]}
                     onChange={e => setAssumptions(prev => ({ ...prev, [key]: parseFloat(e.target.value) || 0 }))}
                   />
                   <span className="proj-assumption-pct">%</span>
@@ -1125,7 +1194,7 @@ export default function Projections({ recurringMonthly }) {
                     <button className="proj-event-edit-btn" onClick={() => startEdit(ev)} title="Edit">&#x270E;</button>
                     <button className="proj-event-remove-btn"
                       onClick={() => setCustomEvents(prev => prev.filter(e => e.id !== ev.id))}>
-                      \xd7
+                      &#xd7;
                     </button>
                   </div>
                 )}
@@ -1145,7 +1214,7 @@ export default function Projections({ recurringMonthly }) {
       <div className="proj-table-section">
         <button className="proj-table-toggle" onClick={() => setShowYearTable(v => !v)}>
           <span className="proj-table-toggle-title">Year-by-year financial model</span>
-          <span className="proj-table-toggle-hint">{forecastMode} path · {horizonYears} years</span>
+          <span className="proj-table-toggle-hint">{forecastMode} path &middot; {horizonYears} years</span>
           <span className="proj-toggle-arrow">{showYearTable ? '▲' : '▼'}</span>
         </button>
         {showYearTable && <YearlyTable model={activeModel} />}

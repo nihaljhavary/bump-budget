@@ -670,3 +670,74 @@ Normal uploads never wipe planning continuity — only explicit "Start fresh" or
 - Uploads (`importSignal` bump) trigger `loadData()` re-fetch in Recommendations.jsx and `needsReanalysis = true` if results exist. Planning state (answers, result) is NOT cleared.
 - `buildYearModel()` remains the sole deterministic financial engine. AI only shapes the `customEvents` list via `scenario-interpret.js` — it never generates financial numbers.
 - `scenarioHydrated` ref prevents re-hydration on every profile refetch (which happens after billing webhooks etc.). Hydration runs exactly once per component mount.
+
+---
+
+## Scenario Planning Session 8 (2026-05 — structured expansion)
+
+### What was added (surgical, not a rewrite)
+
+**src/utils/projection.js**
+- `DEFAULT_PROJECTION_ASSUMPTIONS` extended with two new fields:
+  - `schoolFeeInflation: 8` — SA school fees inflate ~8%/yr, applied to `school_fees` events in multi-year scenarios
+  - `childCostInflation: 7` — applied to `children` events in multi-year scenarios
+- These are SA-realistic defaults. General `inflation` (CPI) stays at 6%.
+
+**buildYearModel() — three targeted changes (no rewrite)**
+
+1. **Separate inflation rates for school_fees and children events**
+   - `yearsIntoEvent = year - Number(ev.year)` computed per event
+   - For `school_fees` events: `amt *= (1 + schoolFeeInflation/100)^yearsIntoEvent`
+   - For `children` events: `amt *= (1 + childCostInflation/100)^yearsIntoEvent`
+   - Applies only when `yearsIntoEvent > 0` (base year unchanged)
+   - This means a R50k school fee event in 2027–2032 shows: 50k, 54k, 58.3k, 62.9k, 67.9k, 73.3k
+
+2. **Cumulative wealth decomposition tracking**
+   - `cumulFCF` (running sum of `freeCashFlow`) and `cumulGrowth` (running sum of `investmentGrowth`) maintained outside the loop
+   - Each row now includes `cumulativeFCF` and `cumulativeGrowth`
+   - **Invariant (verified numerically):** `startingSavings + cumulativeFCF + cumulativeGrowth == netWorth` for every year, delta ≤ R1 (rounding only)
+
+3. **Bug fix: `otherEventIncome` was tracked but never shown**
+   - `property` purchase events now correctly accumulate to `vehicleCosts` (not `otherEventExpense`)
+   - `otherEventIncome` was computed in the engine but was missing from `ALL_TABLE_ROWS` — now added
+
+**ALL_TABLE_ROWS — three new rows**
+- `otherEventIncome`: "Other event income" (type: income) — was missing, bug fixed
+- `cumulativeGrowth`: "Cumulative inv. growth" (type: income) — shows compound return accumulation
+- `cumulativeFCF`: "Cumulative savings (FCF)" (type: net) — shows discipline-driven wealth accumulation
+
+**ALWAYS_SHOW set — expanded**
+- Added `cumulativeGrowth` and `cumulativeFCF` to the always-visible set (alongside annualIncome, annualFixed, annualVariable, investmentGrowth, freeCashFlow, netWorth)
+
+**LongTermMetricsPanel — wealth decomposition added**
+- "From discipline" metric: `cumulativeFCF` at horizon (how much of net worth came from saving discipline)
+- "From growth" metric: `cumulativeGrowth` at horizon (how much came from compound returns)
+- Panel now consistently uses `lastRow.cumulativeGrowth` instead of recalculating `reduce` sum
+
+**Assumptions panel — expanded to 5 inputs**
+- Added `schoolFeeInflation` and `childCostInflation` fields (always shown, not gated on event type)
+- Assumption reset button resets all 5 fields
+
+**State initialization — migration-safe merge**
+- `assumptions` useState now uses `{ ...DEFAULT_ASSUMPTIONS, ...lsGet('assumptions', {}) }` pattern
+- Existing users with old 3-field LS schema get `schoolFeeInflation` and `childCostInflation` defaults automatically on next load
+- Same merge applied in Supabase hydration path
+
+**showYearTable — LS persistence added**
+- `useState(() => lsGet('showYearTable', false))` with `useEffect` to persist on change
+- Users who expand the year table don't need to re-expand on every visit
+
+### What was deliberately NOT changed
+- `buildYearModel` core loop arithmetic — identical to Session 7
+- `ProjectionChart`, `YearChart`, `ScenarioComparisonPanel` — unchanged
+- `computeBaselineProjection` in projection.js — unchanged (baseline for Recommendations reconciliation)
+- All persistence refs (`scenarioHydrated`, `saveScenarioTimer`, `scenarioInitialized`) — unchanged
+- Event editing, AI interpreter, mode tabs, saved events hint — unchanged
+- CSS — no changes required
+
+### Reconciliation guarantee (Session 8)
+All 4 check suites pass with zero delta:
+1. Wealth decomposition invariant: `startingSavings + cumulativeFCF + cumulativeGrowth == netWorth` for all years
+2. School fee inflation: `schoolFees_year = base * (1 + 0.08)^yearsIntoEvent` exactly
+3. Children cost inflation: `childCosts_year = base * (1 + 0.07)^yearsIntoEvent` exactly
+4. Optimised path always >= current path in every year (zero-event base case)
