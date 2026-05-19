@@ -266,14 +266,20 @@ export default function Recommendations({ onImportSignal = 0 }) {
       })
     } else if (lsTs > dbTs && lsData?.result) {
       // localStorage has newer data -- silently push to Supabase (new-column bootstrap)
-      supabase.from('profiles')
-        .upsert({ id: user.id, planning_completed: true, planning_profile: {
-          answers:          lsData.answers,
-          result:           lsData.result,
-          answersUpdatedAt: lsData.answersUpdatedAt || lsTs,
-          analysisRunAt:    lsData.analysisRunAt    || lsTs,
-        }}, { onConflict: 'id' })
-        .catch(() => {})
+      ;(async () => {
+        try {
+          await supabase.from('profiles').upsert({
+            id:                user.id,
+            planning_completed: true,
+            planning_profile: {
+              answers:          lsData.answers,
+              result:           lsData.result,
+              answersUpdatedAt: lsData.answersUpdatedAt || lsTs,
+              analysisRunAt:    lsData.analysisRunAt    || lsTs,
+            },
+          }, { onConflict: 'id' })
+        } catch { /* best-effort bootstrap — never blocks hydration */ }
+      })()
     }
     setHydrated(true)  // hydration complete
   }, [user?.id, profile?.planning_profile, profile?.planning_completed])  // eslint-disable-line react-hooks/exhaustive-deps
@@ -375,16 +381,24 @@ export default function Recommendations({ onImportSignal = 0 }) {
       if (isNewGoals) setGoalsDate(new Date(now))
       persist(user?.id, finalAnswers, d.result, { answersUpdatedAt, analysisRunAt: now })
       // Sync to Supabase: planning_completed is the canonical flag — saved even if content sync fails.
-      supabase.from('profiles')
-        .upsert({ id: user.id, planning_completed: true, planning_profile: {
-          answers:          finalAnswers,
-          result:           d.result,
-          answersUpdatedAt: answersUpdatedAt,
-          analysisRunAt:    now,
-        }}, { onConflict: 'id' })
-        .catch(err => console.warn('[rec] Supabase sync failed:', err))
+      try {
+        const { error: syncErr } = await supabase.from('profiles').upsert({
+          id:                 user.id,
+          planning_completed: true,
+          planning_profile: {
+            answers:          finalAnswers,
+            result:           d.result,
+            answersUpdatedAt: answersUpdatedAt,
+            analysisRunAt:    now,
+          },
+        }, { onConflict: 'id' })
+        if (syncErr) console.warn('[rec] Supabase sync failed:', syncErr.message)
+      } catch (syncErr) {
+        console.warn('[rec] Supabase sync failed:', syncErr.message)
+      }
     } catch (e) {
-      setError(e.message)
+      console.error('[rec] getRecommendations failed:', e.message)
+      setError('Analysis could not complete. Check your connection and try again.')
       setStep('quiz')
     }
   }
@@ -418,9 +432,14 @@ export default function Recommendations({ onImportSignal = 0 }) {
     clearSaved(user?.id)
     // Also clear Supabase so other devices see the reset
     if (user?.id) {
-      supabase.from('profiles')
-        .upsert({ id: user.id, planning_profile: null, planning_completed: false }, { onConflict: 'id' })
-        .catch(() => {})
+      ;(async () => {
+        try {
+          await supabase.from('profiles').upsert(
+            { id: user.id, planning_profile: null, planning_completed: false },
+            { onConflict: 'id' }
+          )
+        } catch { /* best-effort reset — never blocks UI */ }
+      })()
     }
     setResult(null)
     setAnalysisDate(null)

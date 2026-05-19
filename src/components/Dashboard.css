@@ -409,6 +409,20 @@
   font-style: italic;
   margin-top: -4px;
 }
+.bmt-hint-action { color: var(--coral); font-weight: 500; font-style: normal; }
+/* Personal budget inline editing on category cards */
+.cat-budget-btn {
+  background: none; border: none; padding: 0;
+  font-size: inherit; color: var(--muted); font-family: inherit;
+  cursor: pointer; text-decoration: underline dotted var(--border);
+  text-underline-offset: 3px;
+}
+.cat-budget-btn:hover { color: var(--coral); }
+.cat-budget-input {
+  width: 72px; padding: 2px 6px; border: 1.5px solid var(--coral);
+  border-radius: 6px; font-size: 12px; font-family: inherit;
+  color: var(--text); background: var(--bg); outline: none;
+}
 
 /* ── Category cards ── */
 .cats {

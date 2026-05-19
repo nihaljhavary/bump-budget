@@ -151,18 +151,20 @@ export async function handler(event) {
     if (!userId || !validPlans.includes(plan)) {
       return { statusCode: 400, body: JSON.stringify({ error: 'Invalid userId or plan' }) }
     }
-    const { error } = await adminClient
-      .from('profiles')
-      .update({
-        subscription_plan:   plan,
-        subscription_status: 'active',
-        cancel_at_period_end: false,
-        scheduled_plan:      null,
-        trial_ends_at:       null,
-      })
-      .eq('id', userId)
+    // Try full payload first (clears any stale subscription lifecycle columns).
+    // If PostgREST schema cache doesn't have those columns yet, fall back to the
+    // minimal payload that only sets the two columns TierContext requires.
+    const minimalPayload = { subscription_plan: plan, subscription_status: 'active' }
+    const fullPayload    = { ...minimalPayload, cancel_at_period_end: false, scheduled_plan: null, trial_ends_at: null }
 
-    if (error) return { statusCode: 500, body: JSON.stringify({ error: error.message }) }
+    let { error } = await adminClient.from('profiles').update(fullPayload).eq('id', userId)
+    if (error && (error.message?.includes('cancel_at_period_end') || error.message?.includes('schema cache'))) {
+      console.warn('[admin] grant_tier falling back to minimal payload:', error.message)
+      const retry = await adminClient.from('profiles').update(minimalPayload).eq('id', userId)
+      error = retry.error
+    }
+
+    if (error) return { statusCode: 500, body: JSON.stringify({ error: 'Failed to update user tier. Please try again.' }) }
 
     // Log the admin grant event
     await adminClient.from('subscription_events').insert({
@@ -185,19 +187,17 @@ export async function handler(event) {
     const { userId } = body
     if (!userId) return { statusCode: 400, body: JSON.stringify({ error: 'userId required' }) }
 
-    const { error } = await adminClient
-      .from('profiles')
-      .update({
-        subscription_plan:   'free',
-        subscription_status: 'active',
-        cancel_at_period_end: false,
-        scheduled_plan:      null,
-        trial_ends_at:       null,
-        paystack_sub_code:   null,
-      })
-      .eq('id', userId)
+    const minimalRevoke = { subscription_plan: 'free', subscription_status: 'active' }
+    const fullRevoke    = { ...minimalRevoke, cancel_at_period_end: false, scheduled_plan: null, trial_ends_at: null, paystack_sub_code: null }
 
-    if (error) return { statusCode: 500, body: JSON.stringify({ error: error.message }) }
+    let { error: revokeErr } = await adminClient.from('profiles').update(fullRevoke).eq('id', userId)
+    if (revokeErr && (revokeErr.message?.includes('cancel_at_period_end') || revokeErr.message?.includes('schema cache') || revokeErr.message?.includes('paystack_sub_code'))) {
+      console.warn('[admin] revoke_tier falling back to minimal payload:', revokeErr.message)
+      const retry = await adminClient.from('profiles').update(minimalRevoke).eq('id', userId)
+      revokeErr = retry.error
+    }
+
+    if (revokeErr) return { statusCode: 500, body: JSON.stringify({ error: 'Failed to revoke user tier. Please try again.' }) }
 
     await adminClient.from('subscription_events').insert({
       user_id:    userId,

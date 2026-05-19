@@ -119,9 +119,11 @@ export default function Dashboard({ onNavigate }) {
   // Recategorisation state for transaction list
   const [recatId, setRecatId] = useState(null)        // which txn is being edited
   const [recatSaving, setRecatSaving] = useState(false)
-  const [recatPrompt, setRecatPrompt] = useState(null) // { id, name, category } - show "save as rule?" dialog
+  const [recatPrompt, setRecatPrompt] = useState(null) // { id, name, category, ruleKey, similarCount }
   const [selectedCat, setSelectedCat] = useState(null)   // drill-down: which category card was tapped
   const [recatAll, setRecatAll] = useState({ loading: false, result: null })
+  // Personal budget inline editing — which category card is being edited
+  const [editBudgetCat, setEditBudgetCat] = useState(null)
 
   useEffect(() => {
     loadTransactions()
@@ -284,6 +286,23 @@ export default function Dashboard({ onNavigate }) {
     .reduce((s, [, v]) => s + v, 0)
   const regularNet     = income - (totalSpend - exceptionalSpendOV)
   const likelyDrawdown = net < 0 && exceptionalSpendOV > 0
+
+  // Save a category budget inline from the Overview category cards.
+  // Persists to Supabase budgets table and immediately updates the local userBudgets state.
+  async function saveBudgetInline(cat, rawValue) {
+    const amount = Math.round(parseFloat(rawValue) || 0)
+    setEditBudgetCat(null)
+    if (amount <= 0) return
+    setUserBudgets(prev => ({ ...prev, [cat]: amount }))
+    try {
+      await supabase.from('budgets').upsert(
+        { user_id: user.id, category: cat, amount },
+        { onConflict: 'user_id,category' }
+      )
+    } catch (e) {
+      console.error('[bump] Budget save failed:', e)
+    }
+  }
 
   // Bulk re-categorise all transactions via AI
   async function handleRecatAll() {
@@ -643,13 +662,17 @@ export default function Dashboard({ onNavigate }) {
               {budgetMode === 'ai' && (
                 <div className="bmt-hint">AI budgets target 85% of your 12-month rolling average per category.</div>
               )}
+              {budgetMode === 'personal' && (
+                <div className="bmt-hint">Your personal budgets. <span className="bmt-hint-action">Tap any budget amount to edit it.</span></div>
+              )}
               <div className="cats">
                 {Object.entries(catTotals).sort((a, b) => b[1] - a[1]).map(([cat, amt]) => {
                   const budget = activeBudgets[cat] || 1000
                   const over = amt > budget
                   const near = !over && amt > budget * 0.8
+                  const isEditingBudget = budgetMode === 'personal' && editBudgetCat === cat
                   return (
-                    <div className="cat-card" key={cat} onClick={() => setSelectedCat(cat)} style={{cursor:'pointer'}}>
+                    <div className="cat-card" key={cat} onClick={() => { if (!isEditingBudget) setSelectedCat(cat) }} style={{cursor:'pointer'}}>
                       <div className="cat-top">
                         <span className="cat-name">{cat}</span>
                         <span className={`cat-badge ${over ? 'over' : near ? 'near' : 'ok'}`}>
@@ -658,7 +681,30 @@ export default function Dashboard({ onNavigate }) {
                       </div>
                       <div className="cat-amts">
                         <span>{fmt(amt)}</span>
-                        <span>budget {fmt(budget)}</span>
+                        {budgetMode === 'personal' ? (
+                          isEditingBudget ? (
+                            <input
+                              className="cat-budget-input"
+                              autoFocus
+                              defaultValue={Math.round(budget)}
+                              onClick={e => e.stopPropagation()}
+                              onBlur={e => saveBudgetInline(cat, e.target.value)}
+                              onKeyDown={e => {
+                                e.stopPropagation()
+                                if (e.key === 'Enter') e.target.blur()
+                                if (e.key === 'Escape') setEditBudgetCat(null)
+                              }}
+                            />
+                          ) : (
+                            <button
+                              className="cat-budget-btn"
+                              onClick={e => { e.stopPropagation(); setEditBudgetCat(cat) }}
+                              title="Click to set your budget for this category"
+                            >budget {fmt(budget)}</button>
+                          )
+                        ) : (
+                          <span>budget {fmt(budget)}</span>
+                        )}
                       </div>
                       <div className="bar-bg">
                         <div

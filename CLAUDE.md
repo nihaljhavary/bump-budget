@@ -1504,3 +1504,97 @@ User corrections now persist intelligently:
 
 - `node --check netlify/functions/*.js` — all pass
 - `npx vite build --emptyOutDir false` — clean build (131 modules, pre-existing chunk-size warning only)
+
+---
+
+## Surgical stability & UX refinement (2026-05-19 pass 2)
+
+Three targeted fixes — no architecture changes.
+
+### Issue 1 — Smart Money Analysis persistence bug (.catch is not a function)
+
+**Root cause:** `supabase.from('profiles').upsert({...})` returns a Supabase `PostgrestBuilder`, which is thenable (has `.then()`) but does NOT implement the full `Promise` interface. Calling `.catch()` directly on it throws `TypeError: upsert(...).catch is not a function` at runtime. This surfaced as a visible JS error during the final onboarding/question-save flow.
+
+**Three call sites were broken (all in Recommendations.jsx):**
+
+1. **Hydration useEffect** (line ~276, non-async context): LS→Supabase bootstrap upsert. Was calling `.catch(() => {})` on the builder directly. Fixed: wrapped in an `async IIFE` so `await` can be used, errors silently caught.
+
+2. **`getRecommendations()`** (line ~385, already async): Post-analysis sync to Supabase. Was calling `.catch(err => console.warn(...))` on the builder. Fixed: converted to `try { const { error } = await supabase...upsert(...); if (error) console.warn(...) } catch (err) { console.warn(...) }`.
+
+3. **`handleStartFresh()`** (line ~423, non-async): Clear-on-reset upsert. Same pattern. Fixed: wrapped in async IIFE.
+
+**Also fixed:** The `catch (e) { setError(e.message) }` block in `getRecommendations` was exposing raw JS error messages to users. Changed to: `setError('Analysis could not complete. Check your connection and try again.')` with the raw error logged to `console.error` for diagnostics.
+
+**Persistence behaviour (unchanged):**
+- LS hydration (fast path) + Supabase hydration (authoritative, cross-device) both work correctly
+- Freshness: if Supabase ts > LS ts, Supabase wins; if LS ts > Supabase ts, LS pushes to Supabase
+- `planning_completed` boolean on profiles is the canonical flag (lighter than full JSONB content)
+- Planning state only resets on explicit "Start fresh" user action
+
+### Issue 2 — Personal Budget inline editing
+
+**Root cause:** Budget editing already existed in Analytics.jsx (click-to-edit in "Budget vs actual" card) but was invisible from the Overview tab's "Personal" budget mode. Category cards showed `budget {fmt(budget)}` as static text with no affordance to edit.
+
+**Fix applied (Dashboard.jsx + Dashboard.css):**
+
+1. **`editBudgetCat` state** — null | string tracking which category is currently being edited inline.
+
+2. **`saveBudgetInline(cat, rawValue)`** — mirrors Analytics.jsx's `saveBudget`: parses value, optimistically updates `userBudgets` state, upserts to `supabase.from('budgets')` with `{ onConflict: 'user_id,category' }`. Uses the same `budgets` table and conflict key as Analytics.jsx — fully consistent.
+
+3. **Category cards** — when `budgetMode === 'personal'`:
+   - Budget amount shown as a clickable `<button className="cat-budget-btn">` with dotted underline affordance
+   - Clicking opens an `<input className="cat-budget-input">` with `autoFocus`
+   - `onBlur` → `saveBudgetInline(cat, value)`, `Enter` → blur, `Escape` → cancel
+   - Card's `onClick` (which opens the drill-down drawer) is suppressed when editing to prevent conflict
+   - `e.stopPropagation()` on the edit controls prevents card-click interference
+
+4. **Hint text** — "Your personal budgets. Tap any budget amount to edit it." shown in coral below the toggle when Personal mode is active. AI Suggested mode continues to show its existing rolling-average hint.
+
+**CSS added (Dashboard.css):**
+- `.bmt-hint-action` — coral 500-weight hint inline text
+- `.cat-budget-btn` — invisible button, inherits font, dotted underline affordance, coral on hover
+- `.cat-budget-input` — 72px coral-bordered inline input, inherits font
+
+**Budget data layer unchanged:** `userBudgets` is loaded by `loadBudgets()` from the same `budgets` table that Analytics.jsx writes to. Changes made in either tab are immediately reflected in both via Supabase.
+
+### Issue 3 — Tester access tier grant (cancel_at_period_end schema error)
+
+**Root cause:** `admin-data.js` `grant_tier` and `revoke_tier` actions were updating `profiles` with a payload that included `cancel_at_period_end`, `scheduled_plan`, `trial_ends_at`, and `paystack_sub_code`. If any of these columns don't exist in PostgREST's schema cache (column added but cache not refreshed, or migration not run in that Supabase environment), the entire update fails with `"Could not find the 'cancel_at_period_end' column of 'profiles' in the schema cache"`.
+
+**Fix applied (admin-data.js):** Schema-safe two-stage update with silent fallback.
+
+For `grant_tier`:
+```
+Try full payload (subscription_plan + subscription_status + cancel_at_period_end + scheduled_plan + trial_ends_at)
+If error.message includes 'cancel_at_period_end' or 'schema cache':
+  → Log warning internally
+  → Retry with minimal payload (subscription_plan + subscription_status only)
+If still error → return 500 with friendly message
+```
+
+For `revoke_tier`:
+```
+Same two-stage approach — full payload includes paystack_sub_code clearance
+Fallback checks for 'cancel_at_period_end', 'schema cache', or 'paystack_sub_code' in error message
+```
+
+**Why this works in both scenarios:**
+- **Schema columns exist**: Full update runs, clears all stale subscription lifecycle state (prevents `cancel_at_period_end=true` from making a freshly-granted user appear as "downgrading")
+- **Schema columns missing**: Falls back silently, sets the two columns TierContext reads (`subscription_plan`, `subscription_status`) — tier unlocks correctly on next profile load
+
+**Admin/user-facing errors:** Raw Supabase error strings (`error.message`) were previously returned in 500 responses. Now replaced with clean operational messages: `'Failed to update user tier. Please try again.'` / `'Failed to revoke user tier. Please try again.'`
+
+**Existing admin tooling preserved:** Admin check logic (`role !== 'admin' && !is_admin`), `subscription_events` logging, `list_all_profiles` enrichment, `get_dashboard`, support/error log actions — all untouched.
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `src/components/Recommendations.jsx` | Fixed 3× `.catch()` on Supabase builders → async/await; friendly error message |
+| `src/components/Dashboard.jsx` | `editBudgetCat` state, `saveBudgetInline()`, editable category card budget amounts, hint text |
+| `src/components/Dashboard.css` | `.bmt-hint-action`, `.cat-budget-btn`, `.cat-budget-input` |
+| `netlify/functions/admin-data.js` | Schema-safe two-stage update for `grant_tier` + `revoke_tier`; friendly 500 messages |
+
+### Build verification
+- `node --check netlify/functions/*.js` — all pass
+- `npx vite build --emptyOutDir false` — clean build (131 modules, pre-existing warnings only)
