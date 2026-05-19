@@ -1,12 +1,36 @@
+import './_ws-polyfill.js'
+import { createClient } from '@supabase/supabase-js'
+
 export async function handler(event) {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' }
   }
 
-  const { reference } = JSON.parse(event.body)
+  // Auth required — prevents unauthenticated probing of Paystack references
+  const authHeader = event.headers['authorization'] || event.headers['Authorization'] || ''
+  if (!authHeader.startsWith('Bearer ')) {
+    return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized' }) }
+  }
+  const token = authHeader.slice(7)
 
-  if (!reference) {
-    return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Missing reference' }) }
+  const anonClient = createClient(
+    process.env.VITE_SUPABASE_URL,
+    process.env.VITE_SUPABASE_ANON_KEY
+  )
+  const { data: { user }, error: authError } = await anonClient.auth.getUser(token)
+  if (authError || !user) {
+    return { statusCode: 401, body: JSON.stringify({ error: 'Invalid or expired session' }) }
+  }
+
+  // Safe JSON parsing
+  let body = {}
+  try { body = JSON.parse(event.body || '{}') } catch {
+    return { statusCode: 400, body: JSON.stringify({ error: 'Invalid JSON' }) }
+  }
+
+  const { reference } = body
+  if (!reference || typeof reference !== 'string' || reference.length > 200) {
+    return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Missing or invalid reference' }) }
   }
 
   try {
@@ -28,16 +52,16 @@ export async function handler(event) {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        success: true,
-        amount: data.data.amount,        // in cents
-        email:  data.data.customer.email,
+        success:   true,
+        amount:    data.data.amount,
+        email:     data.data.customer?.email,
         reference: data.data.reference
       })
     }
-  } catch (err) {
+  } catch {
     return {
-      statusCode: 500,
-      body: JSON.stringify({ success: false, error: err.message })
+      statusCode: 502,
+      body: JSON.stringify({ success: false, error: 'Payment service unavailable' })
     }
   }
 }

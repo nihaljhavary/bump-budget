@@ -2,23 +2,8 @@ import { useState, useRef } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { observe } from '../utils/observe'
+import { TERMS_VERSION, PRIVACY_VERSION, TERMS_TEXT } from '../utils/legalText'
 import './Auth.css'
-
-const TERMS_VERSION = '1.0'
-
-const TERMS_TEXT = `By creating an account or signing in to bump. you agree to the following:
-
-1. POPIA COMPLIANCE - bump. processes your personal and financial data in accordance with POPIA. Your data is used solely to provide budgeting insights and is never sold to third parties.
-
-2. DATA SECURITY - While bump. implements reasonable security measures, no system is 100% secure. You accept that any transmission of data is at your own risk.
-
-3. FINANCIAL INFORMATION DISCLAIMER - The AI-generated insights provided by bump. are for informational purposes only. They do not constitute financial advice. bump. is not a registered FSP. Always consult a qualified financial adviser before making financial decisions.
-
-4. CONSULTANT SESSIONS - The consultation service connects you with an independent consultant. bump. facilitates the booking only and is not responsible for advice given.
-
-5. NO LIABILITY - To the fullest extent permitted by South African law, bump. shall not be liable for any direct, indirect, or consequential damages.
-
-6. ACCEPTANCE - By ticking the checkbox and proceeding, you confirm you have read and agree to these terms.`
 
 
 // Map raw Supabase / network error messages to human-friendly strings.
@@ -75,10 +60,31 @@ export default function Auth({ termsOnly = false }) {
     if (!termsAccepted) { setError('You must accept the terms to continue'); return }
     setSavingTerms(true); setError('')
     try {
-      const { error: err } = await supabase
+      const acceptedAt = new Date().toISOString()
+      // 1. Update profile with versioned acceptance
+      const { error: profileErr } = await supabase
         .from('profiles')
-        .upsert({ id: user.id, terms_accepted_at: new Date().toISOString(), terms_version: TERMS_VERSION }, { onConflict: 'id' })
-      if (err) throw err
+        .upsert({
+          id: user.id,
+          terms_accepted_at: acceptedAt,
+          terms_version: TERMS_VERSION,
+          privacy_version: PRIVACY_VERSION,
+        }, { onConflict: 'id' })
+      if (profileErr) throw profileErr
+
+      // 2. Insert immutable consent record (best-effort — never blocks acceptance)
+      try {
+        await supabase.from('consent_records').insert({
+          user_id:         user.id,
+          email:           user.email || null,
+          terms_version:   TERMS_VERSION,
+          privacy_version: PRIVACY_VERSION,
+          accepted_at:     acceptedAt,
+          user_agent:      typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 500) : null,
+          action:          'accept',
+        })
+      } catch { /* consent record failure must never block sign-in */ }
+
       await refreshProfile()
     } catch {
       setError('Could not save your acceptance. Please try again.')

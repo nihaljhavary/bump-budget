@@ -1297,3 +1297,90 @@ Functions wired: `sendMagicLink`, `signIn`, `signUp`, `sendForgotPassword`.
 - TierContext, plans, feature gates — untouched
 - All upload, budgeting, projections, recommendations, canonical ledger systems — untouched
 - observe.js core `emit()` function and existing typed helpers — untouched (only additive)
+
+---
+
+## Security hardening & legal framework (2026-05 Session B continued)
+
+### Netlify function hardening summary
+
+**analyse.js** — three security fixes applied:
+- Unhandled error handler now returns generic `'An error occurred. Please try again.'` — no `err.message` exposed
+- Anthropic API error path returns `'Analysis is temporarily unavailable.'` — no upstream error details exposed
+- AbortError (timeout) path returns `'Analysis timed out. Please try again.'` — no err.message exposed
+- Added transaction array size cap: `if (transactions.length > 2000)` returns 400 immediately
+
+**admin-data.js** — `update_access_status` action now validates status against allowlist:
+```js
+const VALID_ACCESS_STATUSES = ['pending', 'approved', 'denied']
+if (!VALID_ACCESS_STATUSES.includes(status)) return 400
+```
+
+**debug-ai.js** — gutted to 404 stub (prior session). Was an unauthenticated endpoint making real Anthropic API calls.
+
+**verify-payment.js** — auth added (prior session). Was unauthenticated.
+
+**support-chat.js** — per-day rate limiting added (prior session). Uses `support_chat_usage` table. Free: 30/day, paid: 200/day, admin: unlimited.
+
+### Legal framework: src/utils/legalText.js
+
+Canonical versioned legal text for in-app consent flows. Do NOT inline T&C text in Auth.jsx — always import from here.
+
+Exports:
+- `TERMS_VERSION` — current: `'1.1'`
+- `PRIVACY_VERSION` — current: `'1.0'`
+- `TERMS_TEXT` — full consent text shown in the acceptance screen. References FAIS Act 37/2002, POPIA Act 4/2013, CPA 68/2008, Anthropic AI provider, South Gauteng High Court jurisdiction, 30-day trial specifics.
+- `PRIVACY_SUMMARY` — shorter privacy summary shown alongside Terms.
+
+**Platform positioning preserved (hardcoded into legalText.js):**
+- bump. is NOT a licensed FSP under FAIS Act 37/2002
+- No regulated financial advice, investment advice, tax advice, or insurance advice
+- AI outputs are informational/educational only
+- Projections are hypothetical, not guarantees
+- All financial decisions remain the user's sole responsibility
+
+**When bumping policy versions:**
+1. Update `TERMS_VERSION` or `PRIVACY_VERSION` in `legalText.js`
+2. Update the effective date in `TERMS_TEXT`
+3. The consent recording in `acceptTerms()` automatically picks up the new version
+4. Users who accepted an older version will be prompted to re-accept (controlled by `App.jsx` `ProtectedApp` → `profile.terms_version !== TERMS_VERSION` check — **this check is not yet implemented**, only `terms_accepted_at` is checked today)
+
+### Consent recording architecture
+
+**Auth.jsx `acceptTerms()`** now performs a two-step write:
+1. `profiles` upsert: `terms_accepted_at`, `terms_version: '1.1'`, `privacy_version: '1.0'`
+2. `consent_records` insert (best-effort, never blocks sign-in): `user_id, email, terms_version, privacy_version, accepted_at, user_agent, action: 'accept'`
+
+**consent_records table** (migration: `supabase/migrations/20260519_security_hardening.sql`):
+- Columns: `id, user_id, email, terms_version, privacy_version, accepted_at, user_agent, action, created_at`
+- `action` values: `'accept'` (initial), `'re_accept'` (after policy update)
+- RLS: users INSERT own rows only; admin reads via service role
+- Immutable audit trail — no UPDATE/DELETE policies
+
+### Security hardening SQL migration
+
+`supabase/migrations/20260519_security_hardening.sql` — run in Supabase SQL editor.
+
+Creates:
+- `consent_records` table + RLS (INSERT only for users)
+- `support_chat_usage` table + RLS (INSERT only for users) — required by support-chat.js rate limiting
+- `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS privacy_version TEXT`
+
+All statements use `IF NOT EXISTS` — safe to re-run.
+
+### RLS posture (current state)
+
+| Table | User SELECT | User INSERT | User UPDATE | Admin |
+|-------|-------------|-------------|-------------|-------|
+| profiles | own row | n/a (upsert via auth) | own row (upsert) | service role |
+| transactions | own rows | own rows | own rows | service role |
+| error_logs | none | own rows | none | service role |
+| support_requests | own rows | own rows | none | service role |
+| consent_records | none | own rows | none | service role |
+| support_chat_usage | none | own rows | none | service role |
+
+### Known remaining gaps (not yet implemented)
+
+- **Re-accept flow**: `App.jsx ProtectedApp` only checks `!profile?.terms_accepted_at`, not whether `profile.terms_version === TERMS_VERSION`. When policy version bumps, existing users are not currently prompted to re-accept. To implement: add `|| profile.terms_version !== TERMS_VERSION` to the `termsOnly` condition.
+- **Admin consent_records viewer**: no admin UI to query consent_records table. Readable via Supabase dashboard or service-role SQL query.
+- **budget-chat.js**: error messages may still expose `err.message` in some paths — not audited this session.

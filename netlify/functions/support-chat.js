@@ -7,6 +7,9 @@ const SYSTEM_PROMPT = `You are bump.'s friendly support assistant. Help users wi
 
 ${FORMAT_RULES}`
 
+// Rate limits: free = 30 messages/day, paid = 200/day, admin = unlimited
+const DAILY_LIMITS = { free: 30, starter: 200, growth: 200, pro: 200 }
+
 export async function handler(event) {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method not allowed' }
 
@@ -24,22 +27,73 @@ export async function handler(event) {
   if (!authHeader.startsWith('Bearer ')) return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized' }) }
   const token = authHeader.slice(7)
 
-  const anonClient = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY)
+  const anonClient  = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY)
+  const adminClient = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
+
   const { data: { user }, error: authError } = await anonClient.auth.getUser(token)
   if (authError || !user) return { statusCode: 401, body: JSON.stringify({ error: 'Invalid session' }) }
 
+  // ── Rate limiting ─────────────────────────────────────────────────────────
+  const { data: profile } = await adminClient
+    .from('profiles')
+    .select('subscription_plan, is_admin')
+    .eq('id', user.id)
+    .single()
+
+  const isAdmin = profile?.is_admin === true || profile?.role === 'admin'
+
+  if (!isAdmin) {
+    const plan      = profile?.subscription_plan || 'free'
+    const dailyMax  = DAILY_LIMITS[plan] ?? DAILY_LIMITS.free
+    const since     = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+
+    const { count } = await adminClient
+      .from('support_chat_usage')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .gte('created_at', since)
+
+    if ((count || 0) >= dailyMax) {
+      return {
+        statusCode: 429,
+        body: JSON.stringify({ error: `Daily support chat limit reached (${dailyMax} messages). Please try again tomorrow.` })
+      }
+    }
+
+    // Log this message (best-effort — never block on failure)
+    adminClient.from('support_chat_usage').insert({ user_id: user.id }).then(() => {})
+  }
+
+  // ── Sanitise conversation history ─────────────────────────────────────────
+  const safeHistory = (Array.isArray(conversationHistory) ? conversationHistory : [])
+    .slice(-6)
+    .filter(m => m && typeof m.role === 'string' && typeof m.content === 'string')
+    .map(m => ({
+      role:    m.role === 'user' ? 'user' : 'assistant',
+      content: String(m.content).slice(0, 2000),
+    }))
+
   const messages = [
-    ...conversationHistory.slice(-6).map(m => ({ role: m.role, content: m.content })),
+    ...safeHistory,
     { role: 'user', content: question }
   ]
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 300, system: SYSTEM_PROMPT, messages })
+      method:  'POST',
+      headers: {
+        'Content-Type':       'application/json',
+        'x-api-key':          process.env.ANTHROPIC_API_KEY,
+        'anthropic-version':  '2023-06-01',
+      },
+      body: JSON.stringify({
+        model:      'claude-haiku-4-5-20251001',
+        max_tokens: 300,
+        system:     SYSTEM_PROMPT,
+        messages,
+      })
     })
-    const data = await res.json()
+    const data  = await res.json()
     const reply = data.content?.[0]?.text || 'Sorry, I could not process that. Please try again.'
     return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reply }) }
   } catch {

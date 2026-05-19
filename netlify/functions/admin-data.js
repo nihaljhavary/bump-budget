@@ -75,6 +75,10 @@ export async function handler(event) {
   // -- update_access_status ----------------------------------------------------
   if (action === 'update_access_status') {
     const { accessId, status } = body
+    const VALID_ACCESS_STATUSES = ['pending', 'approved', 'denied']
+    if (!VALID_ACCESS_STATUSES.includes(status)) {
+      return { statusCode: 400, body: JSON.stringify({ error: 'Invalid status value' }) }
+    }
     const { error } = await adminClient
       .from('consultant_access')
       .update({

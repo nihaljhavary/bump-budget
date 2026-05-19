@@ -704,10 +704,16 @@ export default function ImportTransactions({ onImportComplete }) {
           .gte('date', minDate)
           .lte('date', maxDate)
 
-        if (existingError && String(existingError.message || '').includes('transaction_hash')) {
+        // Fallback: optional columns (transaction_hash, raw_merchant) may not exist
+        // in older schemas. Retry with core fields only.
+        const _selectErrMsg = String(existingError?.message || existingError?.details || '')
+        if (existingError && (
+          _selectErrMsg.includes('transaction_hash') ||
+          _selectErrMsg.includes('raw_merchant')
+        )) {
           const retry = await supabase
             .from('transactions')
-            .select('date, amount, name, raw_merchant')
+            .select('date, amount, name')
             .eq('user_id', user.id)
             .gte('date', minDate)
             .lte('date', maxDate)
@@ -776,8 +782,20 @@ export default function ImportTransactions({ onImportComplete }) {
       if (toSave.length > 0) {
         const { error } = await supabase.from('transactions').insert(toSave)
         if (error) {
-          if (String(error.message || '').includes('transaction_hash')) {
-            const fallbackRows = toSave.map(({ transaction_hash, ...row }) => row)
+          // Optional metadata columns (detected_bank, raw_merchant, transaction_hash,
+          // import_batch_id) may not exist if the migration hasn't been run yet, or
+          // if PostgREST's schema cache is stale. Strip all optional fields and retry
+          // with core columns only so uploads are never blocked by schema lag.
+          const _insertErrMsg = String(error.message || error.details || '')
+          const _optionalColMissing = [
+            'detected_bank', 'raw_merchant', 'transaction_hash', 'import_batch_id',
+          ].some(col => _insertErrMsg.includes(col))
+
+          if (_optionalColMissing) {
+            console.warn('[ImportTransactions] Optional schema column missing — retrying without metadata:', _insertErrMsg)
+            // Strip every optional metadata field; keep only core transaction fields.
+            // eslint-disable-next-line no-unused-vars
+            const fallbackRows = toSave.map(({ detected_bank, raw_merchant, transaction_hash, import_batch_id, ...row }) => row)
             const { error: retryError } = await supabase.from('transactions').insert(fallbackRows)
             if (retryError) throw retryError
           } else {

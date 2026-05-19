@@ -37,7 +37,7 @@ export async function handler(event) {
     return await _handler(event)
   } catch (err) {
     console.error('[analyse] Unhandled error:', err.message, err.stack)
-    return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ analysis: `Server error: ${err.message}` }) }
+    return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ analysis: 'An error occurred. Please try again.' }) }
   }
 }
 
@@ -67,6 +67,9 @@ async function _handler(event) {
 
   if (!Array.isArray(transactions)) {
     return { statusCode: 400, body: JSON.stringify({ error: '`transactions` must be an array' }) }
+  }
+  if (transactions.length > 2000) {
+    return { statusCode: 400, body: JSON.stringify({ error: '`transactions` exceeds maximum of 2000 items' }) }
   }
   if (question !== undefined && question !== null) {
     if (typeof question !== 'string') return { statusCode: 400, body: JSON.stringify({ error: '`question` must be a string' }) }
@@ -213,7 +216,7 @@ async function _handler(event) {
     if (!res.ok) {
       const errMsg = data?.error?.message || JSON.stringify(data)
       console.error(`[analyse] Anthropic API error ${res.status}: ${errMsg}`)
-      return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ analysis: `AI error (${res.status}): ${errMsg}` }) }
+      return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ analysis: 'Analysis is temporarily unavailable. Please try again.' }) }
     }
     analysis = data.content?.[0]?.text
     if (!analysis) {
@@ -222,7 +225,7 @@ async function _handler(event) {
     }
   } catch (err) {
     console.error('[analyse] fetch error:', err.name, err.message)
-    return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ analysis: `Analysis failed: ${err.name === 'AbortError' ? 'Anthropic API timed out (8s)' : err.message}` }) }
+    return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ analysis: err.name === 'AbortError' ? 'Analysis timed out. Please try again.' : 'Analysis failed. Please try again.' }) }
   }
 
   // -- 10. Log usage for free users --
