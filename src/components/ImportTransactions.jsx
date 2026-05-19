@@ -368,6 +368,46 @@ async function inferSchema(headers, sampleRows, bankHint) {
   }
 }
 
+// ── AI full-parse fallback ───────────────────────────────────────────────────
+// Called when BOTH deterministic and schema-inference paths fail to extract rows.
+// Sends all raw rows to Claude for direct transaction extraction — last resort.
+// Never throws — all failures are observed and null is returned.
+async function fullParseWithAI(rows, bankHint) {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 45_000) // 45 s timeout
+  try {
+    const token = await getToken()
+    const res = await fetch('/.netlify/functions/schema-infer', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ mode: 'full_parse', rows, bankHint }),
+    })
+    if (!res.ok) {
+      observe.warn(DOMAIN.INGESTION, 'Full parse HTTP error', { status: res.status, bank: bankHint })
+      return null
+    }
+    const data = await res.json()
+    if (!Array.isArray(data.transactions) || data.transactions.length === 0) {
+      observe.warn(DOMAIN.INGESTION, 'Full parse returned no transactions', { bank: bankHint })
+      return null
+    }
+    return data
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      observe.warn(DOMAIN.INGESTION, 'Full parse timed out after 45 s', { bank: bankHint })
+    } else {
+      observe.warn(DOMAIN.INGESTION, 'Full parse fetch error', { error: err?.message, bank: bankHint })
+    }
+    return null
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function ImportTransactions({ onImportComplete }) {
   const { user, profile } = useAuth()
@@ -378,6 +418,7 @@ export default function ImportTransactions({ onImportComplete }) {
   const [categorised, setCategorised] = useState([]) // after Claude
   const [loading, setLoading] = useState(false)
   const [inferring, setInferring] = useState(false) // schema inference in progress
+  const [inferStage, setInferStage] = useState('schema') // 'schema' | 'full_parse'
   const [error, setError] = useState(null)
   const [ruleText, setRuleText] = useState('')
   const [ruleLoading, setRuleLoading] = useState(false)
@@ -469,17 +510,62 @@ export default function ImportTransactions({ onImportComplete }) {
             }
           }
 
-          // ── Step 3: hard fail — only reached after BOTH deterministic and AI paths exhausted ──
+          // ── Step 2b: AI full-parse fallback ──────────────────────────────────────────
+          // Only reached when schema inference produced 0 transactions.
+          // Sends ALL rows to Claude for direct extraction — last resort before hard fail.
+          let fullParseAttempted = false
+          let fullParseSucceeded = false
+
+          if (txns.length === 0 && inferenceAttempted) {
+            fullParseAttempted = true
+            setInferStage('full_parse')
+            setInferring(true)
+            observe.info(DOMAIN.INGESTION, 'Schema inference produced 0 rows — invoking full AI parse', {
+              bank, rowCount: rows.length,
+            })
+            try {
+              const result = await fullParseWithAI(rows, bank)
+              if (result && Array.isArray(result.transactions) && result.transactions.length > 0) {
+                fullParseSucceeded = true
+                txns = result.transactions.map(t => ({
+                  date: t.date,
+                  description: t.description,
+                  amount: Math.abs(Number(t.amount)),
+                  is_income: t.type === 'income',
+                  is_transfer: t.type === 'transfer',
+                }))
+                observe.info(DOMAIN.INGESTION, 'Full parse succeeded', {
+                  bank, extractedCount: txns.length, rowsInput: rows.length,
+                })
+                extraWarnings.push(
+                  'Transactions were extracted by AI — please carefully verify all dates, amounts, and descriptions before importing.'
+                )
+                if (result.truncated) {
+                  extraWarnings.push(
+                    `Note: Only the first 300 rows were processed. Your statement had ${rows.length} rows — consider exporting a shorter date range.`
+                  )
+                }
+              }
+            } finally {
+              setInferring(false)
+              setInferStage('schema')
+            }
+          }
+
+          // ── Step 3: hard fail — only reached after ALL three paths exhausted ──────────
           if (txns.length === 0) {
             let msg = "Couldn't read this statement. "
             if (!inferenceAttempted) {
               // Parser had high confidence but got 0 rows — column names matched but data was empty
               msg += 'The file appears to have no transaction rows. Try a different export format or date range.'
+            } else if (fullParseAttempted && !fullParseSucceeded) {
+              // All three methods tried — truly unreadable file
+              msg += 'All automatic extraction methods were tried but no transactions could be read from this file. Please try exporting as CSV or PDF text from your banking app, or contact support.'
             } else if (mappingFound) {
               // AI found a schema mapping but still got 0 rows — amount parsing likely failed
               msg += 'The column structure was identified but no transactions could be extracted — the amount column may be formatted unexpectedly. Try exporting as CSV, or use "Other / Generic" and check your column headers.'
             } else {
-              // AI fallback also returned no mapping — truly unrecognised format
+              // Schema inference returned no mapping — format unrecognised (full parse not attempted or also failed)
               msg += 'The statement format could not be recognised. Try selecting a different bank, exporting as CSV from your banking app, or use "Other / Generic".'
             }
             setError(msg)
@@ -902,7 +988,9 @@ export default function ImportTransactions({ onImportComplete }) {
         {inferring && (
           <div className="import-inferring">
             <span className="import-inferring-icon">🔍</span>
-            Analysing statement format...
+            {inferStage === 'full_parse'
+              ? 'Extracting transactions with AI...'
+              : 'Analysing statement format...'}
           </div>
         )}
         {error && !inferring && <div className="import-error">{error}</div>}
