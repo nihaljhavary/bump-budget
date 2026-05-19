@@ -17,7 +17,7 @@
  *   simulating    string|null — if admin is simulating a tier, block real checkout
  */
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import './UpgradeModal.css'
@@ -96,8 +96,6 @@ export default function UpgradeModal({ isOpen, onClose, defaultPlan = 'growth', 
   const [plan,     setPlan]     = useState(defaultPlan)
   const [step,     setStep]     = useState('select')   // 'select' | 'processing' | 'success' | 'error'
   const [errorMsg, setErrorMsg] = useState('')
-  // Prevents double-tapping "Start trial" from firing two server requests
-  const submittingRef = useRef(false)
 
   // Reset whenever modal opens
   useEffect(() => {
@@ -137,19 +135,6 @@ export default function UpgradeModal({ isOpen, onClose, defaultPlan = 'growth', 
 
   // ── Trial checkout ────────────────────────────────────────────────────────
   async function handleStartTrial() {
-    // Prevent double-submission
-    if (submittingRef.current) return
-    submittingRef.current = true
-
-    // Validate Paystack public key is configured
-    const paystackKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY
-    if (!paystackKey || paystackKey === 'undefined' || paystackKey.length < 10) {
-      setStep('error')
-      setErrorMsg('Payment is not yet configured. Please contact support to upgrade your account.')
-      submittingRef.current = false
-      return
-    }
-
     setStep('processing')
     setErrorMsg('')
     try {
@@ -172,7 +157,7 @@ export default function UpgradeModal({ isOpen, onClose, defaultPlan = 'growth', 
 
       // Step 3: Open PaystackPop using the server-generated access_code
       const handler = window.PaystackPop.setup({
-        key:         paystackKey,
+        key:         import.meta.env.VITE_PAYSTACK_PUBLIC_KEY,
         email,
         access_code,
         ref:         reference,
@@ -209,8 +194,6 @@ export default function UpgradeModal({ isOpen, onClose, defaultPlan = 'growth', 
     } catch (err) {
       setStep('error')
       setErrorMsg(err.message)
-    } finally {
-      submittingRef.current = false
     }
   }
 

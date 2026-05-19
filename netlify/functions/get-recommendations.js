@@ -17,7 +17,15 @@ export async function handler(event) {
     return { statusCode: 400, body: JSON.stringify({ error: 'Invalid JSON' }) }
   }
 
-  const { answers, spendingData, budgets, monthCount = 1, recurringMonthly = 0, projectionContext = null } = body
+  const {
+    answers, spendingData, budgets,
+    monthCount = 1,
+    recurringMonthly = 0,
+    projectionContext = null,
+    // Continuity fields:
+    categoryTrends = null,  // { category: { recent, avg, deltaVsAvg, months } }
+    priorResult    = null,  // previous analysis result object (same shape as our JSON response)
+  } = body
 
   // Auth
   const authHeader = event.headers['authorization'] || event.headers['Authorization'] || ''
@@ -91,6 +99,68 @@ export async function handler(event) {
     }
   }
 
+  // -- Category trend block (continuity: per-category trajectory signals) --
+  // Shape: { category: { recent: rands, avg: rands, deltaVsAvg: pct, months: n } }
+  let trendsBlock = ''
+  if (categoryTrends && Object.keys(categoryTrends).length > 0) {
+    const trendLines = Object.entries(categoryTrends)
+      .filter(([, t]) => Math.abs(t.deltaVsAvg || 0) >= 5)
+      .sort(([, a], [, b]) => Math.abs(b.deltaVsAvg) - Math.abs(a.deltaVsAvg))
+      .slice(0, 8)
+      .map(([cat, t]) => {
+        const dir    = (t.deltaVsAvg || 0) > 0 ? 'UP' : 'DOWN'
+        const pct    = Math.abs(t.deltaVsAvg || 0)
+        const signal = pct > 25 ? (t.deltaVsAvg > 0 ? 'spend creep' : 'strong improvement')
+                     : pct > 10 ? (t.deltaVsAvg > 0 ? 'deteriorating' : 'improving')
+                     : 'slight shift'
+        const months = t.months || '?'
+        return `  ${cat}: R${Math.round(t.recent || 0).toLocaleString('en-ZA')}/mo vs ${months}-mo avg R${Math.round(t.avg || 0).toLocaleString('en-ZA')} -- ${dir} ${pct}% [${signal}]`
+      })
+    if (trendLines.length > 0) {
+      trendsBlock = `\n\nCATEGORY TRENDS (recent vs rolling ${trendLines.length} categories shown):\n` + trendLines.join('\n')
+    }
+  }
+
+  // -- Evolution block (continuity: reference prior result, avoid stale advice) --
+  let evolutionBlock = ''
+  if (priorResult) {
+    evolutionBlock += `\n\nPRIOR ANALYSIS CONTEXT (from user's previous Smart Money Analysis):`
+    if (priorResult.healthScore) {
+      evolutionBlock += `\n  Previous financial health score: ${priorResult.healthScore}/10`
+    }
+
+    // Identify categories from prior 'cuts' that are now trending better
+    const improvingCuts = (priorResult.cuts || [])
+      .filter(c => {
+        const trend = categoryTrends?.[c.category]
+        return trend && (trend.deltaVsAvg || 0) < -10  // improving by >10% vs avg
+      })
+      .map(c => c.category)
+
+    if (improvingCuts.length > 0) {
+      evolutionBlock += `\n  Categories already improving since last analysis: ${improvingCuts.join(', ')} -- acknowledge progress, do NOT repeat the same cuts advice. Instead, suggest redirecting freed budget.`
+    }
+
+    // Categories from prior cuts that are still deteriorating (need reinforcement)
+    const stilldeteriorating = (priorResult.cuts || [])
+      .filter(c => {
+        const trend = categoryTrends?.[c.category]
+        return !trend || (trend.deltaVsAvg || 0) > 5
+      })
+      .map(c => c.category)
+    if (stilldeteriorating.length > 0) {
+      evolutionBlock += `\n  Categories still over-budget (reinforce with fresh angle): ${stilldeteriorating.join(', ')}`
+    }
+
+    // Prior quick win -- avoid repeating
+    if (priorResult.quickWin) {
+      const truncated = priorResult.quickWin.substring(0, 120)
+      evolutionBlock += `\n  Prior quick win: "${truncated}..." -- do NOT repeat this. Choose a different action.`
+    }
+
+    evolutionBlock += `\n  EVOLUTION INSTRUCTION: This user has run this analysis before. Compare their score vs prior period. For improving areas, celebrate specifically (e.g. "Your dining spend is down R400 since your last analysis"). For stagnant areas, try a different angle -- a new tip they haven't heard. Make the user feel their effort is being seen.`
+  }
+
   const prompt = `Here is the user's financial profile:
 
 QUESTIONNAIRE ANSWERS:
@@ -112,26 +182,26 @@ ACTUAL MONTHLY SPENDING (${avgLabel} average, budget vs actual):
 ${spendLines}
 
 CURRENT BUDGETS SET:
-${budgetLines}
+${budgetLines}${trendsBlock}${evolutionBlock}
 
-Provide a personalised financial health report. Be specific -- use actual rand amounts. Where projection data is available, use it to frame the long-term impact (what does the current trajectory mean in 5-10 years?). Anchor insights to real behaviour.
+Provide a personalised financial health report. Be specific -- use actual rand amounts. Where projection data is available, use it to frame the long-term impact (what does the current trajectory mean in 5-10 years?). Anchor insights to real behaviour. ${priorResult ? 'This is a RE-ANALYSIS -- compare to prior result, acknowledge changes, and avoid repeating identical advice.' : ''}
 
-1. FINANCIAL HEALTH SCORE -- Score 1-10 based on: savings rate, surplus/deficit, emergency fund, spending/income ratio, and long-term trajectory.
+1. FINANCIAL HEALTH SCORE -- Score 1-10 based on: savings rate, surplus/deficit, emergency fund, spending/income ratio, and long-term trajectory.${priorResult ? ' Include one sentence comparing to prior score.' : ''}
 
-2. KEY INSIGHTS -- 3 specific observations with Rand amounts. If projections are available, one insight should reference the long-term outlook.
+2. KEY INSIGHTS -- 3 specific observations with Rand amounts. If projections are available, one insight should reference the long-term outlook. ${priorResult ? 'At least one insight must reference behavioural progress or regression since the prior analysis.' : ''}
 
 3. WHERE TO CUT -- 3-5 categories with over-budget or high spend:
    - Category name and current monthly average
    - Recommended target
    - Potential monthly saving
-   - One concrete tip
+   - One concrete tip${priorResult ? '\n   - IMPORTANT: Skip categories that are already improving (noted above). For those, instead show them as "wins" in insights.' : ''}
 
 4. SAVINGS PLAN -- Based on income, goal, and actual surplus:
    - Realistic monthly savings target
    - Time to reach their stated goal
    - Which category cuts fund it
 
-5. ONE QUICK WIN -- The single highest-impact change they can make this month.
+5. ONE QUICK WIN -- The single highest-impact change they can make this month.${priorResult ? ' Must be different from the prior quick win.' : ''}
 
 Respond with ONLY this JSON, no markdown:
 {

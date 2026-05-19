@@ -1115,3 +1115,97 @@ New third tab "Tester Access" added alongside "Access Requests" and "Bookings".
 ### Tier architecture: unchanged
 
 TierContext, buildTier(), effectivePlan logic, PLANS config, and all feature gates (canAnalytics, canProjections, canGroceries, canRules, canConsult) are untouched. Grant/revoke flows through the same Supabase columns TierContext already reads — no parallel tier system introduced.
+
+---
+
+## AI Financial Coach Continuity (2026-05 Session 9)
+
+### Architecture: three-layer behavioural intelligence
+
+Bump is now a continuity-aware financial companion — the AI references prior months, behavioural changes, recurring patterns, prior recommendations, and evolving goals. Canonical financial truth (numbers, amounts) remains exclusively in `buildLedgerSummary()` and `buildInsightContext()`. The continuity layer adds DIRECTION and TREND signals only.
+
+### buildBehaviouralContext() — netlify/functions/_context.js
+
+**New export** added to `_context.js`. Call signature:
+```js
+buildBehaviouralContext({ transactions, monthlyNetData, income })
+```
+- `transactions`: raw transaction array (same as passed to analyse.js)
+- `monthlyNetData`: `{ 'YYYY-MM': { spend, income } }` from ledger
+- `income`: monthly income in rands (for % calculations)
+
+**What it computes (from raw transactions — no extra data needed):**
+- `catMonthly`: per-category monthly totals, built from raw transactions
+- Per-category trend deltas: `deltaVsAvg` = (recent - avg) / avg × 100
+- Signal labels: 'lifestyle creep', 'obligation creep', 'spend creep', 'deteriorating', 'strong improvement', 'improving', 'slight shift', 'stable'
+- Lifestyle inflation signal: discretionary % of income trending UP over last 3-4 months
+- Recurring obligation creep: fixed cost % growing vs income over 3 months
+- Savings momentum: from `monthlyNetData` (positive/recovering/pressure signals)
+- Returns `''` if < 2 months of data (graceful degradation, no crash)
+
+**buildInsightPrompt() signature extended:**
+```js
+buildInsightPrompt({ mode, question, contextBlock, behaviouralBlock = '', priorSummary = '' })
+```
+- `behaviouralBlock`: injected before the instruction block when present
+- `priorSummary`: reserved for future prior-analysis injection in overview/analytics mode
+
+### analyse.js — wired with behavioural context
+
+Import added: `import { buildInsightContext, buildInsightPrompt, buildBehaviouralContext } from './_context.js'`
+
+New step 7 (before prompt build):
+```js
+const behaviouralBlock = buildBehaviouralContext({
+  transactions,
+  monthlyNetData: monthlyData || null,
+  income,
+})
+```
+Passed into `buildInsightPrompt({ ..., behaviouralBlock })`. No new ALLOWED_FIELDS needed — behavioural context is computed server-side from the existing `transactions` array.
+
+### get-recommendations.js — evolution-aware analysis
+
+**New body fields accepted:**
+- `categoryTrends`: `{ category: { recent, avg, deltaVsAvg, months } }` — per-category trajectory
+- `priorResult`: previous analysis result object (same JSON shape as the response)
+
+**New blocks injected into prompt:**
+1. `CATEGORY TRENDS` block: sorts by absolute magnitude, labels signals (spend creep / improving / etc.)
+2. `PRIOR ANALYSIS CONTEXT` block (only when `priorResult` present):
+   - Previous health score
+   - Categories already improving since last analysis (do NOT repeat same cuts advice)
+   - Categories still deteriorating (reinforce with fresh angle)
+   - Prior quick win (do NOT repeat, choose different action)
+   - EVOLUTION INSTRUCTION: compare score, acknowledge progress, avoid repeating identical advice
+
+**Prompt instructions enhanced for re-analysis:**
+- Health score paragraph: include comparison to prior score
+- Key insights: at least one must reference behavioural progress/regression
+- Where to cut: skip categories already improving; show them as wins in insights instead
+- Quick win: must differ from prior run
+
+### Recommendations.jsx — coaching memory wiring
+
+**New state:** `categoryTrends` / `setCategoryTrends` — computed from 12-month raw transactions.
+
+**In loadData()** — after `setDataLoaded(true)`, computes `catMonthly` from raw txns, then for each category with avg >= R100/mo:
+```js
+computed[cat] = { recent, avg, deltaVsAvg, months: trendMonths.length }
+```
+Requires >= 2 months to compute (gracefully returns empty object otherwise).
+
+**In getRecommendations() fetch body:**
+```js
+categoryTrends: Object.keys(categoryTrends).length > 0 ? categoryTrends : undefined,
+priorResult:    result || undefined,
+```
+`priorResult` = the current `result` state (the previous run's output). Passed on ALL calls (new goals OR re-analysis) — the server handles it gracefully when present.
+
+### What was deliberately NOT changed
+- `buildLedgerSummary()` — canonical financial engine, untouched
+- `buildInsightContext()` — canonical context builder, untouched (only prompt builder extended)
+- `Projections.jsx` engine — untouched
+- `budget-chat.js` — not wired to frontend; left for future session
+- All tier gating — untouched
+- Auth, onboarding, Paystack flows — untouched

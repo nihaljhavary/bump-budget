@@ -1,6 +1,6 @@
 import './_ws-polyfill.js'
 import { createClient } from '@supabase/supabase-js'
-import { buildInsightContext, buildInsightPrompt } from './_context.js'
+import { buildInsightContext, buildInsightPrompt, buildBehaviouralContext } from './_context.js'
 
 const FORMAT_RULES = `Format rules (always follow): Never use em dashes (--). Never use the tilde symbol (~). Never use markdown bold (**text**). Write in plain prose with short paragraphs.`
 
@@ -169,14 +169,22 @@ async function _handler(event) {
     mode:             mode || 'overview',
   })
 
-  // -- 7. Build prompt --
+  // -- 7. Build behavioural trend context (uses per-category monthly breakdown from raw txns) --
+  const behaviouralBlock = buildBehaviouralContext({
+    transactions,
+    monthlyNetData: monthlyData || null,
+    income,
+  })
+
+  // -- 8. Build prompt --
   const prompt = buildInsightPrompt({
     mode:         mode || 'overview',
     question:     question || '',
     contextBlock,
+    behaviouralBlock,
   })
 
-  // -- 8. Call Claude --
+  // -- 9. Call Claude --
   let analysis
   try {
     const controller = new AbortController()
@@ -217,7 +225,7 @@ async function _handler(event) {
     return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ analysis: `Analysis failed: ${err.name === 'AbortError' ? 'Anthropic API timed out (8s)' : err.message}` }) }
   }
 
-  // -- 9. Log usage for free users --
+  // -- 10. Log usage for free users --
   if (!isAdmin && plan === 'free') {
     try {
       await adminClient.from('budget_chat_usage').insert({ user_id: user.id, question_preview: '[analysis]' })

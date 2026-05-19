@@ -129,6 +129,7 @@ export default function Recommendations({ onImportSignal = 0 }) {
   const [monthCount, setMonthCount] = useState(1)
   const [recurringMonthly, setRecurringMonthly] = useState(0)
   const [fixedMonthly, setFixedMonthly] = useState(0)
+  const [categoryTrends, setCategoryTrends] = useState({})
   const [showProjections, setShowProjections] = useState(false)
   const [needsReanalysis, setNeedsReanalysis] = useState(false)
   // hydrated: true once Supabase profile has been checked. Fast-path: true if LS already has a result.
@@ -182,6 +183,31 @@ export default function Recommendations({ onImportSignal = 0 }) {
       for (const b of (budgetRows || [])) bMap[b.category] = b.amount
       setBudgets(bMap)
       setDataLoaded(true)
+
+      // -- Compute per-category trends for coaching memory --
+      // Shape: { category: { recent, avg, deltaVsAvg, months } }
+      const catMonthly = {}
+      for (const t of (txns || [])) {
+        if (t.category === 'Income' || t.category === 'Transfer' || t.category === 'Savings') continue
+        const month = t.date?.slice(0, 7)
+        if (!month) continue
+        if (!catMonthly[month]) catMonthly[month] = {}
+        catMonthly[month][t.category] = (catMonthly[month][t.category] || 0) + (t.amount || 0)
+      }
+      const trendMonths = Object.keys(catMonthly).sort()
+      if (trendMonths.length >= 2) {
+        const allCats = new Set(trendMonths.flatMap(m => Object.keys(catMonthly[m] || {})))
+        const computed = {}
+        for (const cat of allCats) {
+          const values = trendMonths.map(m => catMonthly[m]?.[cat] || 0)
+          const avg = values.reduce((s, v) => s + v, 0) / values.length
+          if (avg < 100) continue  // skip trivially small categories
+          const recent = values[values.length - 1]
+          const deltaVsAvg = avg > 0 ? Math.round((recent - avg) / avg * 100) : 0
+          computed[cat] = { recent: Math.round(recent), avg: Math.round(avg), deltaVsAvg, months: trendMonths.length }
+        }
+        setCategoryTrends(computed)
+      }
     } catch (e) {
       console.error('Failed to load spending data', e)
     }
@@ -328,6 +354,9 @@ export default function Recommendations({ onImportSignal = 0 }) {
           monthCount,
           recurringMonthly,
           projectionContext,
+          // Continuity: pass trends + prior result when re-analysing
+          categoryTrends: Object.keys(categoryTrends).length > 0 ? categoryTrends : undefined,
+          priorResult:    result || undefined,
         }),
       })
       const d = await res.json()

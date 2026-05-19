@@ -17,8 +17,8 @@ import { TierProvider } from './context/TierContext'
 const Loader = () => (
   <div style={{
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    height: '100vh', fontFamily: 'DM Sans, sans-serif', color: 'var(--muted)',
-    background: 'var(--bg)',
+    height: '100vh', fontFamily: 'DM Sans, sans-serif', color: '#888',
+    background: '#110A08',
   }}>Loading</div>
 )
 
@@ -165,7 +165,7 @@ function UpdateBanner() {
   return (
     <div style={{
       position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
-      background: 'var(--coral)', color: '#fff',
+      background: '#e85d26', color: '#fff',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       gap: '12px', padding: '10px 16px',
       fontFamily: 'DM Sans, sans-serif', fontSize: '14px', fontWeight: 500,
@@ -174,7 +174,7 @@ function UpdateBanner() {
       <button
         onClick={() => window.location.reload()}
         style={{
-          background: '#fff', color: 'var(--coral)', border: 'none',
+          background: '#fff', color: '#e85d26', border: 'none',
           borderRadius: 6, padding: '4px 12px', fontWeight: 700,
           fontSize: '13px', cursor: 'pointer',
         }}

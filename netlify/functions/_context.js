@@ -397,7 +397,7 @@ export function buildInsightContext(p) {
 /**
  * Build the behavioral insight prompt instruction based on context mode.
  */
-export function buildInsightPrompt({ mode = 'overview', question = '', contextBlock }) {
+export function buildInsightPrompt({ mode = 'overview', question = '', contextBlock, behaviouralBlock = '', priorSummary = '' }) {
   const FORMAT = 'Never use em dashes. Never use tilde. Never use markdown bold. Plain prose only.'
 
   const PERSONA = "You are bump.'s financial analyst -- warm, sharp, and South African. You have read this user's actual transaction data including their top merchants by name and rand amount. Speak like a smart friend who knows finance, not a corporate report. Always name specific merchants and exact rand amounts. Never say \'you spent a lot on X' without naming who and how much. Never give generic advice."
@@ -433,11 +433,146 @@ Be specific with rand amounts. Under 200 words. No headers.`
     ? `\n\nUSER\'S QUESTION: "${question.trim()}"\nAddress this directly in your response.`
     : ''
 
+  const behaviouralSection = behaviouralBlock ? `\n\n${behaviouralBlock}` : ''
+  const priorSection = priorSummary ? `\n\nUSER'S FINANCIAL HISTORY: ${priorSummary}` : ''
+
   return `${PERSONA}
 
-${contextBlock}
+${contextBlock}${behaviouralSection}${priorSection}
 
 ${instruction}${questionBlock}
 
 ${FORMAT}`
+}
+
+/**
+ * Build a behavioural trend context string from multi-month transaction data.
+ * Computes per-category month-over-month trends, lifestyle inflation signals,
+ * recurring spend creep, and savings momentum -- all from the raw transaction
+ * array that analyse.js already receives. No extra client data required.
+ *
+ * Canonical rule: NEVER recalculate financial totals. Only derives TREND DIRECTION
+ * from existing transaction data. Absolute amounts come from the canonical ledger.
+ *
+ * @param {Object} p
+ * @param {Array}  p.transactions      - raw transaction array (income + spend, in rands)
+ * @param {Object} [p.monthlyNetData]  - { 'YYYY-MM': { spend, income } } from ledger
+ * @param {number} [p.income]          - monthly income in rands (for % calculations)
+ * @returns {string} formatted multi-line behavioural context block, or '' if < 2 months
+ */
+export function buildBehaviouralContext({ transactions = [], monthlyNetData = null, income = 0 }) {
+  const isSpendTxn = t => t.category !== 'Income' && t.category !== 'Transfer' && t.category !== 'Savings'
+
+  // Build per-category monthly breakdown from raw transactions
+  const catMonthly = {}
+  for (const t of transactions) {
+    if (!isSpendTxn(t)) continue
+    const month = t.date?.slice(0, 7)
+    if (!month) continue
+    if (!catMonthly[month]) catMonthly[month] = {}
+    catMonthly[month][t.category] = (catMonthly[month][t.category] || 0) + t.amount
+  }
+
+  const months = Object.keys(catMonthly).sort()
+  if (months.length < 2) return ''  // Need at least 2 months for meaningful trends
+
+  const lines = []
+  lines.push(`BEHAVIOURAL TRENDS (${months.length}-month data, most-recent vs rolling avg):`)
+
+  // Compute per-category trend deltas
+  const allCats = new Set(months.flatMap(m => Object.keys(catMonthly[m] || {})))
+  const SKIP_CATS = new Set(['Transfer', 'Savings', 'Income', 'ATM / Cash'])
+  const LIFESTYLE_TREND_CATS = new Set(['Eating out', 'Entertainment', 'Travel', 'Clothing', 'Subscriptions', 'Gifts', 'Home & Garden'])
+  const OBLIGATION_TREND_CATS = new Set(['Housing', 'Insurance', 'Utilities', 'Fees & Charges'])
+
+  const catTrends = []
+  for (const cat of allCats) {
+    if (SKIP_CATS.has(cat)) continue
+    const values = months.map(m => catMonthly[m]?.[cat] || 0)
+    const avg = values.reduce((s, v) => s + v, 0) / values.length
+    if (avg < 100) continue  // Skip trivially small categories (noise)
+    const recent = values[values.length - 1]
+    const prev = values.length >= 2 ? values[values.length - 2] : 0
+    const deltaVsAvg = avg > 0 ? Math.round((recent - avg) / avg * 100) : 0
+    const deltaVsPrev = prev > 0 ? Math.round((recent - prev) / prev * 100) : 0
+    catTrends.push({ cat, recent: Math.round(recent), avg: Math.round(avg), deltaVsAvg, deltaVsPrev })
+  }
+
+  // Sort: biggest movers first (most actionable signal)
+  catTrends.sort((a, b) => Math.abs(b.deltaVsAvg) - Math.abs(a.deltaVsAvg))
+
+  for (const { cat, recent, avg, deltaVsAvg } of catTrends.slice(0, 8)) {
+    if (Math.abs(deltaVsAvg) < 5) {
+      lines.push(`  ${cat}: ${fmt(recent)}/mo -- stable (${months.length}-month avg ${fmt(avg)})`)
+      continue
+    }
+    const dir = deltaVsAvg > 0 ? 'UP' : 'DOWN'
+    let signal
+    if (deltaVsAvg > 25 && LIFESTYLE_TREND_CATS.has(cat))  signal = 'lifestyle creep'
+    else if (deltaVsAvg > 25 && OBLIGATION_TREND_CATS.has(cat)) signal = 'obligation creep'
+    else if (deltaVsAvg > 25)   signal = 'spend creep'
+    else if (deltaVsAvg > 10)   signal = 'deteriorating'
+    else if (deltaVsAvg < -25)  signal = 'strong improvement'
+    else if (deltaVsAvg < -10)  signal = 'improving'
+    else                         signal = 'slight shift'
+    lines.push(`  ${cat}: ${fmt(recent)}/mo (${months.length}-mo avg ${fmt(avg)}) -- ${dir} ${Math.abs(deltaVsAvg)}% [${signal}]`)
+  }
+
+  // Lifestyle inflation signal: discretionary % of income across recent months
+  if (income > 0 && months.length >= 3) {
+    const DISC_CATS = new Set(['Eating out', 'Entertainment', 'Travel', 'Clothing', 'Subscriptions', 'Gifts'])
+    const recentMonths = months.slice(-Math.min(months.length, 4))
+    const discRates = recentMonths.map(m => {
+      const monthDisc = Object.entries(catMonthly[m] || {})
+        .filter(([cat]) => DISC_CATS.has(cat))
+        .reduce((s, [, v]) => s + v, 0)
+      return income > 0 ? Math.round(monthDisc / income * 100) : 0
+    })
+    const firstRate = discRates[0]
+    const lastRate  = discRates[discRates.length - 1]
+    const lifestyleDelta = lastRate - firstRate
+    if (Math.abs(lifestyleDelta) >= 3) {
+      const rateStr = discRates.map(r => r + '%').join(' -> ')
+      const signal = lifestyleDelta > 0 ? 'LIFESTYLE INFLATION' : 'LIFESTYLE DISCIPLINE'
+      lines.push(`${signal}: Discretionary % of income: ${rateStr} (last ${recentMonths.length} months)`)
+    }
+  }
+
+  // Recurring spend creep: obligations growing faster than income
+  if (income > 0 && months.length >= 3) {
+    const OBL_CATS = new Set(['Housing', 'Insurance', 'Utilities', 'Fees & Charges', 'Subscriptions'])
+    const oblByMonth = months.slice(-3).map(m =>
+      Object.entries(catMonthly[m] || {})
+        .filter(([cat]) => OBL_CATS.has(cat))
+        .reduce((s, [, v]) => s + v, 0)
+    )
+    if (oblByMonth.length >= 2) {
+      const oblPct1 = income > 0 ? Math.round(oblByMonth[0] / income * 100) : 0
+      const oblPctN = income > 0 ? Math.round(oblByMonth[oblByMonth.length - 1] / income * 100) : 0
+      if (oblPctN - oblPct1 >= 3) {
+        lines.push(`RECURRING OBLIGATION CREEP: Fixed costs grew from ${oblPct1}% to ${oblPctN}% of income over 3 months`)
+      }
+    }
+  }
+
+  // Savings momentum from monthlyNetData
+  if (monthlyNetData && months.length >= 3) {
+    const netEntries = Object.entries(monthlyNetData)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-3)
+    const nets = netEntries.map(([, v]) => (v.income || 0) - (v.spend || 0))
+    if (nets.length >= 2) {
+      const improving  = nets[nets.length - 1] > nets[0]
+      const allPositive = nets.every(v => v >= 0)
+      const allNegative = nets.every(v => v < 0)
+      if (allPositive && improving)
+        lines.push(`SAVINGS MOMENTUM: Positive net position and improving over last 3 months`)
+      else if (allNegative)
+        lines.push(`SAVINGS PRESSURE: In deficit for ${nets.length} consecutive months -- trajectory not improving`)
+      else if (improving && !allPositive)
+        lines.push(`SAVINGS RECOVERY: Net position trending toward surplus over last 3 months`)
+    }
+  }
+
+  return lines.join('\n')
 }
