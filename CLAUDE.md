@@ -1384,3 +1384,123 @@ All statements use `IF NOT EXISTS` — safe to re-run.
 - **Re-accept flow**: `App.jsx ProtectedApp` only checks `!profile?.terms_accepted_at`, not whether `profile.terms_version === TERMS_VERSION`. When policy version bumps, existing users are not currently prompted to re-accept. To implement: add `|| profile.terms_version !== TERMS_VERSION` to the `termsOnly` condition.
 - **Admin consent_records viewer**: no admin UI to query consent_records table. Readable via Supabase dashboard or service-role SQL query.
 - **budget-chat.js**: error messages may still expose `err.message` in some paths — not audited this session.
+
+---
+
+## Categorisation intelligence & correction learning (2026-05-19)
+
+### Goals and constraints
+
+Surgical hardening only — no financial architecture rewrite. The existing category system, analytics engine, ledger, recurring detection, budgeting, projections, and AI systems are ALL preserved unchanged. Only these systems were enriched:
+- Bulk recategorisation UX (Dashboard.jsx)
+- Transfer pattern intelligence (sa-categorise.js)
+- Lightweight recurring/fixed-cost metadata schema (SQL migration)
+
+### Bulk recategorisation UX (Dashboard.jsx)
+
+**New imports added:**
+- `normalizeForDisplay, getCanonicalMerchant` from `../utils/merchantNormalizer`
+- `recategorizeMatchingTransactions` from `../services/transactions`
+
+**New `extractRuleKey(txnName)` helper (module scope, before Dashboard export):**
+Extracts a stable, normalised rule key from a raw bank transaction name.
+- Tries `getCanonicalMerchant(txnName)` first (most precise — maps to known SA merchant canonical names)
+- Falls back to `normalizeForDisplay(txnName)` (strips payment wrappers, long reference codes)
+- Final fallback: `txnName.toLowerCase()`
+- This ensures saved rules use clean merchant names (e.g. `"woolworths"`) rather than raw bank strings (e.g. `"WOOLWORTHS 0028347 JHB PTA S"`)
+
+**Modified `handleRecat(txnId, txnName, newCategory)`:**
+- Now computes `ruleKey = extractRuleKey(txnName)` after saving the category change
+- Counts `similarCount` = transactions in current view that share the same ruleKey (excluding the just-reclassified txn)
+- `recatPrompt` state shape extended: `{ id, name, category, ruleKey, similarCount }`
+
+**Modified `handleSaveRule(ruleKey, category, applyToHistory)`:**
+- Now accepts `ruleKey` (normalised) instead of `merchantPattern` (raw name)
+- Saves rule to `manage-rules` with the normalised key
+- When `applyToHistory=true`: calls `recategorizeMatchingTransactions(user.id, ruleKey, category)` — this paginates through ALL of the user's transaction history and bulk-updates matching rows, not just the current month view
+- Reloads current month after history reclassification via `loadTransactions()`
+- Errors from history reclassification are caught + observed via `observe.warn(DOMAIN.CATEGORISATION, ...)` — never block the rule save
+
+**Updated recatPrompt JSX:**
+- Shows the normalised `ruleKey` (not raw txnName) in the prompt label
+- When `similarCount > 0`: shows amber hint — "N similar transactions found in this view"
+- "Save + reclassify all" button relabelled to "Apply to all (N+1)" when similar count > 0
+- Both action buttons pass `recatPrompt.ruleKey` to handleSaveRule
+
+**New CSS classes (Dashboard.css):**
+- `.recat-prompt-main` — flex column wrapper for label + hint
+- `.recat-similar-hint` — coral, 12px, 600 weight hint text showing similar count
+
+### Transfer intelligence improvements (sa-categorise.js)
+
+Added 25+ new Transfer patterns to the existing Transfer rule block (highest priority, runs before all spend categories):
+
+**Investec-specific:** `investec transfer`, `investec savings`, `investec notice`, `investec money market`, `ips transfer`, `ips acc` — catches Investec's notice account and money market transfers which previously fell through to "Other"
+
+**FNB TRF codes:** `fnb trf`, `fnb trfr`, ` trf to `, ` trf frm ` — FNB statement reference shortcodes for account-to-account transfers
+
+**TymeBank:** `tymebank transfer`, `tymebank send`, `tymebank savings`
+
+**Standard Bank / SBG:** `sbg transfer`, `standard bank trf`
+
+**ABSA:** `absa transfer`, `absa trfr`
+
+**Nedbank:** `ndb trf`
+
+**SA statement reference phrases:** `payment to acc`, `payment to account`, `transfer to acc`, `transfer to account`, `transfer from acc`, `transfer from account` — catches generic SA bank statement transfer descriptions
+
+**International:** `swift transfer`, `rtgs transfer`
+
+**Impact:** Transfers that previously fell into "Other" (distorting spend analytics) are now correctly excluded from lifestyle spend. sa-categorise.js is now 660 lines.
+
+### Lightweight metadata enrichment schema (SQL migration)
+
+**File:** `supabase/migrations/20260519_transaction_metadata.sql`
+
+Adds two nullable boolean columns to `transactions`:
+- `is_recurring BOOLEAN DEFAULT NULL` — TRUE when detectRecurring() would flag this merchant
+- `fixed_obligation BOOLEAN DEFAULT NULL` — TRUE for Housing, Insurance, Subscriptions, Utilities, Education, Fees & Charges categories
+
+**Architecture decisions:**
+- Both columns are NULL by default — no backfill needed, no existing data affected
+- These are metadata enrichment hints, NOT category replacements
+- The canonical category system remains unchanged
+- The existing `detectRecurring()` utility remains the primary recurring detection engine
+- These columns are reserved for future background enrichment (e.g. a backfill job that sets is_recurring=true for transactions matching detectRecurring() output)
+- Partial indexes on `(user_id, is_recurring)` and `(user_id, fixed_obligation)` WHERE NOT NULL for efficient future queries
+- No new RLS policies needed — inherits existing transactions row-level security
+
+**Run in Supabase SQL editor** — all `IF NOT EXISTS`, safe to re-run.
+
+### Correction learning flow (persistent across uploads)
+
+User corrections now persist intelligently:
+
+1. User changes category on a transaction → `handleRecat` computes normalised `ruleKey`
+2. User sees similar count badge and clicks "Apply to all (N)" → `handleSaveRule(ruleKey, category, true)`
+3. Rule saved to `categorization_rules` table with normalised key (survives future uploads)
+4. `recategorizeMatchingTransactions` paginates ALL history and bulk-updates matching transactions
+5. Next import: `parse-bulk-transactions.js` loads user rules at import time (step 4 of its pipeline) — new transactions matching the normalised key are pre-categorised correctly without requiring AI
+
+**Why normalised keys matter:** Raw bank descriptions change ("WOOLWORTHS 0028347 JHB" vs "WOOLWORTHS 0029111 CPT"). Normalised keys (`"woolworths"`) match across all variants, making rules robust and transfer-resistant.
+
+### Deterministic-first behaviour preserved
+
+- SA_RULES + user rules still run before Claude in all categorisation paths
+- Claude is only called for transactions that remain "Other" after deterministic rules
+- No new AI calls introduced — all changes are in client-side UI and deterministic rule logic
+- Existing `recategoriseAll()` function and its three-stage pipeline (rules → SA_RULES → Claude) are untouched
+
+### Files changed this session
+
+| File | Change |
+|------|--------|
+| `src/components/Dashboard.jsx` | +33 lines: extractRuleKey, modified handleRecat/handleSaveRule, updated recatPrompt JSX |
+| `src/components/Dashboard.css` | +6 lines: .recat-prompt-main, .recat-similar-hint |
+| `netlify/functions/sa-categorise.js` | +35 lines: Investec + SA bank transfer patterns |
+| `supabase/migrations/20260519_transaction_metadata.sql` | New file: is_recurring + fixed_obligation columns |
+
+### Build verification
+
+- `node --check netlify/functions/*.js` — all pass
+- `npx vite build --emptyOutDir false` — clean build (131 modules, pre-existing chunk-size warning only)

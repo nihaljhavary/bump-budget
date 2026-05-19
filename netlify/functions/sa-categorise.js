@@ -40,6 +40,40 @@ export const SA_RULES = [
     'absa flexifix',
     'standard bank transfer',
     'internal transfer',
+    // Investec-specific (notice accounts, money market, IPS transfers)
+    'investec transfer',
+    'investec savings',
+    'investec notice',
+    'investec money market',
+    'ips transfer',
+    'ips acc',
+    // FNB TRF shortcode patterns on statements
+    'fnb trf',
+    'fnb trfr',
+    ' trf to ',
+    ' trf frm ',
+    // TymeBank person-to-person and internal
+    'tymebank transfer',
+    'tymebank send',
+    'tymebank savings',
+    // Standard Bank / SBG
+    'sbg transfer',
+    'standard bank trf',
+    // ABSA additional shortcode
+    'absa transfer',
+    'absa trfr',
+    // Nedbank shortcode
+    'ndb trf',
+    // Standard account-to-account reference phrases on SA statements
+    'payment to acc',
+    'payment to account',
+    'transfer to acc',
+    'transfer to account',
+    'transfer from acc',
+    'transfer from account',
+    // SWIFT / RTGS international transfers
+    'swift transfer',
+    'rtgs transfer',
   ], category: 'Transfer' },
 
   // ── Income ──

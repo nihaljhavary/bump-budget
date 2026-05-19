@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import { useTier, isDateAllowed, PLAN_PRICES } from '../context/TierContext'
-import { fetchTransactions, fetchTransactionsByMonth, fetchRecentMonths, addTransaction, updateTransaction, deleteTransaction } from '../services/transactions'
+import { fetchTransactions, fetchTransactionsByMonth, fetchRecentMonths, addTransaction, updateTransaction, deleteTransaction, recategorizeMatchingTransactions } from '../services/transactions'
 import { buildAIPayload, buildTopMerchants } from '../utils/financials'
 import { buildLedgerSummary, getCalendarMonthRange } from '../utils/ledger'
 import { buildAiBudgets } from '../utils/budgets'
@@ -21,6 +21,7 @@ import IncomeStatement from './IncomeStatement'
 import SupportChat from './SupportChat'
 import FAQ from './FAQ'
 import UpgradeModal from './UpgradeModal'
+import { normalizeForDisplay, getCanonicalMerchant } from '../utils/merchantNormalizer'
 import './Dashboard.css'
 
 // Default budget fallbacks — used when user hasn't set budgets in Analytics yet.
@@ -51,6 +52,19 @@ const CAT_ICONS = {
 const fmt = n => 'R' + Math.round(n).toLocaleString('en-ZA')
 const fmtDate = d => new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 const monthLabel = () => new Date().toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })
+
+// Extracts a stable, normalised rule key from a raw transaction name.
+// Prefers the canonical merchant name (most precise) and falls back to the
+// display-normalised description (strips payment wrappers and reference codes).
+// Used by handleRecat + handleSaveRule so saved rules survive future uploads cleanly.
+function extractRuleKey(txnName) {
+  if (!txnName) return ''
+  const canonical = getCanonicalMerchant(txnName)
+  if (canonical) return canonical.toLowerCase()
+  const normalized = normalizeForDisplay(txnName)
+  if (normalized && normalized.length > 2) return normalized.toLowerCase()
+  return txnName.toLowerCase()
+}
 
 export default function Dashboard({ onNavigate }) {
   const { user, profile, updateProfile } = useAuth()
@@ -283,39 +297,48 @@ export default function Dashboard({ onNavigate }) {
     }
   }
 
-  // Handle inline recategorisation
+  // Handle inline recategorisation.
+  // Computes a normalised rule key and counts similar transactions in the current
+  // view so the prompt can surface "N similar found — apply to all?"
   async function handleRecat(txnId, txnName, newCategory) {
     setRecatSaving(true)
     try {
       await updateTransaction(txnId, { category: newCategory })
       setTransactions(prev => prev.map(t => t.id === txnId ? { ...t, category: newCategory } : t))
       setRecatId(null)
-      setRecatPrompt({ id: txnId, name: txnName, category: newCategory })
+      const ruleKey = extractRuleKey(txnName)
+      const similarCount = transactions.filter(t =>
+        t.id !== txnId && t.name && t.name.toLowerCase().includes(ruleKey)
+      ).length
+      setRecatPrompt({ id: txnId, name: txnName, category: newCategory, ruleKey, similarCount })
     } catch (e) {
       console.error('Recategorise failed', e)
     }
     setRecatSaving(false)
   }
 
-  async function handleSaveRule(merchantPattern, category, applyToHistory) {
-    if (!merchantPattern) return
+  // Save a merchant → category rule using the normalised rule key.
+  // When applyToHistory=true, reclassifies ALL matching transactions in the user's
+  // full history (not just the current month view) via a paginated Supabase bulk update.
+  // This ensures corrections survive future uploads and apply retroactively.
+  async function handleSaveRule(ruleKey, category, applyToHistory) {
+    if (!ruleKey) return
     setRecatPrompt(null)
     try {
       const { data: { session } } = await supabase.auth.getSession()
       await fetch('/.netlify/functions/manage-rules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ merchant_pattern: merchantPattern.toLowerCase(), category })
+        body: JSON.stringify({ merchant_pattern: ruleKey, category })
       })
       if (applyToHistory) {
-        // Update all matching transactions in current month view
-        const pattern = merchantPattern.toLowerCase()
-        const ids = transactions.filter(t => t.name?.toLowerCase().includes(pattern)).map(t => t.id)
-        if (ids.length > 0) {
-          await Promise.all(ids.map(id => updateTransaction(id, { category })))
-          setTransactions(prev => prev.map(t =>
-            t.name?.toLowerCase().includes(pattern) ? { ...t, category } : t
-          ))
+        try {
+          // Bulk-update ALL history matching this pattern, then reload the current view
+          await recategorizeMatchingTransactions(user.id, ruleKey, category)
+          await loadTransactions()
+        } catch (e) {
+          console.error('History reclassification failed', e)
+          observe.warn(DOMAIN.CATEGORISATION, 'Bulk history reclassification error', { ruleKey, error: e.message })
         }
       }
     } catch (e) {
@@ -985,10 +1008,19 @@ export default function Dashboard({ onNavigate }) {
         <div className="tab-body">
           {recatPrompt && (
             <div className="recat-prompt fade-up">
-              <span>Save &quot;{recatPrompt.name}&quot; → {recatPrompt.category} as a rule?</span>
+              <div className="recat-prompt-main">
+                <span>Save &quot;{recatPrompt.ruleKey || recatPrompt.name}&quot; → {recatPrompt.category} as a rule?</span>
+                {recatPrompt.similarCount > 0 && (
+                  <span className="recat-similar-hint">
+                    {recatPrompt.similarCount} similar transaction{recatPrompt.similarCount !== 1 ? 's' : ''} found in this view
+                  </span>
+                )}
+              </div>
               <div className="recat-prompt-btns">
-                <button className="recat-rule-btn" onClick={() => handleSaveRule(recatPrompt.name, recatPrompt.category, false)}>Save rule</button>
-                <button className="recat-rule-btn recat-rule-history" onClick={() => handleSaveRule(recatPrompt.name, recatPrompt.category, true)}>Save + reclassify all</button>
+                <button className="recat-rule-btn" onClick={() => handleSaveRule(recatPrompt.ruleKey || recatPrompt.name, recatPrompt.category, false)}>Save rule</button>
+                <button className="recat-rule-btn recat-rule-history" onClick={() => handleSaveRule(recatPrompt.ruleKey || recatPrompt.name, recatPrompt.category, true)}>
+                  {recatPrompt.similarCount > 0 ? `Apply to all (${recatPrompt.similarCount + 1})` : 'Save + reclassify all'}
+                </button>
                 <button className="recat-dismiss-btn" onClick={() => setRecatPrompt(null)}>Dismiss</button>
               </div>
             </div>
