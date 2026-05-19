@@ -148,6 +148,43 @@ If the branch has diverged, user runs: `git push --force origin dev`
 
 ---
 
+## Schema resilience & optional column handling (2026-05 hardening)
+
+### detected_bank root cause & fix
+
+**Problem:** `ImportTransactions.jsx` inserts four optional metadata columns into `transactions`:
+- `detected_bank` — bank ID at import time
+- `raw_merchant` — raw statement description  
+- `transaction_hash` — dedup fingerprint
+- `import_batch_id` — batch grouping UUID
+
+If the migration `supabase/migrations/20260517_add_upload_tracking_columns.sql` has NOT been run (or PostgREST's schema cache is momentarily stale after running it), Supabase throws:
+> "Could not find the 'detected_bank' column of 'transactions' in the schema cache"
+
+The existing fallback at line ~779 only stripped `transaction_hash`. It did not catch `detected_bank` errors, so the error propagated to users.
+
+**Fix applied (2026-05):**
+- `ImportTransactions.jsx` INSERT fallback now checks for ANY of the four optional columns in the error message and strips them all, retrying with core fields only.
+- SELECT fallback similarly expanded to handle both `raw_merchant` and `transaction_hash` errors.
+- Neither `manage-uploads.js` (already had probe pattern) nor any other file needed changes.
+
+**Migration required in Supabase SQL editor:**
+Run `supabase/migrations/20260517_add_upload_tracking_columns.sql` — uses `ADD COLUMN IF NOT EXISTS` on all four columns. Safe to re-run. After running, PostgREST auto-refreshes its schema cache within ~30s.
+
+**Schema column history:**
+- v7 schema (`supabase-schema-v7.sql`): added `raw_merchant TEXT`, `import_batch_id TEXT`, `transaction_hash TEXT`
+- v8 schema: NO new transaction columns
+- `20260517_add_upload_tracking_columns.sql`: adds `detected_bank TEXT` (+ re-declares others with IF NOT EXISTS, import_batch_id as UUID)
+
+**Graceful degradation rule:**
+Any column inserted into `transactions` that is NOT in the original base schema must be treated as optional. The insert fallback strips all four optional metadata columns on any schema error. Uploads always succeed; metadata persists only when columns exist.
+
+**manage-uploads.js probe pattern (already in place):**
+Before the paginated fetch, probes for `detected_bank` with a single-row query. If missing, falls back to a query without it (`detectedBank: null` for all batches). Never hard-fails on missing optional columns.
+
+
+---
+
 ## Pending / not yet built
 
 - Error/support logging system (log errors to Supabase or external service)
@@ -1001,3 +1038,80 @@ const effectivePlan = (
 ### Simulation-mode upgrade flow
 
 Admins simulating a tier (via the `bumpSimPlan` localStorage key) see
+
+
+---
+
+## Signup hardening, tester access, and payment resilience (2026-05 stability pass)
+
+### Auth.jsx hardening
+
+**`friendlyError(err)` helper added** — maps raw Supabase/network error strings to human-readable messages:
+- "User already registered" → "An account already exists with this email. Try signing in instead."
+- "Invalid login credentials" → "Email or password is incorrect. Please check your details and try again."
+- "Email not confirmed" → "Check your inbox — you need to confirm your email before signing in."
+- Rate-limit errors → "Too many attempts. Please wait a minute before trying again."
+- Network/fetch errors → "Connection error. Check your internet and try again."
+- Default: raw message with first letter capitalised.
+
+**`isValidEmail(email)` helper added** — basic regex format check (`/^[^\s@]+@[^\s@]+\.[^\s@]+$/`) applied before every submit (sendMagicLink, signIn, signUp, sendForgotPassword). Returns friendly error before touching Supabase.
+
+**`submittingRef` guard** was already present in all submit handlers (sendMagicLink, signIn, signUp, sendForgotPassword) — confirmed intact. Prevents duplicate submissions between first click and React re-render.
+
+All `setError(err.message)` calls replaced with `setError(friendlyError(err))` — no raw Supabase error strings reach the user.
+
+### UpgradeModal.jsx hardening
+
+**`submittingRef` guard added** to `handleStartTrial` — prevents double-tapping "Start trial" from firing two server requests or two PaystackPop instances.
+
+**`VITE_PAYSTACK_PUBLIC_KEY` validation added** at the start of `handleStartTrial`:
+```js
+const paystackKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY
+if (!paystackKey || paystackKey === 'undefined' || paystackKey.length < 10) {
+  // Shows friendly error: "Payment is not yet configured. Please contact support..."
+}
+```
+Previously: `PaystackPop.setup()` would silently crash or give a confusing Paystack error if the env var was missing. Now: shows a clear message immediately.
+
+`submittingRef` is released in the `finally` block of handleStartTrial — cannot get stuck in a blocking state if the function throws early.
+
+### App.jsx styling fixes
+
+- **Loader component**: replaced hardcoded `background: '#110A08'` + `color: '#888'` with `background: 'var(--bg)'` + `color: 'var(--muted)'`. Old dark color caused a flash of the wrong bg on load.
+- **UpdateBanner**: replaced hardcoded `background: '#e85d26'` (v1 coral) with `background: 'var(--coral)'` and `color: '#e85d26'` with `color: 'var(--coral)'` for the button. Keeps banner consistent with theme changes.
+
+### Admin-data.js: three new actions
+
+**`list_all_profiles`** — returns all profiles enriched with email from `auth.admin.listUsers()`. Used by the AdminDashboard Tester Access tab.
+
+**`grant_tier`** — admin-grants premium access to a specific user without Paystack:
+- Takes `{ userId, plan }` where plan is 'starter', 'growth', or 'pro'
+- Sets `subscription_plan=plan, subscription_status='active', cancel_at_period_end=false, scheduled_plan=null, trial_ends_at=null`
+- Logs an `admin_grant` event to `subscription_events` table
+- TierContext reads these fields directly → tier unlocks immediately on next profile load
+
+**`revoke_tier`** — resets a user's tier to free:
+- Takes `{ userId }`
+- Sets `subscription_plan='free', subscription_status='active'`, clears cancel/scheduled/trial/paystack_sub_code fields
+- Logs an `admin_revoke` event to `subscription_events`
+
+**Admin check hardened**: was `role !== 'admin'` only — now checks both `role !== 'admin' && !is_admin` to be consistent with TierContext's check.
+
+### AdminDashboard.jsx: Tester Access tab
+
+New third tab "Tester Access" added alongside "Access Requests" and "Bookings".
+
+**What it shows:**
+- All user profiles with name, email (from auth.admin), current subscription plan (colour-coded), subscription status
+- Search bar filters by name or email
+- Per-user grant buttons: Starter / Growth / Pro (active plan is visually disabled)
+- "Revoke" button (red outline) when user has a paid plan — resets to free
+- Admin users are clearly tagged and have no grant/revoke buttons
+
+**Loading behaviour:** profiles are loaded lazily when the tab is first activated (not on dashboard mount). Refreshes after each grant/revoke action.
+
+**This is the canonical testing workflow:** Instead of going through Paystack for test accounts, use Admin Dashboard → Tester Access → select user → grant plan. TierContext picks it up on next profile refresh (user may need to reload).
+
+### Tier architecture: unchanged
+
+TierContext, buildTier(), effectivePlan logic, PLANS config, and all feature gates (canAnalytics, canProjections, canGroceries, canRules, canConsult) are untouched. Grant/revoke flows through the same Supabase columns TierContext already reads — no parallel tier system introduced.
