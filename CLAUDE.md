@@ -1209,3 +1209,91 @@ priorResult:    result || undefined,
 - `budget-chat.js` — not wired to frontend; left for future session
 - All tier gating — untouched
 - Auth, onboarding, Paystack flows — untouched
+
+---
+
+## Operational visibility & error logging (2026-05 Session B)
+
+### Architecture overview
+Bump now has a full operational observability stack: structured error logging, user-submitted support tickets, admin visibility into both, and graceful production error UX. All wiring uses the EXISTING admin profile (nihal1995@gmail.com) — no new admin architecture was introduced.
+
+### Supabase tables (new)
+Migration: `supabase/migrations/20260519_add_operational_tables.sql` — run in Supabase SQL editor.
+
+**`error_logs`** — structured application error/warn events.
+Columns: `id, user_id, severity ('info'|'warn'|'error'), domain, message, metadata (JSONB), error_message, stack_trace, url, created_at`.
+- `severity/domain/message/metadata` — written by `observe.js`
+- `error_message/stack_trace/url` — legacy columns (kept for ErrorBoundary compat, now also via observe.js)
+- RLS: users can INSERT own rows (including `user_id = NULL` for unauthenticated). No SELECT for users — admin reads via service role.
+
+**`support_requests`** — user-submitted tickets.
+Columns: `id, user_id, email, full_name, category, message, status ('open'|'in_progress'|'resolved'), created_at`.
+- `email` and `full_name` are denormalized for admin convenience (no joins needed)
+- RLS: users can INSERT + SELECT own rows. Admin reads/updates via service role.
+
+### observe.js — new domains and helpers (2026-05)
+Five new `DOMAIN` constants added: `AUTH`, `AI`, `UPLOAD`, `FRONTEND`, `SUBSCRIPTION`.
+
+Seven new typed helpers on the `observe` object:
+- `observe.authError(err, context)` — auth sign-in/sign-up/magic-link failures → `DOMAIN.AUTH`
+- `observe.authWarn(message, context)` — recoverable auth anomalies (rate limit, unconfirmed)
+- `observe.aiError(err, context)` — Claude API failures, timeouts, parse errors → `DOMAIN.AI`
+- `observe.uploadError(err, context)` — batch save failures → `DOMAIN.UPLOAD`
+- `observe.uploadWarning(message, context)` — partial upload issues
+- `observe.frontendError(err, context)` — runtime JS errors from ErrorBoundary → `DOMAIN.FRONTEND`
+- `observe.subscriptionError(err, context)` — Paystack / subscription lifecycle failures
+
+All helpers are fire-and-forget. Never await observe calls in UI code.
+
+### ErrorBoundary.jsx
+Now uses `observe.frontendError(error, { componentStack, errorId, url })` instead of a direct Supabase insert. This ensures consistent column schema (severity/domain/message/metadata) rather than the legacy `error_message/stack_trace` columns. Shows a user-facing error card with a randomly generated `errorId` for support reference.
+
+### submit-support.js (new netlify function)
+`POST /.netlify/functions/submit-support { category, message }`
+- Auth required (Bearer token)
+- Valid categories: 'Technical issue', 'Billing', 'Feature request', 'Data / Privacy', 'Other'
+- Validates: message >= 10 chars, <= 2000 chars
+- Rate limit: 5 submissions per user per 24h (checked via adminClient COUNT query)
+- Denormalizes email from `auth.users` and `full_name` from `profiles` for admin convenience
+- Returns `{ success: true, id }`
+
+### admin-data.js — new actions
+**`get_error_logs`**: fetches latest 150 error_log rows (severity/domain filters supported), enriches each with email via `auth.admin.listUsers()`, computes `topErrors` grouping by domain+message (count, affectedUsers, lastSeen).
+
+**`get_support_requests`**: fetches support_requests with optional status filter (`open|in_progress|resolved|all`).
+
+**`update_support_status`**: updates `status` on a support_request row. Validates status is one of `['open','in_progress','resolved']`.
+
+### AdminDashboard.jsx — Errors + Support tabs
+Two new tabs added (tabs 4 and 5):
+
+**Errors tab:**
+- Domain filter (All / ingestion / categorisation / reconciliation / auth / ai / upload / frontend / subscription) + Severity filter (All / error / warn / info)
+- "Recurring errors" panel: groups events by domain+message, sorted by count, color-coded by severity (red=error, amber=warn)
+- "Recent events" panel: last 150 events in a grid layout (timestamp, domain badge, severity chip, message, user email)
+- Reload button to refresh
+
+**Support tab:**
+- Badge on tab showing open ticket count
+- Status filter buttons: All / Open / In progress / Resolved
+- Ticket cards with: status chip (color-coded), category, message text, user info, timestamp
+- Inline status management: "In Progress" / "Resolve" / "Reopen" buttons depending on current status
+
+### SupportChat.jsx — ticket submission panel
+New "Still need help? Submit a ticket" toggle below the chat body (above input bar).
+- Expands inline: category dropdown (5 categories) + message textarea + Submit button
+- Calls `/.netlify/functions/submit-support` with auth token
+- Shows success confirmation: "Ticket submitted. Our team will follow up via email."
+- Shows inline error message on failure or rate-limit hit
+- Ticket form state: `showTicket, ticketCategory, ticketMessage, ticketSubmitting, ticketSuccess, ticketError`
+
+### Auth.jsx — auth failure logging
+`import { observe } from '../utils/observe'` added. In all four auth functions, when `err` is truthy, fires `observe.authError(err, { action, email })` after `setError(friendlyError(err))`. Fire-and-forget — never blocks the auth flow.
+
+Functions wired: `sendMagicLink`, `signIn`, `signUp`, `sendForgotPassword`.
+
+### What was deliberately NOT changed
+- Admin auth architecture — existing `is_admin` / `role` check in admin-data.js preserved
+- TierContext, plans, feature gates — untouched
+- All upload, budgeting, projections, recommendations, canonical ledger systems — untouched
+- observe.js core `emit()` function and existing typed helpers — untouched (only additive)

@@ -29,21 +29,22 @@ export async function handler(event) {
     process.env.SUPABASE_SERVICE_KEY
   )
 
-  // Confirm caller is admin
+  // Confirm caller is admin (accept either role='admin' or is_admin=true)
   const { data: callerProfile } = await adminClient
     .from('profiles')
-    .select('role')
+    .select('role, is_admin')
     .eq('id', user.id)
     .single()
 
-  if (!callerProfile || callerProfile.role !== 'admin') {
+  if (!callerProfile || (callerProfile.role !== 'admin' && !callerProfile.is_admin)) {
     return { statusCode: 403, body: JSON.stringify({ error: 'Forbidden' }) }
   }
 
-  const body = JSON.parse(event.body)
+  let body = {}
+  try { body = JSON.parse(event.body) } catch { /* ok */ }
   const { action } = body
 
-  // ── get_dashboard ──────────────────────────────────────────────────────────
+  // -- get_dashboard -----------------------------------------------------------
   if (action === 'get_dashboard') {
     const [reqRes, bookRes, profRes] = await Promise.all([
       adminClient
@@ -71,7 +72,7 @@ export async function handler(event) {
     }
   }
 
-  // ── update_access_status ───────────────────────────────────────────────────
+  // -- update_access_status ----------------------------------------------------
   if (action === 'update_access_status') {
     const { accessId, status } = body
     const { error } = await adminClient
@@ -90,7 +91,7 @@ export async function handler(event) {
     }
   }
 
-  // ── get_user_transactions ──────────────────────────────────────────────────
+  // -- get_user_transactions ---------------------------------------------------
   if (action === 'get_user_transactions') {
     const { userId } = body
     const { data: transactions, error } = await adminClient
@@ -104,6 +105,201 @@ export async function handler(event) {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ transactions: transactions || [] })
+    }
+  }
+
+  // -- list_all_profiles — for the tester access panel -------------------------
+  // Returns all profiles enriched with email from auth.users (service role).
+  if (action === 'list_all_profiles') {
+    const { data: profiles, error } = await adminClient
+      .from('profiles')
+      .select('id, full_name, subscription_plan, subscription_status, is_admin, role, created_at')
+      .order('created_at', { ascending: false })
+      .limit(500)
+
+    if (error) return { statusCode: 500, body: JSON.stringify({ error: error.message }) }
+
+    // Enrich with emails from auth.users (best-effort — skip if service role lacks permission)
+    let emailMap = {}
+    try {
+      const { data: authData } = await adminClient.auth.admin.listUsers({ perPage: 1000 })
+      if (authData?.users) authData.users.forEach(u => { emailMap[u.id] = u.email })
+    } catch {}
+
+    const enriched = (profiles || []).map(p => ({
+      ...p,
+      email: emailMap[p.id] || null,
+    }))
+
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profiles: enriched })
+    }
+  }
+
+  // -- grant_tier — admin grants premium access without Paystack ---------------
+  // Sets subscription_plan + subscription_status = 'active' directly.
+  // Integrates with TierContext: as long as plan + status are set, tier unlocks.
+  if (action === 'grant_tier') {
+    const { userId, plan } = body
+    const validPlans = ['starter', 'growth', 'pro']
+    if (!userId || !validPlans.includes(plan)) {
+      return { statusCode: 400, body: JSON.stringify({ error: 'Invalid userId or plan' }) }
+    }
+    const { error } = await adminClient
+      .from('profiles')
+      .update({
+        subscription_plan:   plan,
+        subscription_status: 'active',
+        cancel_at_period_end: false,
+        scheduled_plan:      null,
+        trial_ends_at:       null,
+      })
+      .eq('id', userId)
+
+    if (error) return { statusCode: 500, body: JSON.stringify({ error: error.message }) }
+
+    // Log the admin grant event
+    await adminClient.from('subscription_events').insert({
+      user_id:    userId,
+      event_type: 'admin_grant',
+      plan,
+      amount:     0,
+      raw_payload: { granted_by: user.id, method: 'admin_grant' },
+    }).maybeSingle()
+
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ success: true, plan })
+    }
+  }
+
+  // -- revoke_tier — admin resets a user's tier to free ------------------------
+  if (action === 'revoke_tier') {
+    const { userId } = body
+    if (!userId) return { statusCode: 400, body: JSON.stringify({ error: 'userId required' }) }
+
+    const { error } = await adminClient
+      .from('profiles')
+      .update({
+        subscription_plan:   'free',
+        subscription_status: 'active',
+        cancel_at_period_end: false,
+        scheduled_plan:      null,
+        trial_ends_at:       null,
+        paystack_sub_code:   null,
+      })
+      .eq('id', userId)
+
+    if (error) return { statusCode: 500, body: JSON.stringify({ error: error.message }) }
+
+    await adminClient.from('subscription_events').insert({
+      user_id:    userId,
+      event_type: 'admin_revoke',
+      plan:       'free',
+      amount:     0,
+      raw_payload: { revoked_by: user.id, method: 'admin_revoke' },
+    }).maybeSingle()
+
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ success: true })
+    }
+  }
+
+  // -- get_error_logs — recent structured error events for admin visibility ----------
+  if (action === 'get_error_logs') {
+    const limit  = body.limit  || 150
+    const domain = body.domain || null   // optional domain filter
+    const sev    = body.severity || null  // optional severity filter
+
+    let q = adminClient
+      .from('error_logs')
+      .select('id, user_id, severity, domain, message, metadata, error_message, url, created_at')
+      .order('created_at', { ascending: false })
+      .limit(limit)
+
+    if (domain) q = q.eq('domain', domain)
+    if (sev)    q = q.eq('severity', sev)
+
+    const { data: logs, error: logsErr } = await q
+    if (logsErr) return { statusCode: 500, body: JSON.stringify({ error: logsErr.message }) }
+
+    // Enrich with emails (best-effort)
+    let emailMap = {}
+    try {
+      const { data: authData } = await adminClient.auth.admin.listUsers({ perPage: 1000 })
+      if (authData?.users) authData.users.forEach(u => { emailMap[u.id] = u.email })
+    } catch {}
+
+    const enriched = (logs || []).map(l => ({
+      ...l,
+      email: l.user_id ? (emailMap[l.user_id] || null) : null,
+    }))
+
+    // Compute simple grouping: count by domain+message (top recurring errors)
+    const groups = {}
+    for (const l of enriched) {
+      const key = `${l.domain || 'unknown'}::${(l.message || l.error_message || '').slice(0, 80)}`
+      if (!groups[key]) groups[key] = { domain: l.domain, message: l.message || l.error_message, severity: l.severity, count: 0, lastSeen: l.created_at, affectedUsers: new Set() }
+      groups[key].count++
+      if (l.user_id) groups[key].affectedUsers.add(l.user_id)
+      if (l.created_at > groups[key].lastSeen) groups[key].lastSeen = l.created_at
+    }
+    const topErrors = Object.values(groups)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 20)
+      .map(g => ({ ...g, affectedUsers: g.affectedUsers.size }))
+
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ logs: enriched, topErrors })
+    }
+  }
+
+  // -- get_support_requests — all user-submitted support tickets ---------------
+  if (action === 'get_support_requests') {
+    const statusFilter = body.status || null  // optional: 'open' | 'in_progress' | 'resolved'
+
+    let q = adminClient
+      .from('support_requests')
+      .select('id, user_id, email, full_name, category, message, status, created_at')
+      .order('created_at', { ascending: false })
+      .limit(200)
+
+    if (statusFilter) q = q.eq('status', statusFilter)
+
+    const { data: requests, error: reqErr } = await q
+    if (reqErr) return { statusCode: 500, body: JSON.stringify({ error: reqErr.message }) }
+
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests: requests || [] })
+    }
+  }
+
+  // -- update_support_status — update a support ticket status -----------------
+  if (action === 'update_support_status') {
+    const { requestId, status: newStatus } = body
+    const valid = ['open', 'in_progress', 'resolved']
+    if (!requestId || !valid.includes(newStatus)) {
+      return { statusCode: 400, body: JSON.stringify({ error: 'requestId and valid status required' }) }
+    }
+    const { error: updErr } = await adminClient
+      .from('support_requests')
+      .update({ status: newStatus })
+      .eq('id', requestId)
+
+    if (updErr) return { statusCode: 500, body: JSON.stringify({ error: updErr.message }) }
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ success: true })
     }
   }
 

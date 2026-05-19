@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
+import { observe } from '../utils/observe'
 import './Auth.css'
 
 const TERMS_VERSION = '1.0'
@@ -18,6 +19,37 @@ const TERMS_TEXT = `By creating an account or signing in to bump. you agree to t
 5. NO LIABILITY - To the fullest extent permitted by South African law, bump. shall not be liable for any direct, indirect, or consequential damages.
 
 6. ACCEPTANCE - By ticking the checkbox and proceeding, you confirm you have read and agree to these terms.`
+
+
+// Map raw Supabase / network error messages to human-friendly strings.
+// This prevents internal error codes from reaching the user.
+function friendlyError(err) {
+  if (!err) return 'Something went wrong. Please try again.'
+  const msg = (err.message || err.toString()).toLowerCase()
+  if (msg.includes('user already registered') || msg.includes('already been registered'))
+    return 'An account already exists with this email. Try signing in instead.'
+  if (msg.includes('invalid login credentials') || msg.includes('invalid credentials'))
+    return 'Email or password is incorrect. Please check your details and try again.'
+  if (msg.includes('email not confirmed') || msg.includes('email link is invalid or has expired'))
+    return 'Check your inbox — you need to confirm your email before signing in.'
+  if (msg.includes('over_email_send_rate_limit') || msg.includes('email rate limit') || msg.includes('rate limit'))
+    return 'Too many attempts. Please wait a minute before trying again.'
+  if (msg.includes('user not found') || msg.includes('no user found'))
+    return 'No account found with this email. Create an account first.'
+  if (msg.includes('network') || msg.includes('fetch'))
+    return 'Connection error. Check your internet and try again.'
+  if (msg.includes('password') && msg.includes('weak'))
+    return 'Password is too weak. Use a mix of letters, numbers, and symbols.'
+  if (msg.includes('signup') && msg.includes('disabled'))
+    return 'Account creation is temporarily disabled. Please try again later.'
+  // Fall back to the raw message if no mapping found, but capitalise first letter
+  const raw = err.message || err.toString()
+  return raw.charAt(0).toUpperCase() + raw.slice(1)
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+}
 
 export default function Auth({ termsOnly = false }) {
   const { user, refreshProfile } = useAuth()
@@ -83,7 +115,7 @@ export default function Auth({ termsOnly = false }) {
         <div className="auth-card">
           <div className="auth-logo">bump<span className="logo-dot" /></div>
           <div className="auth-sent">
-            <div className="auth-sent-icon">{sentType === 'reset' ? '🔑' : '✉️'}</div>
+            <div className="auth-sent-icon">{sentType === 'reset' ? '\u{1f511}' : '\u2709\ufe0f'}</div>
             <h2>Check your inbox</h2>
             <p>
               {sentType === 'reset'
@@ -122,6 +154,7 @@ export default function Auth({ termsOnly = false }) {
 
   async function sendMagicLink() {
     if (!email) { setError('Enter your email first'); return }
+    if (!isValidEmail(email)) { setError('Enter a valid email address'); return }
     if (submittingRef.current) return
     submittingRef.current = true
     setLoading(true); setError('')
@@ -130,8 +163,12 @@ export default function Auth({ termsOnly = false }) {
         email,
         options: { emailRedirectTo: window.location.origin + '/app' }
       })
-      if (err) setError(err.message)
-      else { setSentType('magic'); setSent(true) }
+      if (err) {
+        setError(friendlyError(err))
+        observe.authError(err, { action: 'sendMagicLink', email })
+      } else {
+        setSentType('magic'); setSent(true)
+      }
     } finally {
       submittingRef.current = false
       setLoading(false)
@@ -140,12 +177,16 @@ export default function Auth({ termsOnly = false }) {
 
   async function signIn() {
     if (!email || !password) { setError('Fill in your email and password'); return }
+    if (!isValidEmail(email)) { setError('Enter a valid email address'); return }
     if (submittingRef.current) return
     submittingRef.current = true
     setLoading(true); setError('')
     try {
       const { error: err } = await supabase.auth.signInWithPassword({ email, password })
-      if (err) setError(err.message)
+      if (err) {
+        setError(friendlyError(err))
+        observe.authError(err, { action: 'signIn', email })
+      }
     } finally {
       submittingRef.current = false
       setLoading(false)
@@ -154,6 +195,7 @@ export default function Auth({ termsOnly = false }) {
 
   async function signUp() {
     if (!email || !password) { setError('Fill in your email and password'); return }
+    if (!isValidEmail(email)) { setError('Enter a valid email address'); return }
     const pwdErrors = validatePassword(password)
     if (pwdErrors.length > 0) { setError('Password: ' + pwdErrors[0]); return }
     if (submittingRef.current) return
@@ -164,8 +206,12 @@ export default function Auth({ termsOnly = false }) {
         email, password,
         options: { emailRedirectTo: window.location.origin + '/app' }
       })
-      if (err) setError(err.message)
-      else { setSentType('magic'); setSent(true) }
+      if (err) {
+        setError(friendlyError(err))
+        observe.authError(err, { action: 'signUp', email })
+      } else {
+        setSentType('magic'); setSent(true)
+      }
     } finally {
       submittingRef.current = false
       setLoading(false)
@@ -174,6 +220,7 @@ export default function Auth({ termsOnly = false }) {
 
   async function sendForgotPassword() {
     if (!email) { setError('Enter your email address first'); return }
+    if (!isValidEmail(email)) { setError('Enter a valid email address'); return }
     if (submittingRef.current) return
     submittingRef.current = true
     setLoading(true); setError('')
@@ -181,8 +228,12 @@ export default function Auth({ termsOnly = false }) {
       const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin + '/app'
       })
-      if (err) setError(err.message)
-      else { setSentType('reset'); setSent(true) }
+      if (err) {
+        setError(friendlyError(err))
+        observe.authError(err, { action: 'sendForgotPassword', email })
+      } else {
+        setSentType('reset'); setSent(true)
+      }
     } finally {
       submittingRef.current = false
       setLoading(false)
@@ -217,7 +268,7 @@ export default function Auth({ termsOnly = false }) {
                 onKeyDown={e => e.key === 'Enter' && sendMagicLink()} autoComplete="email" />
             </div>
             <button className="btn-primary" onClick={sendMagicLink} disabled={loading}>
-              {loading ? 'Sending...' : '✨ Send magic link'}
+              {loading ? 'Sending...' : '\u2728 Send magic link'}
             </button>
             <div className="auth-divider">or</div>
             <button className="btn-ghost" onClick={() => switchMode('password')}>Use password instead</button>
@@ -242,7 +293,7 @@ export default function Auth({ termsOnly = false }) {
                 <div className="auth-pwd-rules">
                   {pwdStrength(password).map(r => (
                     <span key={r.label} className={`auth-pwd-rule ${r.ok ? 'ok' : ''}`}>
-                      {r.ok ? '✓' : '·'} {r.label}
+                      {r.ok ? '\u2713' : '\u00b7'} {r.label}
                     </span>
                   ))}
                 </div>

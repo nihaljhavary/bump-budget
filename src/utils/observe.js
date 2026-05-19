@@ -33,6 +33,11 @@ export const DOMAIN = {
   DUPLICATE:       'duplicate',
   LEDGER:          'ledger',
   DEPLOYMENT:      'deployment',
+  AUTH:            'auth',
+  AI:              'ai',
+  UPLOAD:          'upload',
+  FRONTEND:        'frontend',
+  SUBSCRIPTION:    'subscription',
 }
 
 // ── Build metadata injected by Vite ──────────────────────────────────────────
@@ -184,5 +189,44 @@ export const observe = {
   /** Deployment: version check detected stale bundle */
   staleBundle(deployedId, runningId) {
     observe.warn(DOMAIN.DEPLOYMENT, 'Stale bundle detected', { deployedId, runningId, buildId: BUILD_ID })
+  },
+
+  // ── New domains (2026-05) ───────────────────────────────────────────────
+
+  /** Auth: sign-in / sign-up / magic-link failure */
+  authError(err, context = {}) {
+    observe.error(DOMAIN.AUTH, `Auth failed: ${err?.message || err}`, context)
+  },
+
+  /** Auth: recoverable auth warning (e.g. rate limit, unconfirmed email) */
+  authWarn(message, context = {}) {
+    observe.warn(DOMAIN.AUTH, message, context)
+  },
+
+  /** AI: Claude API call failed, timed out, or returned unexpected shape */
+  aiError(err, context = {}) {
+    observe.error(DOMAIN.AI, `AI call failed: ${err?.message || err}`, context)
+  },
+
+  /** Upload: transaction batch save failed (distinct from parse-time ingestion errors) */
+  uploadError(err, context = {}) {
+    observe.error(DOMAIN.UPLOAD, `Upload save failed: ${err?.message || err}`, context)
+  },
+
+  /** Upload: batch save succeeded but with partial issues */
+  uploadWarning(message, context = {}) {
+    observe.warn(DOMAIN.UPLOAD, message, context)
+  },
+
+  /** Frontend: uncaught runtime error (used by ErrorBoundary and global handlers) */
+  frontendError(err, context = {}) {
+    const msg = err?.message || String(err)
+    const stack = err?.stack || err?.componentStack || null
+    observe.error(DOMAIN.FRONTEND, `Runtime error: ${msg}`, { stack, ...context })
+  },
+
+  /** Subscription: Paystack or subscription lifecycle failure */
+  subscriptionError(err, context = {}) {
+    observe.error(DOMAIN.SUBSCRIPTION, `Subscription error: ${err?.message || err}`, context)
   },
 }
