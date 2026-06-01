@@ -44,6 +44,25 @@ export async function handler(event) {
     return { statusCode: 401, body: JSON.stringify({ error: 'Invalid or expired session' }) }
   }
 
+  // -- Rate limiting: 5 analyses/day for free users, unlimited for paid --
+  const adminClient = createClient(
+    process.env.VITE_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_KEY
+  )
+  const { data: profile } = await adminClient.from('profiles').select('subscription_plan, subscription_status').eq('id', user.id).maybeSingle()
+  const isPaid = profile && ['starter','growth','pro'].includes(profile.subscription_plan) && profile.subscription_status === 'active'
+  if (!isPaid) {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    const { count } = await adminClient.from('function_calls')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id).eq('function_name', 'get-recommendations').gte('created_at', since)
+    if ((count || 0) >= 5) {
+      return { statusCode: 429, body: JSON.stringify({ error: 'Daily analysis limit reached. Upgrade to a paid plan for unlimited analyses.' }) }
+    }
+  }
+  // Log this call (best-effort)
+  adminClient.from('function_calls').insert({ user_id: user.id, function_name: 'get-recommendations' }).then(() => {}).catch(() => {})
+
   // Pre-compute key financials
   const monthlyIncome = parseFloat(answers.income) || 0
   const totalMonthlySpend = spendingData
@@ -247,6 +266,7 @@ Respond with ONLY this JSON, no markdown:
       body: JSON.stringify({ result })
     }
   } catch (e) {
-    return { statusCode: 500, body: JSON.stringify({ error: e.message }) }
+    console.error('[get-recommendations] Unhandled error:', e.message, e.stack)
+    return { statusCode: 500, body: JSON.stringify({ error: 'Analysis failed. Please try again.' }) }
   }
 }

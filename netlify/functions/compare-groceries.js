@@ -83,9 +83,24 @@ export async function handler(event) {
   if (!authHeader.startsWith('Bearer ')) return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized' }) }
   const token = authHeader.slice(7)
 
-  const anonClient = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY)
+  const anonClient  = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY)
+  const adminClient = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
   const { data: { user }, error: authErr } = await anonClient.auth.getUser(token)
   if (authErr || !user) return { statusCode: 401, body: JSON.stringify({ error: 'Invalid token' }) }
+
+  // -- Rate limiting: 10 grocery comparisons/day for free users --
+  const { data: profile } = await adminClient.from('profiles').select('subscription_plan, subscription_status').eq('id', user.id).maybeSingle()
+  const isPaid = profile && ['starter','growth','pro'].includes(profile.subscription_plan) && profile.subscription_status === 'active'
+  if (!isPaid) {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    const { count } = await adminClient.from('function_calls')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id).eq('function_name', 'compare-groceries').gte('created_at', since)
+    if ((count || 0) >= 10) {
+      return { statusCode: 429, body: JSON.stringify({ error: 'Daily grocery comparison limit reached. Upgrade to a paid plan for unlimited comparisons.' }) }
+    }
+  }
+  adminClient.from('function_calls').insert({ user_id: user.id, function_name: 'compare-groceries' }).then(() => {}).catch(() => {})
 
   const itemsDescription = items
     .map(item => `${item.qty || 1}x ${item.name}${item.currentPrice ? ` (currently R${(item.currentPrice / 100).toFixed(2)} at ${item.currentStore || 'unknown'})` : ''}`)

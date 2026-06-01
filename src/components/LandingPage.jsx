@@ -200,6 +200,8 @@ export default function LandingPage() {
           <div className="lp-footer-links">
             <a href="https://bumppay.co.za" target="_blank" rel="noreferrer">bumppay.co.za</a>
             <a href="mailto:njhavary@bumppay.co.za">njhavary@bumppay.co.za</a>
+            <Link to="/terms">Terms</Link>
+            <Link to="/privacy">Privacy Policy</Link>
           </div>
 
           <p className="lp-footer-copy">

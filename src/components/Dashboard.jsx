@@ -22,6 +22,7 @@ import SupportChat from './SupportChat'
 import FAQ from './FAQ'
 import UpgradeModal from './UpgradeModal'
 import { normalizeForDisplay, getCanonicalMerchant } from '../utils/merchantNormalizer'
+import DOMPurify from 'dompurify'
 import './Dashboard.css'
 
 // Default budget fallbacks — used when user hasn't set budgets in Analytics yet.
@@ -888,7 +889,7 @@ export default function Dashboard({ onNavigate }) {
               {aiLoading
                 ? <div className="typing"><span/><span/><span/></div>
                 : aiText
-                  ? <div dangerouslySetInnerHTML={{ __html: aiText.replace(/\n\n/g, '</p><p>').replace(/^/, '<p>').replace(/$/, '</p>') }} />
+                  ? <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(aiText.replace(/\n\n/g, '</p><p>').replace(/^/, '<p>').replace(/$/, '</p>')) }} />
                   : <p>Tap below and bump. will analyse your spending, flag overspends and suggest where to cut.</p>
               }
             </div>
@@ -1302,7 +1303,7 @@ function ConsultRequestCard({ request, loading, onRespond }) {
           disabled={loading}
           onClick={() => onRespond(request.id, 'denied')}
         >
-          Deny
+                   Deny
         </button>
       </div>
     </div>

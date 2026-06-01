@@ -73,6 +73,24 @@ export async function handler(event) {
     return { statusCode: 401, body: JSON.stringify({ error: 'Invalid or expired session' }) }
   }
 
+  // -- Rate limiting: 20 interpretations/day for free users, unlimited for paid --
+  const adminClient = createClient(
+    process.env.VITE_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_KEY
+  )
+  const { data: profile } = await adminClient.from('profiles').select('subscription_plan, subscription_status').eq('id', user.id).maybeSingle()
+  const isPaid = profile && ['starter','growth','pro'].includes(profile.subscription_plan) && profile.subscription_status === 'active'
+  if (!isPaid) {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    const { count } = await adminClient.from('function_calls')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id).eq('function_name', 'scenario-interpret').gte('created_at', since)
+    if ((count || 0) >= 20) {
+      return { statusCode: 429, body: JSON.stringify({ error: 'Daily scenario limit reached. Upgrade to a paid plan for unlimited scenarios.' }) }
+    }
+  }
+  adminClient.from('function_calls').insert({ user_id: user.id, function_name: 'scenario-interpret' }).then(() => {}).catch(() => {})
+
   // -- Build prompt ----------------------------------------------------------
   const contextLines = [
     `Current year: ${currentYear || new Date().getFullYear()}`,
@@ -141,6 +159,7 @@ export async function handler(event) {
       }),
     }
   } catch (e) {
-    return { statusCode: 500, body: JSON.stringify({ error: e.message }) }
+    console.error('[scenario-interpret] Unhandled error:', e.message, e.stack)
+    return { statusCode: 500, body: JSON.stringify({ error: 'Scenario interpretation failed. Please try again.' }) }
   }
 }

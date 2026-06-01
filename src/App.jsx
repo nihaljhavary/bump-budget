@@ -10,6 +10,8 @@ import BookConsult from './components/BookConsult'
 import LandingPage from './components/LandingPage'
 import Onboarding from './components/Onboarding'
 import FAQ from './components/FAQ'
+import LegalPage from './components/LegalPage'
+import CookieBanner from './components/CookieBanner'
 import ErrorBoundary from './components/ErrorBoundary'
 import { AuthProvider } from './context/AuthContext'
 import { TierProvider } from './context/TierContext'
@@ -198,13 +200,16 @@ export default function App() {
       <TierProvider>
         <UpdateBanner />
         <BrowserRouter>
+          <CookieBanner />
           <ErrorBoundary>
             <Routes>
               <Route path="/"    element={<LandingPage />} />
               <Route path="/auth" element={<AuthRoute />} />
               <Route path="/app"  element={<ProtectedApp />} />
-              <Route path="/faq"  element={<FAQ />} />
-              <Route path="*"     element={<Navigate to="/" replace />} />
+              <Route path="/faq"     element={<FAQ />} />
+              <Route path="/terms"   element={<LegalPage page="terms" />} />
+              <Route path="/privacy" element={<LegalPage page="privacy" />} />
+              <Route path="*"        element={<Navigate to="/" replace />} />
             </Routes>
           </ErrorBoundary>
         </BrowserRouter>

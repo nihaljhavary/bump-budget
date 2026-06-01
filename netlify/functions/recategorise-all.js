@@ -115,7 +115,7 @@ export async function handler(event) {
     return await _handler(event)
   } catch (err) {
     console.error('[recat] Unhandled error:', err.message, err.stack)
-    return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: `Server error: ${err.message}` }) }
+    return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'Recategorisation failed. Please try again.' }) }
   }
 }
 
@@ -137,6 +137,20 @@ async function _handler(event) {
   if (authError || !user) {
     return { statusCode: 401, body: JSON.stringify({ error: 'Invalid or expired session' }) }
   }
+
+  // -- Rate limiting: 3 full recategorisations/day for free users (expensive AI call) --
+  const { data: profile } = await adminClient.from('profiles').select('subscription_plan, subscription_status').eq('id', user.id).maybeSingle()
+  const isPaid = profile && ['starter','growth','pro'].includes(profile.subscription_plan) && profile.subscription_status === 'active'
+  if (!isPaid) {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    const { count } = await adminClient.from('function_calls')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id).eq('function_name', 'recategorise-all').gte('created_at', since)
+    if ((count || 0) >= 3) {
+      return { statusCode: 429, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'Daily recategorisation limit reached. Upgrade to a paid plan for unlimited use.' }) }
+    }
+  }
+  adminClient.from('function_calls').insert({ user_id: user.id, function_name: 'recategorise-all' }).then(() => {}).catch(() => {})
 
   const { data: rules } = await adminClient
     .from('categorization_rules')
