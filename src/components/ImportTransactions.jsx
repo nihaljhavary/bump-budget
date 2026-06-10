@@ -32,7 +32,7 @@ const CAT_COLORS = {
   Transport: '#BA7517', Entertainment: '#7F77DD', Health: '#D4537E',
   Clothing: '#639922', Subscriptions: '#888780', Income: '#1a6b45',
   Education: '#0891B2', Insurance: '#7C3AED', Savings: '#059669',
-  Fuel: '#D97706', 'ATM / Cash': '#6B7280', 'Fees & Charges': '#DC2626',
+  Fuel: '#D49A4A', 'ATM / Cash': '#94999F', 'Fees & Charges': '#E8705C',
   Utilities: '#0D9488', Travel: '#2563EB', Gifts: '#EC4899',
   Transfer: '#94A3B8', 'Home & Garden': '#65A30D', Other: '#888'
 }

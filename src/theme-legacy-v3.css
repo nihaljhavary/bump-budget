@@ -1,0 +1,71 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* ── bump. brand palette — v3 warm coral (2026-05) ── */
+  /* v2 emerald backup: src/theme-legacy-v2.css          */
+  /* v1 original backup: src/theme-legacy-v1.css         */
+
+  /* Primary accent: muted terracotta coral — warm, premium, distinctly Bump */
+  --coral:        #C0766B;   /* warm terracotta coral */
+  --coral-deep:   #A46058;   /* hover / active */
+  --coral-light:  rgba(192, 118, 107, 0.10);
+
+  /* Light backgrounds: warm ivory & bone — calm, financially trustworthy */
+  --bg:           #F8F5F0;   /* warm ivory */
+  --bg-alt:       #EDE8E1;   /* warm stone secondary */
+  --surface:      #FFFFFF;
+  --border:       #E4DDD6;   /* warm stone border */
+  --text:         #1A1410;   /* deep espresso */
+  --muted:        #8C7E76;   /* warm stone muted */
+
+  --success:      #16A34A;   /* calm forest green — positive indicators */
+  --success-light:rgba(22, 163, 74, 0.11);
+  --amber:        #C48530;   /* warm amber for warnings */
+  --red:          #DC2626;   /* clear red for negative financial values */
+  --red-light:    #FEF2F2;
+
+  --radius: 12px;
+  --shadow: 0 1px 3px rgba(26, 20, 16, 0.07), 0 2px 8px rgba(26, 20, 16, 0.04);
+
+  /* ── Alias variables — fills fallback gaps used across components ── */
+  --card:      var(--surface);
+  --accent:    var(--coral);
+  --card-bg:   var(--surface);
+  --hover-bg:  var(--bg-alt);
+  --input-bg:  var(--bg);
+  --green:     #16a34a;      /* positive labels — income, surpluses */
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 15px;
+  line-height: 1.55;
+  letter-spacing: -0.01em;
+}
+
+h1, h2, h3 {
+  font-family: 'Syne', sans-serif;
+}
+
+button { cursor: pointer; font-family: inherit; }
+input, textarea { font-family: inherit; }
+
+/* ── Logo dot — coral circle after "bump" ── */
+.logo-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  background: var(--coral);
+  border-radius: 50%;
+  margin-left: 2px;
+  vertical-align: 0.15em;
+  flex-shrink: 0;
+}

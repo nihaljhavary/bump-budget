@@ -28,7 +28,7 @@ export default class ErrorBoundary extends Component {
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         height: '100vh', background: 'var(--bg, #fdf6f0)',
-        fontFamily: 'DM Sans, sans-serif', padding: '24px', boxSizing: 'border-box',
+        fontFamily: 'var(--font-sans)', padding: '24px', boxSizing: 'border-box',
       }}>
         <div style={{
           maxWidth: 400, width: '100%', textAlign: 'center',
@@ -36,23 +36,23 @@ export default class ErrorBoundary extends Component {
           padding: '40px 32px', border: '1px solid var(--border, #e8d5c4)',
         }}>
           <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text, #1a1210)', marginBottom: 4 }}>
-            bump<span style={{ color: 'var(--coral, #C0766B)' }}>.</span>
+            bump<span style={{ color: 'var(--coral)' }}>.</span>
           </div>
           <h2 style={{ color: 'var(--text, #1a1210)', fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
             Something went wrong
           </h2>
-          <p style={{ color: 'var(--muted, #8C7E76)', fontSize: 14, marginBottom: 24, lineHeight: 1.5 }}>
+          <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 24, lineHeight: 1.5 }}>
             An unexpected error occurred. Your data is safe. We have automatically logged this issue and will look into it.
           </p>
           {this.state.errorId && (
-            <p style={{ color: 'var(--muted, #8C7E76)', fontSize: 12, marginBottom: 20 }}>
+            <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 20 }}>
               Reference: {this.state.errorId}
             </p>
           )}
           <button
             onClick={() => window.location.reload()}
             style={{
-              background: 'var(--coral, #C0766B)', color: '#fff', border: 'none',
+              background: 'var(--coral)', color: '#fff', border: 'none',
               borderRadius: 8, padding: '12px 28px', fontWeight: 600, fontSize: 15,
               cursor: 'pointer', width: '100%',
             }}

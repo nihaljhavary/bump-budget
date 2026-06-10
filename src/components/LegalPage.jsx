@@ -89,28 +89,28 @@ export default function LegalPage({ page }) {
   const content = isPrivacy ? PRIVACY_FULL      : TERMS_TEXT
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg, #F8F5F0)', color: 'var(--text, #1A1410)', fontFamily: 'Arial, sans-serif' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)', fontFamily: 'Arial, sans-serif' }}>
       {/* Nav */}
       <div style={{ borderBottom: '1px solid var(--border, #E4DDD6)', padding: '16px 24px', display: 'flex', alignItems: 'center', gap: '16px', background: 'var(--surface, #fff)' }}>
-        <Link to="/" style={{ textDecoration: 'none', color: 'var(--coral, #C0766B)', fontWeight: 700, fontSize: '18px' }}>bump.</Link>
-        <span style={{ color: 'var(--muted, #8C7E76)', fontSize: '14px' }}>/</span>
-        <span style={{ color: 'var(--muted, #8C7E76)', fontSize: '14px' }}>{title}</span>
+        <Link to="/" style={{ textDecoration: 'none', color: 'var(--coral)', fontWeight: 700, fontSize: '18px' }}>bump.</Link>
+        <span style={{ color: 'var(--muted)', fontSize: '14px' }}>/</span>
+        <span style={{ color: 'var(--muted)', fontSize: '14px' }}>{title}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '12px' }}>
-          <Link to="/terms"   style={{ fontSize: '13px', color: !isPrivacy ? 'var(--coral, #C0766B)' : 'var(--muted, #8C7E76)', textDecoration: 'none', fontWeight: !isPrivacy ? 600 : 400 }}>Terms</Link>
-          <Link to="/privacy" style={{ fontSize: '13px', color:  isPrivacy ? 'var(--coral, #C0766B)' : 'var(--muted, #8C7E76)', textDecoration: 'none', fontWeight:  isPrivacy ? 600 : 400 }}>Privacy</Link>
+          <Link to="/terms"   style={{ fontSize: '13px', color: !isPrivacy ? 'var(--coral)' : 'var(--muted)', textDecoration: 'none', fontWeight: !isPrivacy ? 600 : 400 }}>Terms</Link>
+          <Link to="/privacy" style={{ fontSize: '13px', color:  isPrivacy ? 'var(--coral)' : 'var(--muted)', textDecoration: 'none', fontWeight:  isPrivacy ? 600 : 400 }}>Privacy</Link>
         </div>
       </div>
 
       {/* Content */}
       <div style={{ maxWidth: '720px', margin: '0 auto', padding: '48px 24px 96px' }}>
         <h1 style={{ fontSize: '28px', fontWeight: 700, marginBottom: '4px' }}>{title}</h1>
-        <p style={{ color: 'var(--muted, #8C7E76)', fontSize: '13px', marginBottom: '40px' }}>Version {version} · Effective 2026</p>
+        <p style={{ color: 'var(--muted)', fontSize: '13px', marginBottom: '40px' }}>Version {version} · Effective 2026</p>
         <pre style={{
           whiteSpace: 'pre-wrap',
           fontFamily: 'Arial, sans-serif',
           fontSize: '14px',
           lineHeight: '1.75',
-          color: 'var(--text, #1A1410)',
+          color: 'var(--text)',
           background: 'none',
           border: 'none',
           margin: 0,
@@ -119,10 +119,10 @@ export default function LegalPage({ page }) {
       </div>
 
       {/* Footer */}
-      <div style={{ borderTop: '1px solid var(--border, #E4DDD6)', padding: '24px', textAlign: 'center', fontSize: '13px', color: 'var(--muted, #8C7E76)' }}>
-        <Link to="/" style={{ color: 'var(--coral, #C0766B)', textDecoration: 'none', marginRight: '16px' }}>← Back to bump.</Link>
-        <Link to="/terms"   style={{ color: 'var(--muted, #8C7E76)', textDecoration: 'none', marginRight: '12px' }}>Terms</Link>
-        <Link to="/privacy" style={{ color: 'var(--muted, #8C7E76)', textDecoration: 'none' }}>Privacy</Link>
+      <div style={{ borderTop: '1px solid var(--border, #E4DDD6)', padding: '24px', textAlign: 'center', fontSize: '13px', color: 'var(--muted)' }}>
+        <Link to="/" style={{ color: 'var(--coral)', textDecoration: 'none', marginRight: '16px' }}>← Back to bump.</Link>
+        <Link to="/terms"   style={{ color: 'var(--muted)', textDecoration: 'none', marginRight: '12px' }}>Terms</Link>
+        <Link to="/privacy" style={{ color: 'var(--muted)', textDecoration: 'none' }}>Privacy</Link>
       </div>
     </div>
   )

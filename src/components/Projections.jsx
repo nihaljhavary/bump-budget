@@ -184,7 +184,7 @@ function ProjectionChart({ currentPath, optimisedPath, customPath, view }) {
     <svg viewBox={`0 0 ${W} ${H}`} className="proj-svg">
       {minVal < 0 && maxVal > 0 && (
         <line x1={PAD.left} y1={zeroY} x2={W - PAD.right} y2={zeroY}
-          stroke="#DC2626" strokeWidth="0.8" strokeDasharray="3,2" opacity="0.5" />
+          stroke="#E8705C" strokeWidth="0.8" strokeDasharray="3,2" opacity="0.5" />
       )}
       {yTicks.map((t, i) => (
         <g key={i}>
@@ -246,7 +246,7 @@ function YearChart({ models }) {
     <svg viewBox={`0 0 ${W} ${H}`} className="proj-svg">
       {minVal < 0 && maxVal > 0 && (
         <line x1={PAD.left} y1={zeroY} x2={W - PAD.right} y2={zeroY}
-          stroke="#DC2626" strokeWidth="0.8" strokeDasharray="3,2" opacity="0.5" />
+          stroke="#E8705C" strokeWidth="0.8" strokeDasharray="3,2" opacity="0.5" />
       )}
       {yTicks.map((t, i) => (
         <g key={i}>

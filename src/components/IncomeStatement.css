@@ -1,13 +1,13 @@
-.is-shell { padding: 0 0 40px; font-family: 'DM Sans', sans-serif; }
+.is-shell { padding: 0 0 40px; font-family: var(--font-sans); }
 .is-header { margin-bottom: 16px; }
-.is-title { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; color: var(--text); margin: 0 0 4px; }
+.is-title { font-family: var(--font-display); font-size: 22px; font-weight: 800; color: var(--text); margin: 0 0 4px; }
 .is-sub { font-size: 13px; color: var(--muted); margin: 0; }
 
 .is-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
-.is-period-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 14px; font-size: 12px; color: var(--muted); cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.15s; }
+.is-period-btn { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 14px; font-size: 12px; color: var(--muted); cursor: pointer; font-family: var(--font-sans); transition: all 0.15s; }
 .is-period-btn.active { background: var(--coral, #E8613A); border-color: var(--coral); color: #fff; }
 .is-date-range { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
-.is-date-input { background: var(--input-bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 12px; color: var(--text); font-family: 'DM Sans', sans-serif; }
+.is-date-input { background: var(--input-bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 12px; color: var(--text); font-family: var(--font-sans); }
 .is-date-input:focus { outline: none; border-color: var(--coral); }
 
 .is-compare-toggle { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-left: auto; }
@@ -32,7 +32,7 @@
 .is-ai-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-top: 8px; }
 .is-ai-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .is-ai-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
-.is-ai-btn { background: var(--coral, #E8613A); border: none; border-radius: 8px; color: #fff; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.is-ai-btn { background: var(--coral, #E8613A); border: none; border-radius: 8px; color: #fff; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: var(--font-sans); }
 .is-ai-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .is-ai-text { font-size: 13.5px; color: var(--text); line-height: 1.7; white-space: pre-wrap; }
 .is-ai-hint { font-size: 13px; color: var(--muted); margin: 0; }

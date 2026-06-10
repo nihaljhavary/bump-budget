@@ -67,7 +67,7 @@ export default function CookieBanner() {
       <button
         onClick={accept}
         style={{
-          background: '#C0766B',
+          background: 'var(--coral)',
           color: '#fff',
           border: 'none',
           borderRadius: '8px',

@@ -47,7 +47,7 @@
   width: 100%;
   max-width: 420px;
   box-shadow:
-    0 4px 6px rgba(26,6,0,0.04),
+    0 4px 6px rgba(0,0,0,0.04),
     0 12px 40px rgba(255,107,107,0.08),
     0 1px 0 rgba(255,255,255,0.8) inset;
 }
@@ -56,7 +56,7 @@
 
 /* ── Logo ── */
 .auth-logo {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-display);
   font-size: 2rem;
   font-weight: 800;
   color: var(--text);
@@ -68,7 +68,7 @@
 
 /* ── Headings ── */
 .auth-title {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-display);
   font-size: 1.5rem;
   font-weight: 800;
   color: var(--text);
@@ -109,7 +109,7 @@
 .auth-mode-btn.active {
   background: var(--surface);
   color: var(--text);
-  box-shadow: 0 1px 3px rgba(26,6,0,0.10);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.10);
 }
 
 /* ── Field ── */
@@ -336,5 +336,5 @@
 .auth-input:focus {
   border-color: var(--coral);
   background: var(--surface);
-  box-shadow: 0 0 0 3px rgba(192, 118, 107, 0.12);
+  box-shadow: 0 0 0 3px rgba(240,138,99, 0.12);
 }

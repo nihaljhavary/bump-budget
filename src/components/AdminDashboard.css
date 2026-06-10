@@ -196,7 +196,7 @@
   text-transform: capitalize;
 }
 
-.status-pill.paid      { background: var(--success-light); color: #16a34a; }
+.status-pill.paid      { background: var(--success-light); color: var(--success); }
 .status-pill.completed { background: #e0f2fe; color: #0369a1; }
 .status-pill.pending   { background: #fef3c7; color: var(--amber); }
 
@@ -347,5 +347,5 @@
 /* Tier simulation toggle */
 .sim-wrap { display: flex; align-items: center; gap: 8px; }
 .sim-label { font-size: 11px; color: var(--muted); white-space: nowrap; }
-.sim-select { background: var(--card-bg, #1A1008); border: 1px solid var(--coral, #E8613A); border-radius: 6px; color: var(--text); font-size: 12px; padding: 5px 10px; font-family: 'DM Sans', sans-serif; cursor: pointer; }
+.sim-select { background: var(--card-bg, var(--bg)); border: 1px solid var(--coral, #E8613A); border-radius: 6px; color: var(--text); font-size: 12px; padding: 5px 10px; font-family: var(--font-sans); cursor: pointer; }
 .sim-select:focus { outline: none; }

@@ -37,7 +37,7 @@ const CAT_COLORS = {
   Transport: '#BA7517', Entertainment: '#7F77DD', Health: '#D4537E',
   Clothing: '#639922', Subscriptions: '#888780', Income: '#1a6b45',
   Education: '#0891B2', Insurance: '#7C3AED', Savings: '#059669',
-  Fuel: '#D97706', 'ATM / Cash': '#6B7280', 'Fees & Charges': '#DC2626',
+  Fuel: '#D49A4A', 'ATM / Cash': '#94999F', 'Fees & Charges': '#E8705C',
   Utilities: '#0D9488', Travel: '#2563EB', Gifts: '#EC4899', Transfer: '#94A3B8', 'Home & Garden': '#65A30D', Other: '#888'
 }
 
@@ -483,29 +483,70 @@ export default function Dashboard({ onNavigate }) {
 
   return (
     <div className="app-shell">
-      {/* NAV */}
-      <nav className="nav">
-        <div className="nav-logo">bump<span className="logo-dot" aria-hidden="true" /></div>
-        <div className="nav-right">
-          <div className="nav-month-picker">
-            <button className="month-arrow" onClick={() => changeMonth(-1)}>‹</button>
-            <span className="nav-month">{monthDisplayLabel()}</span>
-            <button className="month-arrow" onClick={() => changeMonth(1)}>›</button>
+      {/* ── SIDEBAR — desktop only ── */}
+      <nav className="sidebar">
+        <div className="sidebar-logo">bump<span className="logo-dot" aria-hidden="true" /></div>
+        <button className="sidebar-import-btn" onClick={() => setTab('import')}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Import statement
+        </button>
+        <div className="sidebar-groups">
+          <div className="sidebar-group">
+            <div className="sidebar-group-label">MONEY</div>
+            {[
+              { id: 'overview',          label: 'Overview',          icon: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M9 22V12h6v10' },
+              { id: 'add spend',         label: 'Add spend',         icon: 'M12 5v14 M5 12h14' },
+              { id: 'income statement',  label: 'Income statement',  icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8' },
+              { id: 'analytics',         label: 'Analytics',         icon: 'M18 20V10 M12 20V4 M6 20v-6 M2 20h20' },
+              { id: 'transactions',      label: 'Transactions',      icon: 'M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01' },
+            ].map(({ id, label, icon }) => (
+              <button key={id} className={`sidebar-item ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>
+                <svg className="sidebar-item-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  {icon.split(' M').map((d, i) => <path key={i} d={(i === 0 ? '' : 'M') + d} />)}
+                </svg>
+                {label}
+              </button>
+            ))}
           </div>
+          <div className="sidebar-group">
+            <div className="sidebar-group-label">INTELLIGENCE</div>
+            {[
+              { id: 'projections', label: 'Projections',   icon: 'M22 7L13.5 15.5 8.5 10.5 2 17 M16 7h6v6' },
+              { id: 'groceries',   label: 'Groceries',     icon: 'M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z M3 6h18 M16 10a4 4 0 01-8 0' },
+              { id: 'budget',      label: 'Smart Money',   icon: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z' },
+            ].map(({ id, label, icon }) => (
+              <button key={label} className={`sidebar-item ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>
+                <svg className="sidebar-item-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  {icon.split(' M').map((d, i) => <path key={i} d={(i === 0 ? '' : 'M') + d} />)}
+                </svg>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="sidebar-group">
+            <div className="sidebar-group-label">ASSISTANT</div>
+            {[
+              { id: 'support', label: 'Ask bump.', icon: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' },
+              { id: 'faq',     label: 'FAQs',      icon: 'M12 22C6.48 22 2 17.52 2 12S6.48 2 12 2s10 4.48 10 10-4.48 10-10 10z M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3 M12 17h.01' },
+            ].map(({ id, label, icon }) => (
+              <button key={label} className={`sidebar-item ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>
+                <svg className="sidebar-item-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  {icon.split(' M').map((d, i) => <path key={i} d={(i === 0 ? '' : 'M') + d} />)}
+                </svg>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="sidebar-footer">
           {!tier.isAdmin && profile?.subscription_plan && profile.subscription_plan !== 'free' && (
-            <span className="nav-plan-badge">{profile.subscription_plan}</span>
+            <span className="sidebar-tier-badge">{profile.subscription_plan}</span>
           )}
           {(profile?.role === 'admin' || profile?.is_admin || tier.isAdmin) && (
-            <button
-              className="nav-admin-btn"
-              onClick={() => onNavigate('admin')}
-              title="Admin Dashboard"
-            >
-              &#9881;
-            </button>
+            <button className="sidebar-admin-btn" onClick={() => onNavigate('admin')} title="Admin">&#9881; Admin</button>
           )}
           <div className="avatar-wrap" ref={profileMenuRef} style={{position:'relative'}}>
-            <button className="avatar" onClick={() => setShowProfileMenu(m => !m)} title="Profile">
+            <button className="avatar sidebar-avatar" onClick={() => setShowProfileMenu(m => !m)}>
               {user.email?.[0]?.toUpperCase() || 'U'}
             </button>
             {showProfileMenu && (
@@ -523,61 +564,62 @@ export default function Dashboard({ onNavigate }) {
         </div>
       </nav>
 
-      {/* Tier simulation banner — always visible for admins */}
-      {(tier.isAdmin || tier.simulating) && (
-        <div className="sim-banner">
-          <span className="sim-banner-label">
-            {tier.simulating ? `🔧 Simulating ${tier.simulating}` : '🔧 Admin mode'}
-          </span>
-          <select
-            className="sim-select-inline"
-            value={tier.simulatedPlan || ''}
-            onChange={e => tier.setSimulatedPlan(e.target.value || null)}
-          >
-            <option value="">No simulation (admin)</option>
-            <option value="free">Simulate: Free</option>
-            <option value="starter">Simulate: Starter</option>
-            <option value="growth">Simulate: Growth</option>
-            <option value="pro">Simulate: Pro</option>
-          </select>
-          {tier.simulating && (
-            <button className="sim-banner-exit" onClick={() => tier.setSimulatedPlan(null)}>Exit</button>
-          )}
+      {/* ── MOBILE TOP NAV ── */}
+      <nav className="mobile-topnav">
+        <div className="nav-logo">bump<span className="logo-dot" aria-hidden="true" /></div>
+        <div className="nav-month-picker">
+          <button className="month-arrow" onClick={() => changeMonth(-1)}>&#8249;</button>
+          <span className="nav-month">{monthDisplayLabel()}</span>
+          <button className="month-arrow" onClick={() => changeMonth(1)}>&#8250;</button>
         </div>
-      )}
-
-      {/* DESKTOP TABS — scrollable horizontal strip, hidden on mobile */}
-      <div className="tabs desktop-tabs">
-        {['overview', 'income statement', 'analytics', 'projections', 'groceries', 'budget', 'add spend', 'import', 'transactions'].map(t => (
-          <button
-            key={t}
-            className={`tab ${tab === t ? 'active' : ''}`}
-            onClick={() => setTab(t)}
-          >
-            {t === 'import' ? '↑ import' : t === 'groceries' ? '🛒 groceries' : t === 'projections' ? '📈 projections' : t === 'income statement' ? '📋 income' : t === 'budget' ? '💡 budget' : t}
-          </button>
-        ))}
-      </div>
-
-      {/* MOBILE BOTTOM NAV — primary 5-tab navigation for small screens */}
-      <nav className="mobile-bottom-nav">
-        {[
-          { id: 'overview', label: 'Overview', svg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
-          { id: 'analytics', label: 'Analytics', svg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg> },
-          { id: 'groceries', label: 'Groceries', svg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg> },
-          { id: 'budget', label: 'Budget', svg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
-          { id: 'transactions', label: 'Txns', svg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> },
-        ].map(({ id, svg, label }) => (
-          <button
-            key={id}
-            className={`mbn-item ${tab === id ? 'active' : ''}`}
-            onClick={() => setTab(id)}
-          >
-            <span className="mbn-icon">{svg}</span>
-            <span className="mbn-label">{label}</span>
-          </button>
-        ))}
       </nav>
+
+      {/* ── CONTENT AREA — sim banner + page header + all tabs ── */}
+      <div className="content-area">
+        {(tier.isAdmin || tier.simulating) && (
+          <div className="sim-banner">
+            <span className="sim-banner-label">
+              {tier.simulating ? `Simulating: ${tier.simulating}` : 'Admin mode'}
+            </span>
+            <select className="sim-select-inline" value={tier.simulatedPlan || ''} onChange={e => tier.setSimulatedPlan(e.target.value || null)}>
+              <option value="">No simulation (admin)</option>
+              <option value="free">Simulate: Free</option>
+              <option value="starter">Simulate: Starter</option>
+              <option value="growth">Simulate: Growth</option>
+              <option value="pro">Simulate: Pro</option>
+            </select>
+            {tier.simulating && <button className="sim-banner-exit" onClick={() => tier.setSimulatedPlan(null)}>Exit</button>}
+          </div>
+        )}
+        <div className="page-header">
+          <div className="page-header-left">
+            <div className="page-header-section">
+              {['overview','add spend','income statement','analytics','transactions'].includes(tab) ? 'MONEY'
+               : ['projections','groceries','budget'].includes(tab) ? 'INTELLIGENCE'
+               : ['support','faq'].includes(tab) ? 'ASSISTANT' : ''}
+            </div>
+            <h1 className="page-header-title">
+              {tab === 'overview' ? `Good ${new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}${profile?.full_name ? ', ' + profile.full_name.split(' ')[0] : ''}.`
+                : tab === 'income statement' ? 'Income statement'
+                : tab === 'analytics' ? 'Analytics'
+                : tab === 'projections' ? 'Projections'
+                : tab === 'groceries' ? 'Grocery basket'
+                : tab === 'budget' ? 'Smart Money'
+                : tab === 'add spend' ? 'Add spend'
+                : tab === 'transactions' ? 'Transactions'
+                : tab === 'support' ? 'Ask bump.'
+                : tab === 'import' ? 'Import statement'
+                : tab === 'faq' ? 'FAQs' : tab}
+            </h1>
+          </div>
+          <div className="page-header-right">
+            <div className="nav-month-picker">
+              <button className="month-arrow" onClick={() => changeMonth(-1)}>&#8249;</button>
+              <span className="nav-month">{monthDisplayLabel()}</span>
+              <button className="month-arrow" onClick={() => changeMonth(1)}>&#8250;</button>
+            </div>
+          </div>
+        </div>
 
       {/* OVERVIEW */}
       {tab === 'overview' && (
@@ -1194,6 +1236,25 @@ export default function Dashboard({ onNavigate }) {
           </div>
         </div>
       )}
+      </div>{/* end content-area */}
+
+      {/* MOBILE BOTTOM NAV */}
+      <nav className="mobile-bottom-nav">
+        {[
+          { id: 'overview',      label: 'Overview',   paths: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z|M9 22V12h6v10' },
+          { id: 'analytics',     label: 'Analytics',  paths: 'M18 20V10|M12 20V4|M6 20v-6|M2 20h20' },
+          { id: 'groceries',     label: 'Groceries',  paths: 'M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z|M3 6h18|M16 10a4 4 0 01-8 0' },
+          { id: 'budget',        label: 'Plan',       paths: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z' },
+          { id: 'transactions',  label: 'Txns',       paths: 'M8 6h13|M8 12h13|M8 18h13|M3 6h.01|M3 12h.01|M3 18h.01' },
+        ].map(({ id, label, paths }) => (
+          <button key={id} className={`mbn-item ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>
+            <svg className="mbn-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              {paths.split('|').map((d, i) => <path key={i} d={d} />)}
+            </svg>
+            <span className="mbn-label">{label}</span>
+          </button>
+        ))}
+      </nav>
     </div>
   )
 }

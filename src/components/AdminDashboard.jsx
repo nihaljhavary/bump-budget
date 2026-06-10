@@ -390,7 +390,7 @@ export default function AdminDashboard({ onBack }) {
                     width: '100%', boxSizing: 'border-box',
                     padding: '9px 14px', borderRadius: 8,
                     border: '1.5px solid var(--border)', background: 'var(--bg)',
-                    color: 'var(--text)', fontSize: 14, fontFamily: 'DM Sans, sans-serif',
+                    color: 'var(--text)', fontSize: 14, fontFamily: 'var(--font-sans)',
                     outline: 'none',
                   }}
                 />
@@ -431,7 +431,7 @@ export default function AdminDashboard({ onBack }) {
                             style={{
                               padding: '5px 11px', borderRadius: 7, border: 'none', cursor: busy || currentPlan === plan ? 'not-allowed' : 'pointer',
                               background: currentPlan === plan ? 'var(--bg-alt)' : 'var(--coral)', color: currentPlan === plan ? 'var(--muted)' : '#fff',
-                              fontSize: 12, fontWeight: 700, fontFamily: 'DM Sans, sans-serif',
+                              fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)',
                               opacity: busy && grantingId === p.id + '_' + plan ? 0.6 : 1,
                             }}
                           >
@@ -445,7 +445,7 @@ export default function AdminDashboard({ onBack }) {
                             style={{
                               padding: '5px 11px', borderRadius: 7, border: '1.5px solid var(--red)', cursor: busy ? 'not-allowed' : 'pointer',
                               background: 'transparent', color: 'var(--red)',
-                              fontSize: 12, fontWeight: 700, fontFamily: 'DM Sans, sans-serif',
+                              fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)',
                               opacity: busy && grantingId === p.id + '_revoke' ? 0.6 : 1,
                             }}
                           >
@@ -490,7 +490,7 @@ export default function AdminDashboard({ onBack }) {
                   </select>
                   <button
                     onClick={loadErrors}
-                    style={{ padding: '5px 14px', borderRadius: 7, border: 'none', background: 'var(--coral)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}
+                    style={{ padding: '5px 14px', borderRadius: 7, border: 'none', background: 'var(--coral)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-sans)' }}
                   >
                     Reload
                   </button>
@@ -563,7 +563,7 @@ export default function AdminDashboard({ onBack }) {
                         padding: '5px 12px', borderRadius: 7, border: `1.5px solid ${supportFilter === s ? 'var(--coral)' : 'var(--border)'}`,
                         background: supportFilter === s ? 'var(--coral)' : 'transparent',
                         color: supportFilter === s ? '#fff' : 'var(--text)',
-                        fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif',
+                        fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)',
                       }}
                     >
                       {s || 'All'}
@@ -599,19 +599,19 @@ export default function AdminDashboard({ onBack }) {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                               {req.status !== 'open' && (
                                 <button onClick={() => handleSupportStatus(req.id, 'open')} disabled={busy}
-                                  style={{ padding: '4px 10px', borderRadius: 6, border: '1.5px solid var(--amber)', background: 'transparent', color: 'var(--amber)', fontSize: 11, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+                                  style={{ padding: '4px 10px', borderRadius: 6, border: '1.5px solid var(--amber)', background: 'transparent', color: 'var(--amber)', fontSize: 11, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'var(--font-sans)' }}>
                                   {busy ? '...' : 'Reopen'}
                                 </button>
                               )}
                               {req.status !== 'in_progress' && (
                                 <button onClick={() => handleSupportStatus(req.id, 'in_progress')} disabled={busy}
-                                  style={{ padding: '4px 10px', borderRadius: 6, border: '1.5px solid var(--coral)', background: 'transparent', color: 'var(--coral)', fontSize: 11, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+                                  style={{ padding: '4px 10px', borderRadius: 6, border: '1.5px solid var(--coral)', background: 'transparent', color: 'var(--coral)', fontSize: 11, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'var(--font-sans)' }}>
                                   {busy ? '...' : 'In Progress'}
                                 </button>
                               )}
                               {req.status !== 'resolved' && (
                                 <button onClick={() => handleSupportStatus(req.id, 'resolved')} disabled={busy}
-                                  style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: 'var(--success)', color: '#fff', fontSize: 11, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'DM Sans, sans-serif' }}>
+                                  style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: 'var(--success)', color: '#fff', fontSize: 11, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'var(--font-sans)' }}>
                                   {busy ? '...' : 'Resolve'}
                                 </button>
                               )}

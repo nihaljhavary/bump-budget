@@ -10,7 +10,7 @@
 }
 
 .import-header h2 {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-display);
   font-size: 1.35rem;
   font-weight: 800;
   color: var(--text);
@@ -245,7 +245,7 @@
 }
 
 .preview-header h2 {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-display);
   font-size: 1.2rem;
   font-weight: 800;
   color: var(--text);
@@ -516,7 +516,7 @@
   height: 64px;
   border-radius: 50%;
   background: var(--success-light);
-  color: #16a34a;
+  color: var(--success);
   font-size: 1.8rem;
   display: flex;
 align-items: center;
@@ -525,7 +525,7 @@ align-items: center;
 }
 
 .import-done h2 {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-display);
   font-size: 1.4rem;
   font-weight: 800;
   margin: 0 0 8px;

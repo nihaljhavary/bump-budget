@@ -32,7 +32,7 @@
   flex-shrink: 0;
 }
 .acc-title {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-display);
   font-size: 1rem;
   font-weight: 800;
   color: var(--text);
@@ -125,7 +125,7 @@
   width: 100%;
   padding: 8px 10px;
   font-size: 0.88rem;
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-sans);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -147,7 +147,7 @@
   font-weight: 600;
   font-size: 0.9rem;
   cursor: pointer;
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-sans);
   transition: opacity 0.15s;
 }
 .acc-primary-btn:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -160,7 +160,7 @@
   font-weight: 600;
   font-size: 0.9rem;
   cursor: pointer;
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-sans);
   transition: background 0.15s;
 }
 .acc-secondary-btn:hover { background: var(--bg-alt); }
@@ -169,7 +169,7 @@
   padding: 7px 13px;
   font-size: 0.78rem;
   font-weight: 600;
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-sans);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -194,7 +194,7 @@
   padding: 2px 0;
   text-decoration: underline;
   text-underline-offset: 2px;
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-sans);
 }
 .acc-confirm-btns {
   display: flex;
@@ -210,7 +210,7 @@
   font-size: 0.82rem;
   line-height: 1.5;
 }
-.acc-alert.ok      { background: rgba(22,163,74,0.1);  color: #15803d; border: 1px solid rgba(22,163,74,0.2);  }
+.acc-alert.ok      { background: rgba(168,192,126,0.1);  color: #15803d; border: 1px solid rgba(168,192,126,0.2);  }
 .acc-alert.err     { background: rgba(220,38,38,0.08); color: #dc2626; border: 1px solid rgba(220,38,38,0.2);  }
 .acc-alert.warning { background: rgba(245,158,11,0.1); color: #92400e; border: 1px solid rgba(245,158,11,0.3); display: flex; flex-direction: column; gap: 6px; }
 
@@ -377,7 +377,7 @@
   padding: 5px 11px;
   font-size: 0.76rem;
   font-weight: 600;
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-sans);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 20px;

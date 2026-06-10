@@ -1,9 +1,9 @@
-.faq-shell { padding: 0 0 40px; font-family: 'DM Sans', sans-serif; }
-.faq-title { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; color: var(--text); margin: 0 0 4px; }
+.faq-shell { padding: 0 0 40px; font-family: var(--font-sans); }
+.faq-title { font-family: var(--font-display); font-size: 22px; font-weight: 800; color: var(--text); margin: 0 0 4px; }
 .faq-sub { font-size: 13px; color: var(--muted); margin: 0 0 20px; }
 .faq-section-head { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin: 20px 0 8px; }
-.faq-item { background: var(--card-bg, #1A1008); border: 1px solid var(--border, #2C1F14); border-radius: 12px; margin-bottom: 8px; overflow: hidden; }
-.faq-q { width: 100%; background: none; border: none; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; text-align: left; color: var(--text); font-size: 14px; font-weight: 500; font-family: 'DM Sans', sans-serif; gap: 12px; }
+.faq-item { background: var(--card-bg, var(--bg)); border: 1px solid var(--border, #2C1F14); border-radius: 12px; margin-bottom: 8px; overflow: hidden; }
+.faq-q { width: 100%; background: none; border: none; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; text-align: left; color: var(--text); font-size: 14px; font-weight: 500; font-family: var(--font-sans); gap: 12px; }
 .faq-q:hover { background: rgba(255,255,255,0.03); }
 .faq-chevron { font-size: 12px; color: var(--muted); flex-shrink: 0; transition: transform 0.2s; }
 .faq-chevron.open { transform: rotate(180deg); }

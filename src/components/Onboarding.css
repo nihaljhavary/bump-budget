@@ -6,11 +6,11 @@
   align-items: center;
   justify-content: center;
   padding: 24px 16px;
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-sans);
 }
 
 .onboarding-card {
-  background: #1A1008;
+  background: var(--bg);
   border: 1px solid #2C1F14;
   border-radius: 20px;
   padding: 40px 36px;
@@ -50,7 +50,7 @@
 
 /* Logo */
 .ob-logo {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-display);
   font-size: 28px;
   font-weight: 800;
   color: var(--coral);
@@ -69,7 +69,7 @@
 
 /* Title */
 .ob-title {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-display);
   font-size: 30px;
   font-weight: 800;
   color: #F5EDE4;
@@ -123,7 +123,7 @@
 }
 
 .ob-input {
-  background: #120C07;
+  background: var(--bg-alt);
   border: 1px solid #2C1F14;
   border-radius: 10px;
   padding: 11px 14px;
@@ -132,7 +132,7 @@
   width: 100%;
   box-sizing: border-box;
   transition: border-color 0.2s;
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-sans);
 }
 
 .ob-input:focus {
@@ -170,16 +170,16 @@
   padding: 8px 14px;
   border-radius: 8px;
   border: 1px solid #2C1F14;
-  background: #120C07;
+  background: var(--bg-alt);
   color: #9A8070;
   font-size: 13px;
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-sans);
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .ob-bank-pill:hover { border-color: #5A3020; color: #F5EDE4; }
-.ob-bank-pill.selected { border-color: var(--coral); background: rgba(192, 118, 107, 0.10); color: #F5EDE4; }
+.ob-bank-pill.selected { border-color: var(--coral); background: rgba(240,138,99, 0.10); color: #F5EDE4; }
 
 /* Cashback grid */
 .ob-cashback-grid {
@@ -192,10 +192,10 @@
   padding: 7px 14px;
   border-radius: 8px;
   border: 1px solid #2C1F14;
-  background: #120C07;
+  background: var(--bg-alt);
   color: #9A8070;
   font-size: 14px;
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-sans);
   cursor: pointer;
   transition: all 0.15s;
   min-width: 52px;
@@ -250,7 +250,7 @@
   padding: 14px 28px;
   font-size: 15px;
   font-weight: 600;
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-sans);
   cursor: pointer;
   transition: background 0.2s, transform 0.1s;
   align-self: flex-start;
@@ -275,7 +275,7 @@
   border-radius: 12px;
   padding: 13px 20px;
   font-size: 14px;
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-sans);
   cursor: pointer;
   transition: color 0.2s, border-color 0.2s;
 }
@@ -291,8 +291,8 @@
 
 /* Error */
 .ob-error {
-  background: rgba(192, 118, 107, 0.08);
-  border: 1px solid rgba(192, 118, 107, 0.22);
+  background: rgba(240,138,99, 0.08);
+  border: 1px solid rgba(240,138,99, 0.22);
   border-radius: 8px;
   padding: 10px 14px;
   font-size: 13px;
@@ -324,7 +324,7 @@
 
 .ob-summary {
   width: 100%;
-  background: #120C07;
+  background: var(--bg-alt);
   border: 1px solid #2C1F14;
   border-radius: 12px;
   padding: 16px;
@@ -338,7 +338,7 @@
   align-items: center;
   padding: 6px 0;
   font-size: 13px;
-  border-bottom: 1px solid #1A1008;
+  border-bottom: 1px solid var(--bg);
   color: #9A8070;
 }
 
@@ -351,9 +351,9 @@
 }
 
 /* Usage type selector */
-.ob-usage-option { background: var(--card-bg, #1A1008); border: 1px solid var(--border, #2C1F14); border-radius: 10px; padding: 12px 14px; cursor: pointer; margin-bottom: 8px; transition: border-color 0.15s; }
+.ob-usage-option { background: var(--card-bg, var(--bg)); border: 1px solid var(--border, #2C1F14); border-radius: 10px; padding: 12px 14px; cursor: pointer; margin-bottom: 8px; transition: border-color 0.15s; }
 .ob-usage-option:hover { border-color: var(--coral); }
-.ob-usage-option.selected { border-color: var(--coral); background: rgba(192, 118, 107, 0.07); }
+.ob-usage-option.selected { border-color: var(--coral); background: rgba(240,138,99, 0.07); }
 .ob-usage-label { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
 .ob-usage-desc { font-size: 12px; color: var(--muted); }
 .ob-hint { font-size: 12px; color: var(--muted); margin: 8px 0 16px; line-height: 1.5; }
