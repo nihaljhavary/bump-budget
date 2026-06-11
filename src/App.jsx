@@ -68,10 +68,9 @@ export default function App() {
             <Route path="/"     element={<LandingPage />} />
             <Route path="/auth" element={<AuthRoute />} />
             <Route path="/app"  element={<ProtectedApp />} />
-            <Route path="*"     element={<Navigate to="/" replace />} />
+            <Route path="/terms"        element={<LegalPage page="terms" />} />
+            <Route path="/privacy"     element={<LegalPage page="privacy" />} />
+            <Route path="/refund"      element={<LegalPage page="refund" />} />
+            <Route path="/cancellation" element={<LegalPage page="cancellation" />} />
+            <Route path="*"            element={<Navigate to="/" replace />} />
           </Routes>
-        </BrowserRouter>
-      </TierProvider>
-    </AuthProvider>
-  )
-}

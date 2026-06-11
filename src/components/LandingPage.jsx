@@ -200,13 +200,7 @@ export default function LandingPage() {
           <div className="lp-footer-links">
             <a href="https://bumppay.co.za" target="_blank" rel="noreferrer">bumppay.co.za</a>
             <a href="mailto:njhavary@bumppay.co.za">njhavary@bumppay.co.za</a>
-          </div>
-          <p className="lp-footer-copy">
-            © {new Date().getFullYear()} bump. (Pty) Ltd. All rights reserved.
-          </p>
-        </div>
-      </footer>
-
-    </div>
-  )
-}
+            <Link to="/terms">Terms</Link>
+            <Link to="/privacy">Privacy Policy</Link>
+            <Link to="/refund">Refund Policy</Link>
+            <Link to="/cancellation">Cancellation Policy</Link>
