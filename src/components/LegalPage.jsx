@@ -15,7 +15,7 @@ Effective: 2026
 1. WHO WE ARE
 bump. (operated by Bump Money (Pty) Ltd) is a personal financial planning platform. We are the responsible party for your personal information under the Protection of Personal Information Act 4 of 2013 (POPIA).
 
-Contact: support@bump.money
+Contact: njhavary@bumppay.co.za
 
 2. WHAT WE COLLECT
 We collect only what is necessary to provide the service:
@@ -48,7 +48,7 @@ You have the right to:
 - Object to processing
 - Lodge a complaint with the Information Regulator of South Africa (www.justice.gov.za/inforeg)
 
-To exercise these rights, email: support@bump.money
+To exercise these rights, email: njhavary@bumppay.co.za
 
 6. DATA RETENTION
 We retain your data for as long as your account is active. On account deletion, all personal data is permanently and irreversibly deleted within 30 days.
@@ -74,7 +74,7 @@ We will notify you of material changes via email and in-app notice. Continued us
 
 10. CONTACT
 Bump Money (Pty) Ltd
-support@bump.money`
+njhavary@bumppay.co.za`
 
 // ── Refund Policy ─────────────────────────────────────────────────────────────
 const REFUND_TEXT = `BUMP REFUND POLICY
@@ -103,7 +103,7 @@ c) Service unavailability: If the bump. platform was materially unavailable for 
 d) Cooling-off under the Consumer Protection Act: If you subscribed for the first time and request a refund within 5 business days of your first paid charge (not trial), we will process a refund less any direct costs incurred, in accordance with section 16 of the Consumer Protection Act 68 of 2008.
 
 4. HOW TO REQUEST A REFUND
-To request a refund, contact us at support@bump.money with:
+To request a refund, contact us at njhavary@bumppay.co.za with:
 - Your account email address
 - The date and amount of the charge
 - The reason for your refund request
@@ -120,11 +120,11 @@ Downgrading your plan takes effect at the end of your current billing cycle. You
 Deleting your account cancels your subscription immediately. No refund is issued for the remaining days of the current billing cycle unless a billing error occurred.
 
 8. CHARGEBACKS
-If you initiate a chargeback with your bank without first contacting us, we reserve the right to suspend your account pending investigation. We encourage you to contact support@bump.money first — we resolve legitimate billing issues promptly.
+If you initiate a chargeback with your bank without first contacting us, we reserve the right to suspend your account pending investigation. We encourage you to contact njhavary@bumppay.co.za first — we resolve legitimate billing issues promptly.
 
 9. CONTACT
 For any billing or refund queries:
-Email: support@bump.money
+Email: njhavary@bumppay.co.za
 Response time: within 2 business days`
 
 // ── Cancellation Policy ───────────────────────────────────────────────────────
@@ -143,7 +143,7 @@ Step 3: Select "My Profile" to open Account Centre
 Step 4: Go to the "Subscription" tab
 Step 5: Click "Cancel subscription" and confirm
 
-Alternatively, email support@bump.money with your account email and we will process the cancellation within 1 business day.
+Alternatively, email njhavary@bumppay.co.za with your account email and we will process the cancellation within 1 business day.
 
 3. WHEN CANCELLATION TAKES EFFECT
 Cancellation takes effect at the end of your current billing cycle. You retain full access to all features of your current plan until that date. You will not be charged again after cancellation is confirmed.
@@ -172,7 +172,7 @@ Recurring billing is managed by Paystack. By subscribing, you authorise Paystack
 
 9. CONTACT
 For any cancellation queries:
-Email: support@bump.money
+Email: njhavary@bumppay.co.za
 Response time: within 1 business day`
 
 // ── Nav links config ─────────────────────────────────────────────────────────
