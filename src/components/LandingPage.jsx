@@ -204,3 +204,14 @@ export default function LandingPage() {
             <Link to="/privacy">Privacy Policy</Link>
             <Link to="/refund">Refund Policy</Link>
             <Link to="/cancellation">Cancellation Policy</Link>
+          </div>
+
+          <p className="lp-footer-copy">
+            &copy; {new Date().getFullYear()} bump. (Pty) Ltd. All rights reserved.
+          </p>
+        </div>
+      </footer>
+
+    </div>
+  )
+}
