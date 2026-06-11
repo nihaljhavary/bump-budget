@@ -19,13 +19,13 @@ import { TierProvider } from './context/TierContext'
 const Loader = () => (
   <div style={{
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    height: '100vh', fontFamily: 'DM Sans, sans-serif', color: 'var(--muted)',
+    height: '100vh', fontFamily: 'var(--font-sans)', color: 'var(--muted)',
     background: 'var(--bg)',
   }}>Loading</div>
 )
 
 // Rendered when onAuthStateChange fires PASSWORD_RECOVERY.
-// User is temporarily authenticated — let them set a new password.
+// User is temporarily authenticated -- let them set a new password.
 function ResetPassword({ onDone }) {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -64,16 +64,16 @@ function ResetPassword({ onDone }) {
   }
 
   const s = {
-    shell:   { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg)', fontFamily: 'DM Sans, sans-serif' },
+    shell:   { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg)', fontFamily: 'var(--font-sans)' },
     card:    { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: '40px 32px', width: 360, boxShadow: 'var(--shadow)' },
-    logo:    { fontSize: 24, fontWeight: 700, color: 'var(--text)', marginBottom: 16, fontFamily: 'Syne, sans-serif' },
+    logo:    { fontSize: 24, fontWeight: 700, color: 'var(--text)', marginBottom: 16, fontFamily: 'var(--font-display)' },
     logoDot: { color: 'var(--coral)' },
     h2:      { color: 'var(--text)', fontSize: 18, marginTop: 0, marginBottom: 8 },
     sub:     { color: 'var(--muted)', fontSize: 14, marginBottom: 24 },
-    input:   { width: '100%', boxSizing: 'border-box', padding: '11px 14px', background: 'var(--bg)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontSize: 14, outline: 'none', fontFamily: 'DM Sans, sans-serif' },
+    input:   { width: '100%', boxSizing: 'border-box', padding: '11px 14px', background: 'var(--bg)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontSize: 14, outline: 'none', fontFamily: 'var(--font-sans)' },
     err:     { color: 'var(--red)', fontSize: 13, marginBottom: 12, background: 'var(--red-light)', padding: '8px 12px', borderRadius: 8 },
     rules:   { display: 'flex', flexWrap: 'wrap', gap: '4px 10px', margin: '6px 0 14px', padding: '0 2px' },
-    btn:     { width: '100%', padding: '12px', background: 'var(--coral)', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' },
+    btn:     { width: '100%', padding: '12px', background: 'var(--coral)', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', fontFamily: 'var(--font-sans)' },
     ok:      { color: 'var(--success)', fontSize: 15, textAlign: 'center' },
   }
 
@@ -121,11 +121,6 @@ function ProtectedApp() {
   const [page, setPage] = useState('dashboard')
 
   const isAdmin = profile?.is_admin === true || profile?.role === 'admin'
-  // Legacy user auto-heal: accounts created before onboarding_complete was tracked have
-  // full_name + terms_accepted_at set but onboarding_complete = false. Treat them as done
-  // and silently update the DB so they aren't stranded on the onboarding screen.
-  // Legacy user: accepted terms + has ANY profile data = they've already set up their account.
-  // full_name alone isn't reliable — some accounts were created before all fields were required.
   const hasProfileData = !!(profile?.full_name || profile?.bank || profile?.usage_type || profile?.gross_income || profile?.net_income)
   const isLegacyUser = !!(profile?.terms_accepted_at && !profile?.onboarding_complete && hasProfileData)
   useEffect(() => {
@@ -133,7 +128,6 @@ function ProtectedApp() {
   }, [isLegacyUser, user?.id])
 
   if (loading) return <Loader />
-  // Password recovery takes priority — user clicked reset link
   if (recoveryMode) return <ResetPassword onDone={clearRecoveryMode} />
   if (!user) return <Navigate to="/" replace />
   if (!profile?.terms_accepted_at) return <Auth termsOnly />
@@ -170,7 +164,7 @@ function UpdateBanner() {
       background: 'var(--coral)', color: '#fff',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       gap: '12px', padding: '10px 16px',
-      fontFamily: 'DM Sans, sans-serif', fontSize: '14px', fontWeight: 500,
+      fontFamily: 'var(--font-sans)', fontSize: '14px', fontWeight: 500,
     }}>
       <span>A new version of bump. is available.</span>
       <button
@@ -203,13 +197,15 @@ export default function App() {
           <CookieBanner />
           <ErrorBoundary>
             <Routes>
-              <Route path="/"    element={<LandingPage />} />
-              <Route path="/auth" element={<AuthRoute />} />
-              <Route path="/app"  element={<ProtectedApp />} />
-              <Route path="/faq"     element={<FAQ />} />
-              <Route path="/terms"   element={<LegalPage page="terms" />} />
-              <Route path="/privacy" element={<LegalPage page="privacy" />} />
-              <Route path="*"        element={<Navigate to="/" replace />} />
+              <Route path="/"            element={<LandingPage />} />
+              <Route path="/auth"        element={<AuthRoute />} />
+              <Route path="/app"         element={<ProtectedApp />} />
+              <Route path="/faq"         element={<FAQ />} />
+              <Route path="/terms"       element={<LegalPage page="terms" />} />
+              <Route path="/privacy"     element={<LegalPage page="privacy" />} />
+              <Route path="/refund"      element={<LegalPage page="refund" />} />
+              <Route path="/cancellation" element={<LegalPage page="cancellation" />} />
+              <Route path="*"            element={<Navigate to="/" replace />} />
             </Routes>
           </ErrorBoundary>
         </BrowserRouter>

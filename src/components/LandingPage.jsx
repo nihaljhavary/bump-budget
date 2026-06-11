@@ -202,6 +202,8 @@ export default function LandingPage() {
             <a href="mailto:njhavary@bumppay.co.za">njhavary@bumppay.co.za</a>
             <Link to="/terms">Terms</Link>
             <Link to="/privacy">Privacy Policy</Link>
+            <Link to="/refund">Refund Policy</Link>
+            <Link to="/cancellation">Cancellation Policy</Link>
           </div>
 
           <p className="lp-footer-copy">
