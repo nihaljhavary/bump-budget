@@ -74,7 +74,6 @@ export default function App() {
             <Route path="/cancellation" element={<LegalPage page="cancellation" />} />
             <Route path="*"            element={<Navigate to="/" replace />} />
           </Routes>
-          </Routes>
         </BrowserRouter>
       </TierProvider>
     </AuthProvider>
