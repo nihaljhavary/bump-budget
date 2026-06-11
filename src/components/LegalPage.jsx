@@ -6,7 +6,45 @@
  */
 import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { TERMS_TEXT, PRIVACY_SUMMARY, TERMS_VERSION, PRIVACY_VERSION } from '../utils/legalText'
+const TERMS_VERSION = '1.1'
+const PRIVACY_VERSION = '1.0'
+const TERMS_TEXT = `BUMP TERMS & CONDITIONS — v1.1
+Effective: 2026
+
+By creating an account or signing in to bump., you agree to the following:
+
+1. PLATFORM PURPOSE
+bump. is a personal financial planning, budgeting, analytics, and decision-support platform. It is not a bank, registered financial institution, investment manager, insurer, or brokerage.
+
+2. NOT FINANCIAL ADVICE — FAIS ACT 37 OF 2002
+bump. is not a licensed financial services provider (FSP) under the Financial Advisory and Intermediary Services Act 37 of 2002. Nothing on this platform constitutes regulated financial advice, investment advice, tax advice, insurance advice, or any recommendation to purchase or dispose of financial products. All AI-generated insights, budgeting recommendations, projections, forecasts, scenario analyses, and financial observations are informational and educational in nature only. You remain solely responsible for all financial decisions. Consult a licensed financial adviser, tax practitioner, or attorney before acting on any information provided.
+
+3. AI SYSTEMS DISCLAIMER
+The platform uses artificial intelligence technology provided by Anthropic (Claude API). AI systems may produce inaccurate, incomplete, or contextually inappropriate outputs. Bump makes no warranty that AI outputs are accurate, that forecasts will occur, or that projections will be achieved. You are responsible for reviewing and validating all outputs before relying on them.
+
+4. FINANCIAL PROJECTIONS
+All projections, forecasts, cash flow models, and financial scenarios are hypothetical, illustrative, and estimation-based. They are not guarantees of future performance. Real-world outcomes may differ materially from platform outputs due to inflation, interest rates, employment, taxation, markets, and other variables.
+
+5. DATA PROCESSING — POPIA ACT 4 OF 2013
+bump. processes your personal and financial data as a responsible party under the Protection of Personal Information Act 4 of 2013. Your data is used solely to provide the platform services described in the Privacy Policy. It is not sold to third parties. You have the right to access, correct, and request deletion of your personal information. To exercise these rights, contact us at support@bump.money.
+
+6. DATA SECURITY
+bump. implements commercially reasonable security measures. No electronic system is completely secure. Data transmission carries inherent risk, which you accept by using the platform.
+
+7. SUBSCRIPTIONS AND FREE TRIALS
+Paid plans are billed on a recurring monthly basis via Paystack. A 30-day free trial may be offered; the first charge occurs after the trial period unless you cancel before billing begins. Subscription pricing, plan features, and billing terms may change. Cancellations take effect at the end of the current billing cycle.
+
+8. CONSUMER PROTECTION — CPA ACT 68 OF 2008
+To the extent applicable, the Consumer Protection Act 68 of 2008 applies. Nothing in these Terms limits any rights you may have under the CPA that cannot lawfully be excluded or limited.
+
+9. LIMITATION OF LIABILITY
+To the maximum extent permitted by South African law, bump. shall not be liable for financial losses, investment losses, indirect or consequential damages, lost profits, data loss, AI inaccuracies, forecasting inaccuracies, or reliance on platform outputs. Use of the platform is at your own risk.
+
+10. GOVERNING LAW AND JURISDICTION
+These Terms are governed by the laws of the Republic of South Africa. Any dispute shall be subject to the non-exclusive jurisdiction of the South Gauteng High Court.
+
+11. ACCEPTANCE AND CONSENT RECORDING
+By ticking the checkbox and proceeding, you confirm you have read, understood, and agree to these Terms & Conditions (v1.1) and the Privacy Policy (v1.0). Your acceptance is recorded with a timestamp for compliance purposes.`
 
 // ── Full Privacy Policy ───────────────────────────────────────────────────────
 const PRIVACY_FULL = `BUMP PRIVACY POLICY — v${PRIVACY_VERSION}
@@ -15,7 +53,7 @@ Effective: 2026
 1. WHO WE ARE
 bump. (operated by Bump Money (Pty) Ltd) is a personal financial planning platform. We are the responsible party for your personal information under the Protection of Personal Information Act 4 of 2013 (POPIA).
 
-Contact: support@bump.money
+Contact: njhavary@bumppay.co.za
 
 2. WHAT WE COLLECT
 We collect only what is necessary to provide the service:
@@ -48,7 +86,7 @@ You have the right to:
 - Object to processing
 - Lodge a complaint with the Information Regulator of South Africa (www.justice.gov.za/inforeg)
 
-To exercise these rights, email: support@bump.money
+To exercise these rights, email: njhavary@bumppay.co.za
 
 6. DATA RETENTION
 We retain your data for as long as your account is active. On account deletion, all personal data is permanently and irreversibly deleted within 30 days.
@@ -74,7 +112,7 @@ We will notify you of material changes via email and in-app notice. Continued us
 
 10. CONTACT
 Bump Money (Pty) Ltd
-support@bump.money`
+njhavary@bumppay.co.za`
 
 // ── Refund Policy ─────────────────────────────────────────────────────────────
 const REFUND_TEXT = `BUMP REFUND POLICY
@@ -103,7 +141,7 @@ c) Service unavailability: If the bump. platform was materially unavailable for 
 d) Cooling-off under the Consumer Protection Act: If you subscribed for the first time and request a refund within 5 business days of your first paid charge (not trial), we will process a refund less any direct costs incurred, in accordance with section 16 of the Consumer Protection Act 68 of 2008.
 
 4. HOW TO REQUEST A REFUND
-To request a refund, contact us at support@bump.money with:
+To request a refund, contact us at njhavary@bumppay.co.za with:
 - Your account email address
 - The date and amount of the charge
 - The reason for your refund request
@@ -120,11 +158,11 @@ Downgrading your plan takes effect at the end of your current billing cycle. You
 Deleting your account cancels your subscription immediately. No refund is issued for the remaining days of the current billing cycle unless a billing error occurred.
 
 8. CHARGEBACKS
-If you initiate a chargeback with your bank without first contacting us, we reserve the right to suspend your account pending investigation. We encourage you to contact support@bump.money first — we resolve legitimate billing issues promptly.
+If you initiate a chargeback with your bank without first contacting us, we reserve the right to suspend your account pending investigation. We encourage you to contact njhavary@bumppay.co.za first — we resolve legitimate billing issues promptly.
 
 9. CONTACT
 For any billing or refund queries:
-Email: support@bump.money
+Email: njhavary@bumppay.co.za
 Response time: within 2 business days`
 
 // ── Cancellation Policy ───────────────────────────────────────────────────────
@@ -143,7 +181,7 @@ Step 3: Select "My Profile" to open Account Centre
 Step 4: Go to the "Subscription" tab
 Step 5: Click "Cancel subscription" and confirm
 
-Alternatively, email support@bump.money with your account email and we will process the cancellation within 1 business day.
+Alternatively, email njhavary@bumppay.co.za with your account email and we will process the cancellation within 1 business day.
 
 3. WHEN CANCELLATION TAKES EFFECT
 Cancellation takes effect at the end of your current billing cycle. You retain full access to all features of your current plan until that date. You will not be charged again after cancellation is confirmed.
@@ -172,7 +210,7 @@ Recurring billing is managed by Paystack. By subscribing, you authorise Paystack
 
 9. CONTACT
 For any cancellation queries:
-Email: support@bump.money
+Email: njhavary@bumppay.co.za
 Response time: within 1 business day`
 
 // ── Nav links config ─────────────────────────────────────────────────────────
@@ -236,11 +274,4 @@ export default function LegalPage({ page }) {
       </div>
 
       <div style={s.foot}>
-        <Link to="/" style={{ color: 'var(--coral)', textDecoration: 'none' }}>← Back to bump.</Link>
-        {NAV_LINKS.map(({ path, label }) => (
-          <Link key={path} to={path} style={{ color: 'var(--muted)', textDecoration: 'none' }}>{label}</Link>
-        ))}
-      </div>
-    </div>
-  )
-}
+        <Link to="/" style={{ color: 'var(--coral)', textDecorat
