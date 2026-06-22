@@ -51,10 +51,20 @@ export async function handler(event) {
         .from('consultant_access')
         .select('id, user_id, status, podcast_consent, granted_at, created_at, user:user_id(id, full_name, created_at)')
         .order('created_at', { ascending: false }),
-      adminClient
-        .from('bookings')
-        .select('id, user_id, tier, amount, status, payment_ref, scheduled_at, created_at, user:user_id(id, full_name)')
-        .order('created_at', { ascending: false }),
+      (async () => {
+        // Probe for booking_date/booking_time columns (added by migration)
+        let result = await adminClient
+          .from('bookings')
+          .select('id, user_id, tier, amount, status, payment_ref, booking_date, booking_time, created_at, user:user_id(id, full_name)')
+          .order('created_at', { ascending: false })
+        if (result.error && (result.error.message?.includes('booking_date') || result.error.message?.includes('schema cache'))) {
+          result = await adminClient
+            .from('bookings')
+            .select('id, user_id, tier, amount, status, payment_ref, created_at, user:user_id(id, full_name)')
+            .order('created_at', { ascending: false })
+        }
+        return result
+      })(),
       adminClient
         .from('profiles')
         .select('id, full_name, role, created_at')
@@ -214,6 +224,26 @@ export async function handler(event) {
     }
   }
 
+  // -- update_booking_status — admin changes status of a consult booking ------
+  if (action === 'update_booking_status') {
+    const { bookingId, status: newStatus } = body
+    const VALID_BOOKING_STATUSES = ['pending_eft', 'paid', 'confirmed', 'completed', 'cancelled']
+    if (!bookingId || !VALID_BOOKING_STATUSES.includes(newStatus)) {
+      return { statusCode: 400, body: JSON.stringify({ error: 'bookingId and valid status required' }) }
+    }
+    const { error: updErr } = await adminClient
+      .from('bookings')
+      .update({ status: newStatus })
+      .eq('id', bookingId)
+
+    if (updErr) return { statusCode: 500, body: JSON.stringify({ error: 'Failed to update booking status.' }) }
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ success: true, bookingId, status: newStatus })
+    }
+  }
+
   // -- get_error_logs — recent structured error events for admin visibility ----------
   if (action === 'get_error_logs') {
     const limit  = body.limit  || 150
@@ -299,13 +329,4 @@ export async function handler(event) {
       .update({ status: newStatus })
       .eq('id', requestId)
 
-    if (updErr) return { statusCode: 500, body: JSON.stringify({ error: updErr.message }) }
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ success: true })
-    }
-  }
-
-  return { statusCode: 400, body: JSON.stringify({ error: 'Unknown action' }) }
-}
+    if (updErr) retur

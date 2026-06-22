@@ -67,6 +67,7 @@ export default function AdminDashboard({ onBack }) {
   const [supportLoading, setSupportLoading] = useState(false)
   const [supportFilter, setSupportFilter]   = useState('')  // status filter
   const [updatingSupport, setUpdatingSupport] = useState(null)
+  const [updatingBooking, setUpdatingBooking] = useState(null)
 
   useEffect(() => { load() }, [])
 
@@ -79,6 +80,21 @@ export default function AdminDashboard({ onBack }) {
       console.error('Admin load failed:', err)
     }
     setLoading(false)
+  }
+
+  async function updateBookingStatus(bookingId, newStatus) {
+    setUpdatingBooking(bookingId)
+    try {
+      await callAdmin('update_booking_status', { bookingId, status: newStatus })
+      setData(d => ({
+        ...d,
+        bookings: d.bookings.map(b => b.id === bookingId ? { ...b, status: newStatus } : b)
+      }))
+    } catch (err) {
+      alert('Failed to update booking: ' + err.message)
+    } finally {
+      setUpdatingBooking(null)
+    }
   }
 
   const loadTesters = useCallback(async () => {
@@ -350,17 +366,69 @@ export default function AdminDashboard({ onBack }) {
               <div className="admin-section-head">All Bookings</div>
               {(!data.bookings || data.bookings.length === 0) ? (
                 <div className="admin-empty">No bookings yet.</div>
-              ) : data.bookings.map(b => (
-                <div className="admin-card" key={b.id}>
-                  <div className="admin-card-info">
-                    <div className="admin-card-name">{b.user?.full_name || 'Unknown'}</div>
-                    <div className="admin-card-meta">
-                      {b.tier} · {fmtCents(b.amount)} · {new Date(b.created_at).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })}
+              ) : data.bookings.map(b => {
+                const ref = (b.payment_ref || '').split(' | ')[0]
+                const slotDate = b.booking_date
+                  ? new Date(b.booking_date + 'T12:00:00').toLocaleDateString('en-ZA', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+                  : null
+                const slotTime = b.booking_time || null
+                const fmtTime  = t => { if (!t) return ''; const [h] = t.split(':').map(Number); return h < 12 ? `${h}:00 AM` : h === 12 ? '12:00 PM' : `${h-12}:00 PM` }
+                const busy = updatingBooking === b.id
+                return (
+                  <div className="admin-card admin-booking-card" key={b.id}>
+                    <div className="admin-card-info" style={{ flex: 1 }}>
+                      <div className="admin-card-name">{b.user?.full_name || 'Unknown'}</div>
+                      <div className="admin-card-meta">
+                        {slotDate && slotTime
+                          ? <><strong>{slotDate}</strong> at <strong>{fmtTime(slotTime)}</strong> &nbsp;·&nbsp;</>
+                          : null}
+                        {ref} &nbsp;·&nbsp; {fmtCents(b.amount)}
+                      </div>
+                    </div>
+                    <div className="admin-booking-actions">
+                      <span className={`status-pill ${b.status}`}>{b.status.replace('_', ' ')}</span>
+                      {b.status === 'pending_eft' && (
+                        <>
+                          <button className="admin-btn-confirm" disabled={busy} onClick={() => updateBookingStatus(b.id, 'paid')}>
+                            {busy ? '...' : 'Mark paid'}
+                          </button>
+                          <button className="admin-btn-cancel" disabled={busy} onClick={() => updateBookingStatus(b.id, 'cancelled')}>
+                            Cancel
+                          </button>
+                        </>
+                      )}
+                      {b.status === 'paid' && (
+                        <>
+                          <button className="admin-btn-confirm" disabled={busy} onClick={() => updateBookingStatus(b.id, 'confirmed')}>
+                            {busy ? '...' : 'Confirm'}
+                          </button>
+                          <button className="admin-btn-complete" disabled={busy} onClick={() => updateBookingStatus(b.id, 'completed')}>
+                            Complete
+                          </button>
+                          <button className="admin-btn-cancel" disabled={busy} onClick={() => updateBookingStatus(b.id, 'cancelled')}>
+                            Cancel
+                          </button>
+                        </>
+                      )}
+                      {b.status === 'confirmed' && (
+                        <>
+                          <button className="admin-btn-complete" disabled={busy} onClick={() => updateBookingStatus(b.id, 'completed')}>
+                            {busy ? '...' : 'Mark complete'}
+                          </button>
+                          <button className="admin-btn-cancel" disabled={busy} onClick={() => updateBookingStatus(b.id, 'cancelled')}>
+                            Cancel
+                          </button>
+                        </>
+                      )}
+                      {(b.status === 'completed' || b.status === 'cancelled') && (
+                        <button className="admin-btn-ghost" disabled={busy} onClick={() => updateBookingStatus(b.id, 'pending_eft')}>
+                          Reopen
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <span className={`status-pill ${b.status}`}>{b.status}</span>
-                </div>
-              ))}
+                )
+              })}
             </>
           )}
 
@@ -653,21 +721,4 @@ export default function AdminDashboard({ onBack }) {
                   <div className="modal-txn-icon" style={{ background: (CAT_COLORS[t.category] || '#888') + '22' }}>
                     {CAT_ICONS[t.category] || '\u{1f4e6}'}
                   </div>
-                  <div className="modal-txn-detail">
-                    <div className="modal-txn-name">{t.name}</div>
-                    <div className="modal-txn-meta">
-                      {t.category} · {new Date(t.date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}
-                    </div>
-                  </div>
-                  <div className={`modal-txn-amt ${t.category === 'Income' ? 'inc' : ''}`}>
-                    {t.category === 'Income' ? '+' : ''}{fmtAmt(t.amount)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
+ 
