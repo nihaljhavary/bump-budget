@@ -52,7 +52,6 @@ export async function handler(event) {
         .select('id, user_id, status, podcast_consent, granted_at, created_at, user:user_id(id, full_name, created_at)')
         .order('created_at', { ascending: false }),
       (async () => {
-        // Probe for booking_date/booking_time columns (added by migration)
         let result = await adminClient
           .from('bookings')
           .select('id, user_id, tier, amount, status, payment_ref, booking_date, booking_time, created_at, user:user_id(id, full_name)')
@@ -329,4 +328,13 @@ export async function handler(event) {
       .update({ status: newStatus })
       .eq('id', requestId)
 
-    if (updErr) retur
+    if (updErr) return { statusCode: 500, body: JSON.stringify({ error: updErr.message }) }
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ success: true })
+    }
+  }
+
+  return { statusCode: 400, body: JSON.stringify({ error: 'Unknown action' }) }
+}
