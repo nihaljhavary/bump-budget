@@ -295,3 +295,158 @@
   transition: background 0.15s;
 }
 .book-back-btn:hover { background: var(--coral-deep); }
+
+
+/* ── Calendar ─────────────────────────────────────────────────────────────── */
+.book-cal {
+  margin: 0 20px 4px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 16px 14px;
+}
+
+.book-cal-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.book-cal-month {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.book-cal-nav {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1.4rem;
+  line-height: 1;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.book-cal-nav:hover { background: var(--hover-bg); color: var(--text); }
+
+.book-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  text-align: center;
+}
+
+.book-cal-dn {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 4px 0 8px;
+}
+
+.book-cal-day {
+  aspect-ratio: 1;
+  width: 100%;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-family: var(--font-sans);
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s, color 0.1s;
+}
+.book-cal-day:hover:not(:disabled) { background: var(--hover-bg); }
+.book-cal-day:disabled { cursor: default; }
+.book-cal-day.past  { color: var(--border); }
+.book-cal-day.sel   { background: var(--coral); color: #fff; font-weight: 700; }
+
+.book-cal-hint {
+  font-size: 0.73rem;
+  color: var(--muted);
+  text-align: center;
+  margin-top: 10px;
+  line-height: 1.5;
+}
+
+/* ── Section labels ───────────────────────────────────────────────────────── */
+.book-section-lbl {
+  padding: 16px 20px 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+/* ── Slot grid ────────────────────────────────────────────────────────────── */
+.book-slots-block { margin-bottom: 4px; }
+
+.book-slots-loading {
+  padding: 0 20px 12px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.book-slots-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  gap: 8px;
+  padding: 0 20px 4px;
+}
+
+.book-slot {
+  padding: 10px 8px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+.book-slot:hover:not(:disabled) {
+  border-color: var(--coral);
+  background: var(--coral-light);
+}
+.book-slot.sel {
+  border-color: var(--coral);
+  background: var(--coral);
+  color: #fff;
+}
+.book-slot.taken {
+  background: var(--bg-alt);
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.book-slot-x {
+  font-size: 0.66rem;
+  font-weight: 500;
+}
+
+/* ── Selected summary chip ────────────────────────────────────────────────── */
+.book-sel-summary {
+  background: var(--coral-light);
+  color: var(--coral);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
