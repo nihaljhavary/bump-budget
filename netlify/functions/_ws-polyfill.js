@@ -3,11 +3,11 @@
  * supabase-js v2 requires a WebSocket implementation for its Realtime client.
  * Import this file at the top of any Netlify function that creates a Supabase client.
  *
- * Usage:  import './_ws-polyfill.js'
+ * Usage:  import '._ws-polyfill.js'
  */
-import { WebSocket } from 'ws'
+import { WebSocket as WS } from 'ws'
 
 if (typeof globalThis.WebSocket === 'undefined') {
   // @ts-ignore
-  globalThis.WebSocket = WebSocket
+  globalThis.WebSocket = WS
 }
