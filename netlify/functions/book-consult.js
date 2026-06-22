@@ -192,8 +192,8 @@ export async function handler(event) {
     return { statusCode: 500, body: JSON.stringify({ error: 'Could not create booking. Please try again.' }) }
   }
 
-  // ── Email notification (fire and forget) ──────────────────────────────────
-  sendEmail({ reference, bookingDate, bookingTime, fullName, email, phone, goal })
+  // ── Email notification (awaited so Lambda doesn't kill it before it sends) ──
+  await sendEmail({ reference, bookingDate, bookingTime, fullName, email, phone, goal })
 
   return {
     statusCode: 200,
@@ -201,3 +201,4 @@ export async function handler(event) {
     body: JSON.stringify({ success: true, bookingId: booking.id, reference })
   }
 }
+                                                        
