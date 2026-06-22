@@ -198,6 +198,11 @@ export default function BookConsult({ onBack }) {
           <p className="confirm-sub" style={{ fontSize: '0.82rem' }}>
             Use <strong>{bookingRef}</strong> as your EFT reference so we can match your payment.
           </p>
+          <p className="confirm-sub book-pop-prompt">
+            Once paid, email your proof of payment to{' '}
+            <a href="mailto:bumpbudgetservice@gmail.com">bumpbudgetservice@gmail.com</a>{' '}
+            with <strong>{bookingRef}</strong> in the subject line.
+          </p>
           <button className="book-back-btn" onClick={onBack}>Back to dashboard</button>
         </div>
       </div>

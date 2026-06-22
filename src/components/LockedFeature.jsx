@@ -30,16 +30,7 @@ export default function LockedFeature({ locked, feature, label, blurOnly = false
       <div className="locked-feature-overlay">
         <div className="locked-badge">
           <span className="locked-icon">🔒</span>
-          <span className="locked-label">{label || `Upgrade to ${planLabel}`}</span>
-          <span className="locked-price">from {price}</span>
-          {onUpgrade && (
-            <button
-              className="locked-upgrade-btn"
-              onClick={() => onUpgrade(requiredPlan)}
-            >
-              Start free trial &rarr;
-            </button>
-          )}
+          <span className="locked-label">Coming soon</span>
         </div>
       </div>
     </div>

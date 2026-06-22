@@ -450,3 +450,8 @@
   font-weight: 600;
   line-height: 1.5;
 }
+
+.book-pop-prompt a {
+  color: var(--coral);
+  text-decoration: underline;
+}

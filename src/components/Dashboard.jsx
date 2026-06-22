@@ -18,6 +18,7 @@ import Projections from './Projections'
 import GroceryComparison from './GroceryComparison'
 import LockedFeature, { LockedRow } from './LockedFeature'
 import IncomeStatement from './IncomeStatement'
+import BookConsult from './BookConsult'
 import SupportChat from './SupportChat'
 import FAQ from './FAQ'
 import UpgradeModal from './UpgradeModal'
@@ -498,6 +499,7 @@ export default function Dashboard({ onNavigate }) {
               { id: 'add spend',         label: 'Add spend',         icon: 'M12 5v14 M5 12h14' },
               { id: 'income statement',  label: 'Income statement',  icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8' },
               { id: 'analytics',         label: 'Analytics',         icon: 'M18 20V10 M12 20V4 M6 20v-6 M2 20h20' },
+              { id: 'consult',           label: 'Book consult',      icon: 'M8 2v4 M16 2v4 M3 10h18 M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z M12 14h.01 M8 14h.01 M16 14h.01' },
               { id: 'transactions',      label: 'Transactions',      icon: 'M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01' },
             ].map(({ id, label, icon }) => (
               <button key={id} className={`sidebar-item ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>
@@ -594,13 +596,14 @@ export default function Dashboard({ onNavigate }) {
         <div className="page-header">
           <div className="page-header-left">
             <div className="page-header-section">
-              {['overview','add spend','income statement','analytics','transactions'].includes(tab) ? 'MONEY'
+              {['overview','add spend','income statement','analytics','transactions','consult'].includes(tab) ? 'MONEY'
                : ['projections','groceries','budget'].includes(tab) ? 'INTELLIGENCE'
                : ['support','faq'].includes(tab) ? 'ASSISTANT' : ''}
             </div>
             <h1 className="page-header-title">
               {tab === 'overview' ? `Good ${new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}${profile?.full_name ? ', ' + profile.full_name.split(' ')[0] : ''}.`
                 : tab === 'income statement' ? 'Income statement'
+                : tab === 'consult' ? 'Book a consult'
                 : tab === 'analytics' ? 'Analytics'
                 : tab === 'projections' ? 'Projections'
                 : tab === 'groceries' ? 'Grocery basket'
@@ -989,6 +992,10 @@ export default function Dashboard({ onNavigate }) {
       )}
 
       {/* ANALYTICS */}
+      {tab === 'consult' && (
+        <BookConsult onBack={() => setTab('overview')} />
+      )}
+
       {tab === 'analytics' && (
         tier.canAnalytics
           ? <Analytics preferDeclared={excludeSalary} />

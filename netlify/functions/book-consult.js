@@ -201,4 +201,3 @@ export async function handler(event) {
     body: JSON.stringify({ success: true, bookingId: booking.id, reference })
   }
 }
-                                                        
