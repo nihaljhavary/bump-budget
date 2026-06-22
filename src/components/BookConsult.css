@@ -1,216 +1,154 @@
+/* ── BookConsult.css — v2 EFT flow ────────────────────────────────────────── */
+
 /* ── Shell ─────────────────────────────────────────────────────────────────── */
 .book-shell {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  max-width: 480px;
+  max-width: 520px;
   margin: 0 auto;
   background: var(--bg);
+  padding: 0 0 40px;
 }
 
-/* ── Reuse nav styles from Dashboard (already in scope via index.css vars) ── */
-.btn-ghost-sm {
+/* ── Back button ───────────────────────────────────────────────────────────── */
+.book-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: none;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 5px 10px;
-  font-size: 0.8rem;
+  border: none;
   color: var(--muted);
-  transition: all 0.15s;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 20px 20px 0;
+  transition: color 0.15s;
 }
-.btn-ghost-sm:hover {
-  border-color: var(--coral);
-  color: var(--coral);
+.book-back:hover { color: var(--text); }
+
+/* ── Header ────────────────────────────────────────────────────────────────── */
+.book-header {
+  padding: 20px 20px 16px;
 }
-
-/* ── Body ──────────────────────────────────────────────────────────────────── */
-.book-body {
-  flex: 1;
-  padding: 20px 16px 32px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  overflow-y: auto;
-}
-
-/* ── Hero ──────────────────────────────────────────────────────────────────── */
-.book-hero { text-align: center; }
-
-.book-title {
-  font-size: 1.4rem;
+.book-header h1 {
+  font-family: var(--font-display);
   font-weight: 800;
-  letter-spacing: -0.4px;
-  margin-bottom: 6px;
+  font-size: 1.5rem;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  margin-bottom: 4px;
 }
-
-.book-sub {
+.book-header p {
   font-size: 0.875rem;
   color: var(--muted);
-  line-height: 1.5;
-  max-width: 320px;
-  margin: 0 auto;
 }
 
-/* ── Tier list ─────────────────────────────────────────────────────────────── */
-.tier-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.tier-card {
-  position: relative;
+/* ── Session card ──────────────────────────────────────────────────────────── */
+.book-session-card {
+  margin: 0 20px 4px;
   background: var(--surface);
-  border: 1.5px solid var(--border);
-  border-left: 3px solid var(--border);
+  border: 1.5px solid var(--coral);
   border-radius: var(--radius);
-  padding: 14px;
-  cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  padding: 16px 18px;
 }
 
-.tier-card:hover {
-  border-color: rgba(240,138,99, 0.35);
-  box-shadow: 0 2px 8px rgba(240,138,99, 0.08);
-}
-
-.tier-card.selected {
-  border-color: var(--coral);
-  border-left-color: var(--coral);
-  box-shadow: 0 0 0 3px rgba(240,138,99, 0.10);
-}
-
-.tier-card.highlight {
-  border-color: var(--coral);
-  border-left-color: var(--coral);
-  background: #fff8f7;
-}
-
-/* ── Subscription card ────────────────────────────────────────────────────── */
-.tier-card.subscription {
-  border-color: var(--coral);
-  border-left: 3px solid var(--coral);
-  background: #fff8f7;
-}
-
-.tier-card.subscription.selected {
-  box-shadow: 0 0 0 3px rgba(240,138,99, 0.15);
-}
-
-.tier-popular {
-  position: absolute;
-  top: -10px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--coral);
-  color: #fff;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  padding: 2px 12px;
-  border-radius: 20px;
-  white-space: nowrap;
-}
-
-.tier-header {
+.book-session-top {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 14px;
 }
 
-.tier-name {
-  font-size: 1rem;
+.book-session-label {
   font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.book-session-price {
   font-family: var(--font-display);
-}
-
-.tier-duration {
-  font-size: 0.78rem;
-  color: var(--muted);
-  margin-top: 2px;
-}
-
-.tier-price {
-  font-size: 1.3rem;
+  font-size: 1.5rem;
   font-weight: 800;
   color: var(--coral);
-  letter-spacing: -0.5px;
-  font-family: var(--font-display);
+  letter-spacing: -0.03em;
 }
 
-.tier-price-sub {
-  font-size: 0.72rem;
-  color: var(--muted);
-  font-weight: 400;
-  font-family: var(--font-sans);
-  margin-top: 2px;
-}
-
-.tier-desc {
-  font-size: 0.82rem;
-  color: var(--muted);
-  line-height: 1.5;
-  margin-bottom: 10px;
-}
-
-.tier-features {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 12px;
-}
-
-.tier-features li {
+.book-session-tick {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--coral);
+  color: #fff;
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.82rem;
-  color: var(--text);
-}
-
-.check {
-  color: var(--coral);
-  font-weight: 700;
+  justify-content: center;
   flex-shrink: 0;
 }
 
-.tier-radio {
-  font-size: 0.8rem;
-  color: var(--muted);
-  font-weight: 500;
-  transition: color 0.15s;
+.book-session-includes {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
-
-.tier-radio.active {
+.book-session-includes li {
+  font-size: 0.82rem;
+  color: var(--muted);
+  padding-left: 14px;
+  position: relative;
+  line-height: 1.5;
+}
+.book-session-includes li::before {
+  content: '–';
+  position: absolute;
+  left: 0;
   color: var(--coral);
-  font-weight: 600;
 }
 
-/* ── Pay button ────────────────────────────────────────────────────────────── */
-.book-pay-btn {
-  width: 100%;
-  padding: 14px;
-  background: var(--coral);
-  color: #fff;
-  border: none;
-  border-radius: var(--radius);
-  font-size: 1rem;
-  font-weight: 600;
-  transition: background 0.15s;
-  margin-top: 4px;
+/* ── Form ───────────────────────────────────────────────────────────────────── */
+.book-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 20px 0;
 }
 
-.book-pay-btn:hover  { background: var(--coral-deep); }
-.book-pay-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.book-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
 
-/* ── Trust line ────────────────────────────────────────────────────────────── */
-.book-trust {
-  text-align: center;
-  font-size: 0.76rem;
+.book-field label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.book-optional {
+  font-weight: 400;
   color: var(--muted);
+}
+
+.book-field input,
+.book-field textarea {
+  background: var(--input-bg);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.9rem;
+  font-family: var(--font-sans);
+  color: var(--text);
+  transition: border-color 0.15s;
+  outline: none;
+  resize: vertical;
+}
+.book-field input:focus,
+.book-field textarea:focus {
+  border-color: var(--coral);
+  box-shadow: 0 0 0 3px rgba(192, 118, 107, 0.10);
 }
 
 /* ── Error ─────────────────────────────────────────────────────────────────── */
@@ -222,15 +160,42 @@
   font-size: 0.85rem;
 }
 
+/* ── Submit button ─────────────────────────────────────────────────────────── */
+.book-pay-btn {
+  width: 100%;
+  padding: 14px;
+  background: var(--coral);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-top: 4px;
+  letter-spacing: -0.01em;
+}
+.book-pay-btn:hover   { background: var(--coral-deep); }
+.book-pay-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── Trust line ────────────────────────────────────────────────────────────── */
+.book-trust {
+  text-align: center;
+  font-size: 0.76rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 /* ── Confirmation screen ───────────────────────────────────────────────────── */
 .book-confirm-screen {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 32px 24px;
+  padding: 40px 24px 32px;
   text-align: center;
-  gap: 12px;
+  gap: 14px;
 }
 
 .confirm-circle {
@@ -239,88 +204,94 @@
   border-radius: 50%;
   background: var(--coral-light);
   color: var(--coral);
-  font-size: 1.8rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
   margin-bottom: 4px;
 }
 
 .book-confirm-screen h2 {
-  font-size: 1.4rem;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
   font-weight: 800;
-  letter-spacing: -0.3px;
+  letter-spacing: -0.03em;
+  color: var(--text);
 }
 
 .confirm-sub {
   font-size: 0.9rem;
   color: var(--muted);
+  line-height: 1.6;
+  max-width: 360px;
 }
 
-.confirm-steps {
+/* ── EFT card ──────────────────────────────────────────────────────────────── */
+.book-eft-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 22px;
+  text-align: left;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: 100%;
-  max-width: 360px;
-  margin-top: 8px;
-  text-align: left;
 }
 
-.confirm-step {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  font-size: 0.875rem;
-  line-height: 1.5;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--coral);
-  border-radius: 10px;
-  padding: 10px 12px;
-}
-
-.step-num {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--coral);
-  color: #fff;
-  font-size: 0.72rem;
+.book-eft-title {
   font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  margin-top: 1px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
 }
 
+.book-eft-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+  gap: 12px;
+}
+.book-eft-row span { color: var(--muted); }
+.book-eft-row strong { color: var(--text); font-weight: 600; }
+
+.book-eft-ref {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  margin-top: 2px;
+}
+.book-eft-ref strong {
+  color: var(--coral);
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+}
+
+.book-eft-amount {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--coral);
+  letter-spacing: -0.03em;
+  text-align: right;
+  margin-top: 4px;
+}
+
+/* ── Back button on confirmation ───────────────────────────────────────────── */
 .book-back-btn {
   margin-top: 8px;
-  padding: 11px 24px;
+  padding: 12px 28px;
   background: var(--coral);
   color: #fff;
   border: none;
   border-radius: var(--radius);
   font-size: 0.9rem;
   font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
   transition: background 0.15s;
 }
-
 .book-back-btn:hover { background: var(--coral-deep); }
-
-/* ── Subscription confirmation extras ─────────────────────────────────────── */
-.confirm-subscription-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--coral-light);
-  color: var(--coral-deep);
-  border: 1px solid rgba(240,138,99, 0.25);
-  border-radius: 20px;
-  padding: 4px 14px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  margin-top: 4px;
-}

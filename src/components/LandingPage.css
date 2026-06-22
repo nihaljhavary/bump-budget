@@ -362,13 +362,211 @@
   margin-top: 8px;
 }
 
-/* RESPONSIVE */
+/* ── CONSULT SPOTLIGHT ─────────────────────────────────────────────────────── */
+.lp-consult-wrap {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 24px;
+  align-items: start;
+}
+
+.lp-consult-card {
+  background: var(--lp-surface2);
+  border: 1px solid rgba(232, 164, 154, 0.22);
+  border-radius: 16px;
+  padding: 40px 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.lp-consult-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.lp-consult-tier {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--lp-accent);
+  margin-bottom: 10px;
+}
+
+.lp-consult-price {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 2.6rem;
+  color: var(--lp-text);
+  letter-spacing: -0.04em;
+  line-height: 1;
+  margin-bottom: 14px;
+}
+.lp-consult-price span {
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--lp-muted);
+  letter-spacing: 0;
+}
+
+.lp-consult-desc {
+  font-size: 0.925rem;
+  color: var(--lp-muted);
+  line-height: 1.7;
+  max-width: 380px;
+}
+
+.lp-consult-badge {
+  flex-shrink: 0;
+  background: var(--lp-accent);
+  color: #1C1916;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 12px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.lp-consult-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.lp-consult-list li {
+  font-size: 0.9rem;
+  color: var(--lp-text);
+  padding-left: 18px;
+  position: relative;
+  line-height: 1.5;
+}
+.lp-consult-list li::before {
+  content: '–';
+  position: absolute;
+  left: 0;
+  color: var(--lp-accent);
+}
+
+.lp-consult-cta { display: flex; flex-direction: column; gap: 10px; }
+.lp-consult-sub {
+  font-size: 0.78rem;
+  color: var(--lp-muted);
+  line-height: 1.5;
+}
+
+/* Right side — quote + coach */
+.lp-consult-side {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-top: 8px;
+}
+
+.lp-consult-quote {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--lp-text);
+  line-height: 1.6;
+  letter-spacing: -0.01em;
+  border-left: 3px solid var(--lp-accent);
+  padding-left: 20px;
+}
+
+.lp-consult-who {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-left: 4px;
+}
+
+.lp-consult-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--lp-accent);
+  color: #1C1916;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.lp-consult-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--lp-text);
+  margin-bottom: 2px;
+}
+.lp-consult-role {
+  font-size: 0.78rem;
+  color: var(--lp-muted);
+}
+
+/* ── HOW IT WORKS ───────────────────────────────────────────────────────────── */
+.lp-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.lp-step {
+  background: var(--lp-surface);
+  border: 1px solid rgba(232, 164, 154, 0.08);
+  border-top: 2px solid rgba(232, 164, 154, 0.25);
+  border-radius: 12px;
+  padding: 28px 24px;
+}
+
+.lp-step-num {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--lp-accent);
+  opacity: 0.35;
+  letter-spacing: -0.05em;
+  margin-bottom: 16px;
+  line-height: 1;
+}
+
+.lp-step-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--lp-text);
+  margin-bottom: 10px;
+  letter-spacing: -0.01em;
+}
+
+.lp-step-desc {
+  font-size: 0.875rem;
+  color: var(--lp-muted);
+  line-height: 1.65;
+}
+
+/* ── RESPONSIVE ─────────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .lp-consult-wrap {
+    grid-template-columns: 1fr;
+  }
+  .lp-consult-side {
+    padding-top: 0;
+  }
+}
+
 @media (max-width: 640px) {
-  .lp-nav { padding: 0 20px; }
-  .lp-hero { padding: 72px 24px 64px; }
-  .lp-section { padding: 64px 24px; }
-  .lp-tagline { padding: 72px 24px; }
-  .lp-footer { padding: 32px 24px; flex-direction: column; align-items: flex-start; }
-  .lp-footer-links { align-items: flex-start; }
-  .lp-divider { margin: 0 24px; }
+  .lp-steps {
+    grid-template-columns: 1fr;
+  }
+  .lp-consult-card {
+    padding: 28px 24px;
+  }
 }

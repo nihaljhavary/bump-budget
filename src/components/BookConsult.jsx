@@ -1,131 +1,114 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import './BookConsult.css'
 
-const TIERS = [
-  {
-    id: 'budget_coach',
-    label: 'Budget Coach',
-    price: 199,
-    duration: 'Monthly',
-    isSubscription: true,
-    badge: 'Most Popular',
-    description: 'Ongoing bump.-powered budget coaching with unlimited imports and analysis.',
-    features: [
-      '500 AI analyses/month',
-      'Bulk bank statement import',
-      'Merchant categorisation rules',
-      'Monthly spending dashboard',
-      'Priority support',
-    ],
-  },
-  {
-    id: 'session_30',
-    label: '30-min Session',
-    price: 750,
-    duration: 'One-time',
-    isSubscription: false,
-    badge: null,
-    description: 'A focused 30-minute video call with a certified financial coach.',
-    features: [
-      'Video call via Google Meet',
-      'Budget review & feedback',
-      'Actionable savings plan',
-      'Post-session notes',
-    ],
-  },
-  {
-    id: 'session_60',
-    label: '60-min Session',
-    price: 1200,
-    duration: 'One-time',
-    isSubscription: false,
-    badge: null,
-    description: 'Deep-dive 60-minute session to tackle complex financial goals.',
-    features: [
-      'Everything in 30-min session',
-      'Debt restructuring advice',
-      'Investment readiness check',
-      'Monthly check-in follow-up',
-    ],
-  },
+// ── TODO: Update these with your real EFT banking details before going live ──
+const BANKING = {
+  bank:          'First National Bank',   // ← update if different
+  accountName:   'N Jhavary',            // ← update to your registered account name
+  accountNumber: 'XXXXXXXXXX',           // ← ADD YOUR ACCOUNT NUMBER HERE
+  branchCode:    '250655',               // ← FNB universal; update for other banks
+  accountType:   'Cheque / Current',
+}
+// ──────────────────────────────────────────────────────────────────────────────
+
+const SESSION_INCLUDES = [
+  'Deep-dive into your spending using your bump. data',
+  'A budget plan you can actually stick to',
+  'Debt, savings, and investment priorities',
+  'Written notes emailed to you after the session',
 ]
 
 export default function BookConsult({ onBack }) {
   const { user, profile } = useAuth()
-  const [selected, setSelected] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [scriptReady, setScriptReady] = useState(false)
 
-  const isSubscriptionSelected = selected?.isSubscription === true
+  const [form, setForm] = useState({
+    fullName:      profile?.full_name || '',
+    email:         user?.email || '',
+    phone:         '',
+    preferredTime: '',
+    goal:          '',
+  })
+  const [status, setStatus]   = useState('idle')   // idle | submitting | success | error
+  const [error, setError]     = useState('')
+  const [bookingRef, setBookingRef] = useState('')
 
-  useEffect(() => {
-    if (document.getElementById('paystack-script')) { setScriptReady(true); return }
-    const script = document.createElement('script')
-    script.id = 'paystack-script'
-    script.src = 'https://js.paystack.co/v1/inline.js'
-    script.onload = () => setScriptReady(true)
-    script.onerror = () => setError('Could not load payment processor. Check your connection.')
-    document.head.appendChild(script)
-  }, [])
-
-  async function handlePay() {
-    if (!selected || !scriptReady) return
-    setLoading(true)
-    setError('')
-    try {
-      const handler = window.PaystackPop.setup({
-        key: import.meta.env.VITE_PAYSTACK_PUBLIC_KEY,
-        email: user.email,
-        amount: selected.price * 100,
-        currency: 'ZAR',
-        metadata: { tier: selected.id, user_id: user.id },
-        callback: async (response) => {
-          await supabase.from('bookings').insert({
-            user_id: user.id,
-            tier: selected.id,
-            paystack_reference: response.reference,
-            amount: selected.price,
-            status: 'pending',
-          })
-          onBack()
-        },
-        onClose: () => setLoading(false),
-      })
-      handler.openIframe()
-    } catch (err) {
-      setError(err.message || 'Payment failed. Try again.')
-      setLoading(false)
-    }
+  function handle(field, value) {
+    setForm(f => ({ ...f, [field]: value }))
   }
 
-  async function handleSubscribe() {
-    if (!selected || !scriptReady) return
-    setLoading(true)
-    setError('')
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (!form.phone.trim()) { setError('Please enter your phone number.'); return }
+    if (!form.goal.trim())  { setError('Please tell us what you want to work on.'); return }
+    setStatus('submitting'); setError('')
+
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
-      const res = await fetch('/.netlify/functions/create-subscription', {
+      const res = await fetch('/.netlify/functions/book-consult', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ email: user.email, tier: selected.id }),
+        body: JSON.stringify({
+          phone:         form.phone,
+          preferredTime: form.preferredTime,
+          goal:          form.goal,
+        }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Subscription setup failed')
-      if (data.authorization_url) window.location.href = data.authorization_url
+      if (!res.ok) throw new Error(data.error || 'Booking failed. Please try again.')
+      setBookingRef(data.reference)
+      setStatus('success')
     } catch (err) {
-      setError(err.message || 'Subscription failed. Try again.')
-    } finally {
-      setLoading(false)
+      setError(err.message || 'Something went wrong. Please try again.')
+      setStatus('error')
     }
   }
 
+  /* ── Confirmation screen ── */
+  if (status === 'success') {
+    return (
+      <div className="book-shell">
+        <div className="book-confirm-screen">
+          <div className="confirm-circle">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </div>
+          <h2>Session requested!</h2>
+          <p className="confirm-sub">
+            Complete the EFT below to confirm your slot. We&apos;ll reach out within 24 hours.
+          </p>
+
+          <div className="book-eft-card">
+            <p className="book-eft-title">EFT Payment Details</p>
+            <div className="book-eft-row"><span>Bank</span><strong>{BANKING.bank}</strong></div>
+            <div className="book-eft-row"><span>Account name</span><strong>{BANKING.accountName}</strong></div>
+            <div className="book-eft-row"><span>Account no.</span><strong>{BANKING.accountNumber}</strong></div>
+            <div className="book-eft-row"><span>Branch code</span><strong>{BANKING.branchCode}</strong></div>
+            <div className="book-eft-row"><span>Account type</span><strong>{BANKING.accountType}</strong></div>
+            <div className="book-eft-row book-eft-ref">
+              <span>Reference</span>
+              <strong>{bookingRef}</strong>
+            </div>
+            <div className="book-eft-amount">R500</div>
+          </div>
+
+          <p className="confirm-sub" style={{ fontSize: '0.82rem', marginTop: 4 }}>
+            Use <strong>{bookingRef}</strong> as your EFT reference — it links your payment to your booking.
+          </p>
+
+          <button className="book-back-btn" onClick={onBack}>Back to dashboard</button>
+        </div>
+      </div>
+    )
+  }
+
+  /* ── Booking form ── */
   return (
     <div className="book-shell">
       <button className="book-back" onClick={onBack}>
@@ -136,58 +119,93 @@ export default function BookConsult({ onBack }) {
       </button>
 
       <div className="book-header">
-        <h1>Work with a coach</h1>
-        <p>Choose a session or subscribe to Budget Coach for ongoing AI-powered support.</p>
+        <h1>Book a session</h1>
+        <p>60 minutes · R500 · Pay via EFT after submitting.</p>
       </div>
 
-      <div className="tiers">
-        {TIERS.map(tier => (
-          <div
-            key={tier.id}
-            className={`tier-card ${selected?.id === tier.id ? 'selected' : ''} ${tier.badge ? 'featured' : ''}`}
-            onClick={() => setSelected(tier)}
-          >
-            {tier.badge && <div className="tier-badge">{tier.badge}</div>}
-            <div className="tier-top">
-              <div>
-                <div className="tier-label">{tier.label}</div>
-                <div className="tier-duration">{tier.duration}</div>
-              </div>
-              <div>
-                <div className="tier-price">R{tier.price}</div>
-                {tier.isSubscription && <div className="tier-price-sub">per month</div>}
-              </div>
-            </div>
-            <p className="tier-desc">{tier.description}</p>
-            <ul className="tier-features">
-              {tier.features.map((f, i) => (
-                <li key={i}><span className="check">checkmark</span>{f}</li>
-              ))}
-            </ul>
-            <div className={`tier-radio ${selected?.id === tier.id ? 'active' : ''}`}>
-              {selected?.id === tier.id ? 'Selected' : 'Select this tier'}
-            </div>
+      <div className="book-session-card">
+        <div className="book-session-top">
+          <div>
+            <div className="book-session-label">60-minute Expert Consultation</div>
+            <div className="book-session-price">R500</div>
           </div>
-        ))}
+          <div className="book-session-tick">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </div>
+        </div>
+        <ul className="book-session-includes">
+          {SESSION_INCLUDES.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
       </div>
 
-      {error && <div className="book-error">{error}</div>}
+      <form className="book-form" onSubmit={handleSubmit}>
+        <div className="book-field">
+          <label htmlFor="bc-name">Full name</label>
+          <input
+            id="bc-name"
+            value={form.fullName}
+            onChange={e => handle('fullName', e.target.value)}
+            placeholder="Your name"
+            required
+          />
+        </div>
+        <div className="book-field">
+          <label htmlFor="bc-email">Email</label>
+          <input
+            id="bc-email"
+            type="email"
+            value={form.email}
+            onChange={e => handle('email', e.target.value)}
+            placeholder="you@email.com"
+            required
+          />
+        </div>
+        <div className="book-field">
+          <label htmlFor="bc-phone">Phone number</label>
+          <input
+            id="bc-phone"
+            value={form.phone}
+            onChange={e => handle('phone', e.target.value)}
+            placeholder="071 234 5678"
+            required
+          />
+        </div>
+        <div className="book-field">
+          <label htmlFor="bc-time">Preferred day / time <span className="book-optional">(optional)</span></label>
+          <input
+            id="bc-time"
+            value={form.preferredTime}
+            onChange={e => handle('preferredTime', e.target.value)}
+            placeholder="e.g. Weekday mornings, Saturday afternoons"
+          />
+        </div>
+        <div className="book-field">
+          <label htmlFor="bc-goal">What do you want to work on? <span className="book-optional">*</span></label>
+          <textarea
+            id="bc-goal"
+            value={form.goal}
+            onChange={e => handle('goal', e.target.value)}
+            placeholder="e.g. I want to clear my debt and start saving for a deposit — I feel like my money disappears every month..."
+            rows={4}
+            required
+          />
+        </div>
 
-      <button
-        className="book-pay-btn"
-        onClick={isSubscriptionSelected ? handleSubscribe : handlePay}
-        disabled={!selected || loading || !scriptReady}
-      >
-        {loading
-          ? 'Processing...'
-          : !selected
-            ? 'Select a tier to continue'
-            : isSubscriptionSelected
-              ? 'Subscribe to Budget Coach (R199/month)'
-              : `Pay R${selected.price} for ${selected.label}`}
-      </button>
+        {error && <div className="book-error">{error}</div>}
 
-      <p className="book-secure">Secure payment via Paystack. Cancel anytime.</p>
+        <button
+          type="submit"
+          className="book-pay-btn"
+          disabled={status === 'submitting'}
+        >
+          {status === 'submitting' ? 'Submitting...' : 'Request booking →'}
+        </button>
+        <p className="book-trust">We&apos;ll confirm your slot within 24 hours of receiving your EFT payment.</p>
+      </form>
     </div>
   )
 }
