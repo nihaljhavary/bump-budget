@@ -721,4 +721,21 @@ export default function AdminDashboard({ onBack }) {
                   <div className="modal-txn-icon" style={{ background: (CAT_COLORS[t.category] || '#888') + '22' }}>
                     {CAT_ICONS[t.category] || '\u{1f4e6}'}
                   </div>
- 
+                   <div className="modal-txn-detail">
+                    <div className="modal-txn-name">{t.name}</div>
+                    <div className="modal-txn-meta">
+                      {t.category} · {new Date(t.date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}
+                    </div>
+                  </div>
+                  <div className={`modal-txn-amt ${t.category === 'Income' ? 'inc' : ''}`}>
+                    {t.category === 'Income' ? '+' : ''}{fmtAmt(t.amount)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
