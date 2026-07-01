@@ -21,6 +21,7 @@ import IncomeStatement from './IncomeStatement'
 import SupportChat from './SupportChat'
 import FAQ from './FAQ'
 import UpgradeModal from './UpgradeModal'
+import TaxEstimator from './TaxEstimator'
 import { normalizeForDisplay, getCanonicalMerchant } from '../utils/merchantNormalizer'
 import DOMPurify from 'dompurify'
 import './Dashboard.css'
@@ -514,6 +515,7 @@ export default function Dashboard({ onNavigate }) {
               { id: 'projections', label: 'Projections',   icon: 'M22 7L13.5 15.5 8.5 10.5 2 17 M16 7h6v6' },
               { id: 'groceries',   label: 'Groceries',     icon: 'M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z M3 6h18 M16 10a4 4 0 01-8 0' },
               { id: 'budget',      label: 'Smart Money',   icon: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z' },
+              { id: 'tax',         label: 'Tax estimator', icon: 'M9 7H6a2 2 0 00-2 2v9a2 2 0 002 2h9a2 2 0 002-2v-3 M14 2H6a2 2 0 00-2 2v4 M14 2l4 4m0 0v4m0-4H14 M8 13h8 M8 17h4' },
             ].map(({ id, label, icon }) => (
               <button key={label} className={`sidebar-item ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>
                 <svg className="sidebar-item-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -595,7 +597,7 @@ export default function Dashboard({ onNavigate }) {
           <div className="page-header-left">
             <div className="page-header-section">
               {['overview','add spend','income statement','analytics','transactions'].includes(tab) ? 'MONEY'
-               : ['projections','groceries','budget'].includes(tab) ? 'INTELLIGENCE'
+               : ['projections','groceries','budget','tax'].includes(tab) ? 'INTELLIGENCE'
                : ['support','faq'].includes(tab) ? 'ASSISTANT' : ''}
             </div>
             <h1 className="page-header-title">
@@ -609,7 +611,7 @@ export default function Dashboard({ onNavigate }) {
                 : tab === 'transactions' ? 'Transactions'
                 : tab === 'support' ? 'Ask bump.'
                 : tab === 'import' ? 'Import statement'
-                : tab === 'faq' ? 'FAQs' : tab}
+                : tab === 'faq' ? 'FAQs' : tab === 'tax' ? 'Tax estimator' : tab}
             </h1>
           </div>
           <div className="page-header-right">
@@ -1034,6 +1036,13 @@ export default function Dashboard({ onNavigate }) {
 
       {/* BUDGET RECOMMENDATIONS */}
       {tab === 'budget' && <Recommendations onImportSignal={importSignal} />}
+
+      {/* TAX ESTIMATOR */}
+      {tab === 'tax' && (
+        <div className="tab-body">
+          <TaxEstimator />
+        </div>
+      )}
 
       {/* ADD SPEND */}
       {tab === 'add spend' && (

@@ -60,6 +60,24 @@ These Terms are governed by the laws of the Republic of South Africa. Any disput
 11. ACCEPTANCE AND CONSENT RECORDING
 By ticking the checkbox and proceeding, you confirm you have read, understood, and agree to these Terms & Conditions (v1.1) and the Privacy Policy (v1.0). Your acceptance is recorded with a timestamp for compliance purposes.`
 
+
+// ── Tax estimator disclaimer (shown at top of Tax tab) ───────────────────────
+// Must be kept current with the tax year being estimated and any SARS rule changes.
+
+export const TAX_DISCLAIMER = `IMPORTANT — ESTIMATE ONLY
+
+This tax estimator is a planning guide, not a formal tax assessment or tax return. All figures are approximate and based solely on the information you provide. Results may differ materially from your actual SARS assessment due to:
+
+- fringe benefits, allowances, or income not captured here
+- provisional tax calculations or penalties
+- ring-fencing of losses (rental or trade)
+- capital gains tax (not included in this tool)
+- SARS adjustments or audit outcomes
+
+bump. is not a registered tax practitioner under the Tax Administration Act 28 of 2011. Nothing produced by this tool constitutes tax advice. Tax rates and brackets are sourced from the SARS Budget Tax Guide and are updated annually — always verify figures with SARS or a qualified tax practitioner before filing.
+
+Before submitting your return to SARS eFiling, consult a registered tax practitioner.`
+
 // ── Short privacy summary shown alongside Terms ───────────────────────────────
 
 export const PRIVACY_SUMMARY = `Privacy Policy summary (full policy available at bump.money/privacy):

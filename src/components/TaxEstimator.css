@@ -1,0 +1,626 @@
+/* TaxEstimator.css — bump. warm theme */
+
+.te-wrap {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0 0 40px;
+}
+
+/* ── Header / Progress ─────────────────────────────────────────── */
+.te-header {
+  padding: 0 0 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.te-progress-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.te-progress-fill {
+  height: 100%;
+  background: var(--coral);
+  border-radius: 4px;
+  transition: width 0.35s ease;
+}
+
+.te-step-count {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* ── Step body ─────────────────────────────────────────────────── */
+.te-body {
+  min-height: 320px;
+}
+
+.te-step {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.te-step-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+  line-height: 1.3;
+}
+
+.te-step-sub {
+  font-size: 14px;
+  color: var(--muted);
+  margin: -12px 0 0;
+  line-height: 1.5;
+}
+
+.te-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 4px 0;
+}
+
+/* ── Fields ────────────────────────────────────────────────────── */
+.te-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.te-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.te-note {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.45;
+}
+
+.te-hint {
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--bg-alt);
+  border-radius: 8px;
+  padding: 10px 12px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.te-input {
+  height: 42px;
+  padding: 0 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.te-input:focus {
+  border-color: var(--coral);
+}
+
+.te-input--small {
+  width: 120px;
+}
+
+.te-input--money {
+  padding-left: 32px;
+}
+
+.te-money-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+}
+
+.te-currency {
+  position: absolute;
+  left: 10px;
+  font-size: 14px;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+/* ── Radio group ───────────────────────────────────────────────── */
+.te-radio-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.te-radio {
+  padding: 8px 18px;
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.te-radio:hover {
+  border-color: var(--coral);
+  color: var(--coral);
+}
+
+.te-radio.active {
+  border-color: var(--coral);
+  background: var(--coral-light);
+  color: var(--coral);
+  font-weight: 600;
+}
+
+/* ── Checkbox group ────────────────────────────────────────────── */
+.te-checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.te-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.te-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--coral);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ── Year picker ───────────────────────────────────────────────── */
+.te-year-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.te-year-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.te-year-card:hover {
+  border-color: var(--coral);
+}
+
+.te-year-card.active {
+  border-color: var(--coral);
+  background: var(--coral-light);
+}
+
+.te-year-num {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.te-year-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.te-year-card.active .te-year-num {
+  color: var(--coral);
+}
+
+/* ── Home office inline fields ─────────────────────────────────── */
+.te-home-office-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.te-inline-fields {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.te-inline-fields > div {
+  flex: 1;
+  min-width: 100px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ── Expense grid ──────────────────────────────────────────────── */
+.te-section-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 0 0;
+}
+
+.te-expense-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.te-expense-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.te-calc-preview {
+  font-size: 13px;
+  color: var(--coral);
+  font-weight: 600;
+  background: var(--coral-light);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 0;
+}
+
+/* ── AI suggestion ─────────────────────────────────────────────── */
+.te-ai-suggestion {
+  background: var(--bg-alt);
+  border-left: 3px solid var(--coral);
+  border-radius: 0 8px 8px 0;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.te-ai-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--coral);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.te-ai-suggestion p {
+  font-size: 13px;
+  color: var(--text);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── Nav buttons ───────────────────────────────────────────────── */
+.te-nav {
+  display: flex;
+  gap: 10px;
+  margin-top: 28px;
+  align-items: center;
+}
+
+.te-btn-next {
+  flex: 1;
+  height: 46px;
+  background: var(--coral);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.te-btn-next:hover:not(:disabled) {
+  background: var(--coral-deep);
+}
+
+.te-btn-next:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.te-btn-back {
+  height: 46px;
+  padding: 0 20px;
+  background: transparent;
+  color: var(--muted);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  font-size: 15px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.te-btn-back:hover {
+  color: var(--text);
+  border-color: var(--text);
+}
+
+.te-error {
+  color: var(--red);
+  font-size: 13px;
+  margin-top: 10px;
+  text-align: center;
+}
+
+/* ── Results ───────────────────────────────────────────────────── */
+.te-results {
+  gap: 20px;
+}
+
+.te-result-hero {
+  border-radius: 16px;
+  padding: 28px 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.te-result-hero.refund {
+  background: #f0fdf4;
+  border: 2px solid var(--success);
+}
+
+.te-result-hero.owing {
+  background: #fef2f2;
+  border: 2px solid var(--red);
+}
+
+.te-result-label {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.te-result-amount {
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+.te-result-hero.refund .te-result-amount { color: var(--success); }
+.te-result-hero.owing .te-result-amount  { color: var(--red); }
+
+.te-result-sub {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* ── Breakdown ─────────────────────────────────────────────────── */
+.te-breakdown {
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.te-breakdown-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  padding: 12px 16px;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+}
+
+.te-breakdown-section {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.te-breakdown-section:last-child {
+  border-bottom: none;
+}
+
+.te-breakdown-head {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--coral);
+  margin-bottom: 4px;
+}
+
+.te-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+  color: var(--text);
+  padding: 2px 0;
+}
+
+.te-row.bold {
+  font-weight: 700;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+  margin-top: 4px;
+}
+
+.te-row.highlight-green { color: var(--success); }
+.te-row.highlight-red   { color: var(--red); }
+
+.te-neg { color: var(--success); }
+
+/* ── Meta + flags ──────────────────────────────────────────────── */
+.te-meta-row {
+  display: flex;
+  gap: 20px;
+  font-size: 13px;
+  color: var(--muted);
+  padding: 4px 0;
+}
+
+.te-meta-row strong {
+  color: var(--text);
+}
+
+.te-flag {
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.te-flag.provisional {
+  background: #fffbeb;
+  border: 1.5px solid var(--amber);
+  color: var(--text);
+}
+
+.te-flag.provisional strong {
+  color: var(--amber);
+  display: block;
+  margin-bottom: 4px;
+}
+
+/* ── Disclaimer ────────────────────────────────────────────────── */
+.te-disclaimer {
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--bg-alt);
+  border-radius: 8px;
+  padding: 12px 14px;
+  line-height: 1.5;
+  border: 1px solid var(--border);
+}
+
+/* ── Action buttons ────────────────────────────────────────────── */
+.te-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.te-btn-efiling {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  background: var(--coral);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.te-btn-efiling:hover {
+  background: var(--coral-deep);
+}
+
+.te-btn-restart {
+  height: 44px;
+  padding: 0 20px;
+  background: transparent;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.te-btn-restart:hover {
+  color: var(--text);
+  border-color: var(--text);
+}
+
+.te-loading {
+  text-align: center;
+  color: var(--muted);
+  padding: 60px 0;
+}
+
+/* ── Mobile ────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .te-expense-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .te-result-amount {
+    font-size: 30px;
+  }
+
+  .te-inline-fields {
+    flex-direction: column;
+  }
+
+  .te-input--small {
+    width: 100%;
+  }
+}
+
+/* ── Disclaimer banner (top of page) ──────────────────────────── */
+.te-banner-disclaimer {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: #fffbeb;
+  border: 1px solid var(--amber);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.45;
+  margin-bottom: 20px;
+}
+
+.te-banner-icon {
+  color: var(--amber);
+  font-size: 14px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.te-banner-more {
+  background: none;
+  border: none;
+  color: var(--coral);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
