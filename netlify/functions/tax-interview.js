@@ -17,7 +17,7 @@ export const handler = async (event) => {
     if (!authHeader?.startsWith('Bearer ')) return { statusCode: 401, body: 'Unauthorized' }
 
     const { incomeType, answers = {} } = JSON.parse(event.body || '{}')
-    if (!incomeType || !['rental', 'freelance'].includes(incomeType)) {
+    if (!incomeType || !['rental', 'freelance', 'other'].includes(incomeType)) {
       return { statusCode: 400, body: JSON.stringify({ error: 'Invalid income type' }) }
     }
 
@@ -84,6 +84,20 @@ Give them 2-3 short, specific suggestions about what they should check or gather
 They did NOT declare: ${notDeclared.join(', ')}.
 
 Give them 2-3 short, specific suggestions about deductions to check or gather receipts for. Also flag that they are likely a provisional taxpayer with bi-annual submission deadlines. Keep your response under 100 words.`
+    }
+
+
+    if (incomeType === 'other') {
+      const freeText = (answers.freeText || '').slice(0, 1000).trim()
+      if (!freeText) return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ suggestion: '' }) }
+
+      systemPrompt = `You are a South African tax assistant reviewing a taxpayer description of additional income and financial circumstances. ${FORMAT_RULES} Be brief, practical, specific to SARS rules. Do not invent numbers. Do not give advice on items not mentioned.`
+
+      userPrompt = `A South African taxpayer described the following additional income or tax circumstances:
+
+${freeText}
+
+Briefly flag 2-3 tax implications or SARS requirements they should be aware of, based only on what they described. For example: provisional tax registration deadlines, reportable items, common deductions for what they mentioned, or important caveats. Keep your response under 120 words.`
     }
 
     const response = await client.messages.create({

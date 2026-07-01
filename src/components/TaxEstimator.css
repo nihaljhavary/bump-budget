@@ -597,7 +597,7 @@
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  background: #fffbeb;
+  background: var(--amber-light);
   border: 1px solid var(--amber);
   border-radius: 8px;
   padding: 10px 12px;
@@ -624,3 +624,20 @@
   padding: 0;
   text-decoration: underline;
 }
+
+/* ── Textarea (other income step) ──────────────────────────────────────────── */
+.te-textarea {
+  width: 100%;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.55;
+  padding: 10px 12px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.te-textarea::placeholder { color: var(--muted); }
+.te-textarea:focus { outline: none; border-color: var(--coral); }
