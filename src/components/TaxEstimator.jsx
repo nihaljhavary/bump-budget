@@ -98,6 +98,10 @@ export default function TaxEstimator() {
   const [result, setResult] = useState(null)
   const [aiSuggestions, setAiSuggestions] = useState({})
   const [error, setError] = useState('')
+  const [chatMessages, setChatMessages] = useState([])
+  const [chatInput, setChatInput] = useState('')
+  const [chatLoading, setChatLoading] = useState(false)
+  const [questionsUsed, setQuestionsUsed] = useState(0)
 
   const steps = getSteps(answers)
   const currentStep = steps[stepIdx]
@@ -224,6 +228,39 @@ export default function TaxEstimator() {
       const data = await res.json()
       if (data.suggestion) setAiSuggestions(prev => ({ ...prev, [type]: data.suggestion }))
     } catch { /* silent */ }
+  }
+
+
+  // ── Tax Q&A chat ──────────────────────────────────────────────────────────────
+  async function sendChatMessage() {
+    const q = chatInput.trim()
+    if (!q || questionsUsed >= 5 || chatLoading) return
+    setChatInput('')
+    setChatLoading(true)
+    const newMsg = { role: 'user', content: q }
+    setChatMessages(prev => [...prev, newMsg])
+    setQuestionsUsed(n => n + 1)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      const res = await fetch('/.netlify/functions/tax-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          calculation: result,
+          question: q,
+          history: chatMessages,
+          answers: { taxYear: answers.taxYear, age: answers.age, hasRental: answers.hasRental,
+                     hasFreelance: answers.hasFreelance, hasRA: answers.hasRA, hasMedicalAid: answers.hasMedicalAid },
+        }),
+      })
+      const data = await res.json()
+      setChatMessages(prev => [...prev, { role: 'assistant', content: data.reply || 'No response.' }])
+    } catch {
+      setChatMessages(prev => [...prev, { role: 'assistant', content: 'Could not get a response. Please try again.' }])
+    } finally {
+      setChatLoading(false)
+    }
   }
 
   // ── Step renderers (plain functions, not sub-components — avoids focus loss) ──
@@ -647,6 +684,53 @@ export default function TaxEstimator() {
             <p>{aiSuggestions.other}</p>
           </div>
         )}
+
+
+        {/* ── Tax Q&A ── */}
+        <div className="te-chat">
+          <div className="te-chat-head">
+            <span>Questions about your estimate</span>
+            <span className="te-chat-quota">{questionsUsed}/5 questions used</span>
+          </div>
+          {chatMessages.length === 0 && (
+            <p className="te-chat-hint">
+              Ask anything — why your marginal rate is what it is, what a forgotten deduction would save you,
+              what provisional tax means for you, or anything else about this calculation.
+            </p>
+          )}
+          <div className="te-chat-messages">
+            {chatMessages.map((msg, i) => (
+              <div key={i} className={`te-chat-msg te-chat-msg--${msg.role}`}>
+                {msg.role === 'assistant' && <span className="te-chat-ai-label">bump.</span>}
+                <p>{msg.content}</p>
+              </div>
+            ))}
+            {chatLoading && (
+              <div className="te-chat-msg te-chat-msg--assistant te-chat-msg--loading">
+                <span className="te-chat-ai-label">bump.</span>
+                <p>Thinking...</p>
+              </div>
+            )}
+          </div>
+          {questionsUsed < 5 ? (
+            <div className="te-chat-input-row">
+              <textarea
+                className="te-chat-input"
+                rows={2}
+                placeholder="e.g. Why is my marginal rate 36%? Or: I forgot to include my RA of R2 000/month..."
+                value={chatInput}
+                onChange={e => setChatInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage() } }}
+                disabled={chatLoading}
+              />
+              <button className="te-chat-send" onClick={sendChatMessage} disabled={chatLoading || !chatInput.trim()}>
+                Ask
+              </button>
+            </div>
+          ) : (
+            <p className="te-chat-limit">All 5 questions used. Start again if you want to recalculate with updated figures.</p>
+          )}
+        </div>
 
         {r.isProvisionalTaxpayer && (
           <div className="te-flag provisional">
