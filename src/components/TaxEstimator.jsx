@@ -237,6 +237,7 @@ export default function TaxEstimator() {
     if (!q || questionsUsed >= 5 || chatLoading) return
     setChatInput('')
     setChatLoading(true)
+    const questionNumber = questionsUsed + 1
     const newMsg = { role: 'user', content: q }
     setChatMessages(prev => [...prev, newMsg])
     setQuestionsUsed(n => n + 1)
@@ -250,6 +251,7 @@ export default function TaxEstimator() {
           calculation: result,
           question: q,
           history: chatMessages,
+          questionNumber,
           answers: { taxYear: answers.taxYear, age: answers.age, hasRental: answers.hasRental,
                      hasFreelance: answers.hasFreelance, hasRA: answers.hasRA, hasMedicalAid: answers.hasMedicalAid },
         }),
