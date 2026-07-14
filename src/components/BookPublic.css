@@ -1,0 +1,110 @@
+/* BookPublic — public booking page additions (uses BookConsult.css as base) */
+
+.pb-shell { padding-top: 18px; }
+
+.pb-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 22px;
+}
+.pb-nav-logo {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--text);
+  text-decoration: none;
+}
+.pb-nav-logo span { color: var(--coral); }
+
+/* Consult type selector */
+.pb-type-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.pb-type-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.pb-type-card:hover { border-color: var(--coral); }
+.pb-type-card.sel {
+  border: 2px solid var(--coral);
+  padding: 15px;
+  box-shadow: var(--shadow);
+}
+.pb-type-label { font-weight: 700; font-size: 0.92rem; color: var(--text); }
+.pb-type-price { font-family: var(--font-display); font-size: 1.3rem; font-weight: 800; color: var(--coral); }
+.pb-type-desc  { font-size: 0.78rem; color: var(--muted); line-height: 1.5; }
+
+.pb-includes { margin-bottom: 26px; }
+
+/* Property docs note */
+.pb-docs-note, .pb-docs-reminder {
+  background: var(--coral-light);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.pb-docs-reminder { text-align: left; margin: 4px 0 10px; }
+.pb-docs-title { font-weight: 700; font-size: 0.85rem; color: var(--text); margin-bottom: 4px; }
+.pb-docs-text  { font-size: 0.8rem; color: var(--muted); line-height: 1.6; }
+.pb-docs-list  { margin: 8px 0 0 18px; font-size: 0.8rem; color: var(--text); line-height: 1.8; }
+
+/* Select styled like inputs */
+.pb-select {
+  width: 100%;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 11px 12px;
+  font-size: 0.9rem;
+  color: var(--text);
+  font-family: var(--font-sans);
+}
+.pb-select:focus { outline: none; border-color: var(--coral); }
+
+/* Docs-pending checkbox */
+.pb-check {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 0.82rem;
+  color: var(--text);
+  line-height: 1.6;
+  cursor: pointer;
+}
+.pb-check input { margin-top: 3px; accent-color: var(--coral); }
+
+.pb-disclaimer {
+  margin-top: 10px;
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.pb-tick {
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  background: var(--coral-light);
+  color: var(--coral);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 14px;
+}
+
+@media (max-width: 560px) {
+  .pb-type-grid { grid-template-columns: 1fr; }
+}

@@ -8,6 +8,7 @@ import Dashboard from './components/Dashboard'
 import AdminDashboard from './components/AdminDashboard'
 import BookConsult from './components/BookConsult'
 import LandingPage from './components/LandingPage'
+import BookPublic from './components/BookPublic'
 import Onboarding from './components/Onboarding'
 import FAQ from './components/FAQ'
 import LegalPage from './components/LegalPage'
@@ -198,6 +199,7 @@ export default function App() {
           <ErrorBoundary>
             <Routes>
               <Route path="/"            element={<LandingPage />} />
+              <Route path="/book"        element={<BookPublic />} />
               <Route path="/auth"        element={<AuthRoute />} />
               <Route path="/app"         element={<ProtectedApp />} />
               <Route path="/faq"         element={<FAQ />} />
