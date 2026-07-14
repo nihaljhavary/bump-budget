@@ -1111,12 +1111,6 @@
   }
   .summary-cards { grid-template-columns: repeat(3, 1fr); }
   .chat-shell { margin: 0; }
-  .profile-dropdown {
-    left: 0; right: auto;
-    bottom: calc(100% + 8px);
-    top: auto;
-    min-width: 188px;
-  }
   .avatar-wrap { width: 100%; }
 }
 
@@ -1132,6 +1126,12 @@
 .profile-dropdown-item:hover { background: var(--bg-alt); }
 .profile-dropdown-item.red { color: var(--coral); }
 .profile-dropdown-divider { height: 1px; background: var(--border); margin: 4px 0; }
+/* Desktop (sidebar layout): avatar sits at the bottom of the sidebar, so the
+   dropdown must open UPWARD. This block must stay AFTER the base .profile-dropdown
+   rule above — same specificity, so source order decides the winner. */
+@media (min-width: 768px) {
+  .profile-dropdown { left: 0; right: auto; bottom: calc(100% + 8px); top: auto; min-width: 188px; }
+}
 .profile-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 16px; }
 .profile-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; width: 100%; max-width: 400px; max-height: 90vh; overflow-y: auto; }
 .profile-modal-head { display: flex; justify-content: space-between; align-items: center; padding: 18px 20px 12px; border-bottom: 1px solid var(--border); }
