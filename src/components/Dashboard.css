@@ -1113,7 +1113,8 @@
   .chat-shell { margin: 0; }
   .profile-dropdown {
     left: 0; right: auto;
-    top: calc(100% + 8px);
+    bottom: calc(100% + 8px);
+    top: auto;
     min-width: 188px;
   }
   .avatar-wrap { width: 100%; }
