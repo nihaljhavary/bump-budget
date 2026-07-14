@@ -375,7 +375,7 @@ export default function AdminDashboard({ onBack }) {
                 const fmtTime  = t => { if (!t) return ''; const [h] = t.split(':').map(Number); return h < 12 ? `${h}:00 AM` : h === 12 ? '12:00 PM' : `${h-12}:00 PM` }
                 const busy = updatingBooking === b.id
                 const tierLabel = b.tier === 'property_analysis' ? 'Property consult'
-                  : b.tier === 'budget_consult' ? 'Budget consult' : null
+                  : b.tier === 'budget_consult' ? 'Financial audit' : null
                 const det = b.details || {}
                 const detRows = [
                   ['Type', det.propertyType], ['Address', det.address], ['Suburb', det.suburb],

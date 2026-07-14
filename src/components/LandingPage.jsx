@@ -159,7 +159,7 @@ export default function LandingPage() {
           <div className="lp-consult-card">
             <div className="lp-consult-top">
               <div>
-                <p className="lp-consult-tier">60-min Budget Session</p>
+                <p className="lp-consult-tier">Personal Financial Audit</p>
                 <p className="lp-consult-price">R500 <span>once-off</span></p>
                 <p className="lp-consult-desc">
                   One-on-one with a financial expert. No scripts, no product pitches
@@ -175,7 +175,7 @@ export default function LandingPage() {
             </ul>
             <div className="lp-consult-cta">
               <Link to="/book?type=budget" className="btn-coral">Book your session &rarr;</Link>
-              <p className="lp-consult-sub">Pay via EFT after booking. Confirmed within 24 hours.</p>
+              <p className="lp-consult-sub">60 minutes &middot; Pay via EFT after booking. Confirmed within 24 hours.</p>
             </div>
           </div>
 

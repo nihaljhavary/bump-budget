@@ -30,7 +30,7 @@ async function sendEmail({ reference, type, bookingDate, bookingTime, name, emai
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) return
 
-  const typeLabel = type === 'property' ? 'Property Financial Analysis' : 'Budget Consultation'
+  const typeLabel = type === 'property' ? 'Property Financial Analysis' : 'Personal Financial Audit'
   const amount    = type === 'property' ? 'R650' : 'R500'
 
   const extraHtml = extraRows

@@ -19,7 +19,7 @@ const DAYS   = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 
 const CONSULT_TYPES = {
   budget: {
-    label:  '60-min Budget Session',
+    label:  'Personal Financial Audit',
     price:  'R500',
     desc:   'One-on-one with a financial expert — your numbers, a plan built around your life.',
     includes: [
