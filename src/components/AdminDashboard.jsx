@@ -374,42 +374,16 @@ export default function AdminDashboard({ onBack }) {
                 const slotTime = b.booking_time || null
                 const fmtTime  = t => { if (!t) return ''; const [h] = t.split(':').map(Number); return h < 12 ? `${h}:00 AM` : h === 12 ? '12:00 PM' : `${h-12}:00 PM` }
                 const busy = updatingBooking === b.id
-                const tierLabel = b.tier === 'property_analysis' ? 'Property consult'
-                  : b.tier === 'budget_consult' ? 'Financial audit' : null
-                const det = b.details || {}
-                const detRows = [
-                  ['Type', det.propertyType], ['Address', det.address], ['Suburb', det.suburb],
-                  ['Asking', det.askingPrice], ['ERF', det.erfNumber], ['Sectional title', det.sectionalTitleNumber],
-                  ['Link', det.listingLink], ['Notes', det.notes], ['Goal', det.goal],
-                ].filter(([, v]) => v)
                 return (
                   <div className="admin-card admin-booking-card" key={b.id}>
                     <div className="admin-card-info" style={{ flex: 1 }}>
-                      <div className="admin-card-name">
-                        {b.user?.full_name || b.name || 'Unknown'}
-                        {tierLabel && <span className="admin-booking-tier"> {tierLabel}</span>}
-                      </div>
+                      <div className="admin-card-name">{b.user?.full_name || 'Unknown'}</div>
                       <div className="admin-card-meta">
                         {slotDate && slotTime
                           ? <><strong>{slotDate}</strong> at <strong>{fmtTime(slotTime)}</strong> &nbsp;·&nbsp;</>
                           : null}
                         {ref} &nbsp;·&nbsp; {fmtCents(b.amount)}
                       </div>
-                      {(b.email || b.phone) && (
-                        <div className="admin-card-meta">
-                          {b.email}{b.email && b.phone ? ' · ' : ''}{b.phone}
-                        </div>
-                      )}
-                      {detRows.length > 0 && (
-                        <div className="admin-booking-details">
-                          {detRows.map(([k, v]) => (
-                            <span key={k}><strong>{k}:</strong> {String(v)}</span>
-                          ))}
-                          {det.docsPending && (
-                            <span className="admin-docs-pending"><strong>Docs outstanding</strong> — client will email with proof of payment</span>
-                          )}
-                        </div>
-                      )}
                     </div>
                     <div className="admin-booking-actions">
                       <span className={`status-pill ${b.status}`}>{b.status.replace('_', ' ')}</span>

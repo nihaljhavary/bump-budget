@@ -108,6 +108,7 @@ export default function Dashboard({ onNavigate }) {
   const [savingsBal, setSavingsBal]             = useState('')
   const [savingsBalSaving, setSavingsBalSaving] = useState(false)
   const profileMenuRef = useRef(null)
+  const mobileProfileRef = useRef(null)
   const chatEndRef = useRef(null)
   const textareaRef = useRef(null)
   // Tracks the AbortController for any in-flight analyseSpending call.
@@ -469,7 +470,8 @@ export default function Dashboard({ onNavigate }) {
   // Close profile menu on outside click + abort any in-flight analysis on unmount
   useEffect(() => {
     function handleClick(e) {
-      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target)) setShowProfileMenu(false)
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target) &&
+          mobileProfileRef.current && !mobileProfileRef.current.contains(e.target)) setShowProfileMenu(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => {
@@ -573,6 +575,28 @@ export default function Dashboard({ onNavigate }) {
           <button className="month-arrow" onClick={() => changeMonth(-1)}>&#8249;</button>
           <span className="nav-month">{monthDisplayLabel()}</span>
           <button className="month-arrow" onClick={() => changeMonth(1)}>&#8250;</button>
+        </div>
+        <div className="avatar-wrap mobile-avatar-wrap" ref={mobileProfileRef} style={{position:'relative'}}>
+          <button className="avatar" onClick={() => setShowProfileMenu(m => !m)}>
+            {user.email?.[0]?.toUpperCase() || 'U'}
+          </button>
+          {showProfileMenu && (
+            <div className="profile-dropdown">
+              <button className="profile-dropdown-item" onClick={() => { setShowProfileMenu(false); setShowAccountCentre(true) }}>My Profile</button>
+              <div className="profile-dropdown-divider" />
+              {(profile?.role === 'admin' || profile?.is_admin || tier.isAdmin) && (
+                <>
+                  <button className="profile-dropdown-item" onClick={() => { setShowProfileMenu(false); onNavigate('admin') }}>Admin Dashboard</button>
+                  <div className="profile-dropdown-divider" />
+                </>
+              )}
+              <button className="profile-dropdown-item" onClick={() => { setShowProfileMenu(false); setTab('support') }}>Support</button>
+              <button className="profile-dropdown-item" onClick={() => { setShowProfileMenu(false); setTab('faq') }}>FAQs</button>
+              <div className="profile-dropdown-divider" />
+              <button className="profile-dropdown-item" onClick={() => { setShowProfileMenu(false); setTab('privacy') }}>Privacy</button>
+              <button className="profile-dropdown-item red" onClick={() => supabase.auth.signOut()}>Sign out</button>
+            </div>
+          )}
         </div>
       </nav>
 
@@ -1324,7 +1348,7 @@ function ProfileModal({ user, profile, onClose }) {
                   style={prefix ? { paddingLeft: '22px' } : {}}
                 />
               </div>
-            </div>
+             </div>
           ))}
         </div>
         <button className="profile-modal-save" onClick={save} disabled={saving}>

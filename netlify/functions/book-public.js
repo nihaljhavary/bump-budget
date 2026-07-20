@@ -30,8 +30,8 @@ async function sendEmail({ reference, type, bookingDate, bookingTime, name, emai
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) return
 
-  const typeLabel = type === 'property' ? 'Property Financial Analysis' : 'Personal Financial Audit'
-  const amount    = type === 'property' ? 'R650' : 'R500'
+  const typeLabel = type === 'property' ? 'Property Financial Analysis' : 'Budget Consultation'
+  const amount    = type === 'property' ? 'R650' : 'R250'
 
   const extraHtml = extraRows
     .filter(([, v]) => v)
@@ -103,7 +103,6 @@ export async function handler(event) {
   const {
     name, email, phone, consultType, bookingDate, bookingTime,
     goal, address, askingPrice, suburb, propertyType,
-    listingLink, erfNumber, sectionalTitleNumber, notes, docsPending,
   } = body
 
   // Required field validation
@@ -126,7 +125,7 @@ export async function handler(event) {
     return { statusCode: 400, body: JSON.stringify({ error: 'Input too long' }) }
   }
 
-  const amountCents = consultType === 'property' ? 65000 : 50000
+  const amountCents = consultType === 'property' ? 65000 : 25000
   const reference   = genRef(consultType)
   const tier        = consultType === 'property' ? 'property_analysis' : 'budget_consult'
 
@@ -157,47 +156,19 @@ export async function handler(event) {
       // booking_date column may not exist — skip conflict check
     }
 
-    // Property/booking details stored as JSONB for admin visibility
-    const details = consultType === 'property'
-      ? {
-          propertyType:         propertyType || null,
-          address:              address || null,
-          suburb:               suburb || null,
-          askingPrice:          askingPrice || null,
-          listingLink:          listingLink || null,
-          erfNumber:            erfNumber || null,
-          sectionalTitleNumber: sectionalTitleNumber || null,
-          notes:                notes || null,
-          docsPending:          !!docsPending,
-        }
-      : { goal: goal || null }
-
-    // Try full insert with contact + details columns
-    const fullRow = {
+    // Try full insert with booking_date/booking_time
+    const { error: insertErr } = await adminClient.from('bookings').insert({
       tier,
       amount:       amountCents,
       payment_ref:  reference,
       status:       'pending_eft',
       booking_date: bookingDate,
       booking_time: bookingTime,
-      name:         String(name).slice(0, 200),
-      email:        String(email).slice(0, 200),
-      phone:        String(phone).slice(0, 50),
-      details,
-    }
-    const { error: insertErr } = await adminClient.from('bookings').insert(fullRow)
+    })
     if (insertErr) {
-      const msg = insertErr.message || ''
-      const OPTIONAL_COLS = ['name', 'email', 'phone', 'details', 'booking_date', 'booking_time']
-      if (OPTIONAL_COLS.some(c => msg.includes(c)) || msg.includes('schema cache')) {
-        // Retry without contact/details columns (migration not yet run)
-        const { error: retryErr } = await adminClient.from('bookings').insert({
-          tier, amount: amountCents, payment_ref: reference, status: 'pending_eft',
-          booking_date: bookingDate, booking_time: bookingTime,
-        })
-        if (retryErr && (retryErr.message?.includes('booking_date') || retryErr.message?.includes('schema cache'))) {
-          await adminClient.from('bookings').insert({ tier, amount: amountCents, payment_ref: reference, status: 'pending_eft' })
-        }
+      // Fallback: core fields only (no booking_date/booking_time if columns missing)
+      if (insertErr.message?.includes('booking_date') || insertErr.message?.includes('schema cache')) {
+        await adminClient.from('bookings').insert({ tier, amount: amountCents, payment_ref: reference, status: 'pending_eft' })
       } else {
         console.warn('[book-public] DB insert warning:', insertErr.message)
       }
@@ -209,17 +180,7 @@ export async function handler(event) {
 
   // Extra detail rows for email
   const extraRows = consultType === 'property'
-    ? [
-        ['Property type', propertyType],
-        ['Address', address],
-        ['Suburb / City', suburb],
-        ['Asking price', askingPrice],
-        ['ERF number', erfNumber],
-        ['Sectional title', sectionalTitleNumber],
-        ['Listing link', listingLink],
-        ['Notes', notes],
-        ['Docs outstanding', docsPending ? 'YES — client will email documents with proof of payment' : ''],
-      ]
+    ? [['Asking price', askingPrice], ['Suburb / City', suburb], ['Property type', propertyType], ['Address', address]]
     : [['Goal', goal]]
 
   await sendEmail({ reference, type: consultType, bookingDate, bookingTime, name, email, phone, extraRows })

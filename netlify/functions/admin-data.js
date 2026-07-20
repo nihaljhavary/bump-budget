@@ -52,17 +52,10 @@ export async function handler(event) {
         .select('id, user_id, status, podcast_consent, granted_at, created_at, user:user_id(id, full_name, created_at)')
         .order('created_at', { ascending: false }),
       (async () => {
-        // Newest select first (public booking contact + details columns), degrade gracefully
         let result = await adminClient
           .from('bookings')
-          .select('id, user_id, tier, amount, status, payment_ref, booking_date, booking_time, name, email, phone, details, created_at, user:user_id(id, full_name)')
+          .select('id, user_id, tier, amount, status, payment_ref, booking_date, booking_time, created_at, user:user_id(id, full_name)')
           .order('created_at', { ascending: false })
-        if (result.error && (['name', 'email', 'phone', 'details'].some(c => result.error.message?.includes(c)) || result.error.message?.includes('schema cache'))) {
-          result = await adminClient
-            .from('bookings')
-            .select('id, user_id, tier, amount, status, payment_ref, booking_date, booking_time, created_at, user:user_id(id, full_name)')
-            .order('created_at', { ascending: false })
-        }
         if (result.error && (result.error.message?.includes('booking_date') || result.error.message?.includes('schema cache'))) {
           result = await adminClient
             .from('bookings')

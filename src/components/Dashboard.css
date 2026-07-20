@@ -172,6 +172,8 @@
   top: 0;
   z-index: 30;
 }
+.mobile-avatar-wrap { flex-shrink: 0; margin-left: 10px; }
+.mobile-avatar-wrap .avatar { width: 28px; height: 28px; font-size: 0.72rem; }
 
 /* ── Nav logo (shared) ── */
 .nav-logo {
@@ -1104,6 +1106,7 @@
 /* ── Desktop layout (≥768px): sidebar is always visible ── */
 @media (min-width: 768px) {
   .mobile-topnav { display: none; }
+  .mobile-avatar-wrap { display: none; }
   .tab-body,
   .analytics-shell {
     padding: 28px 36px 80px;
