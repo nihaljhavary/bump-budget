@@ -2,6 +2,7 @@
 /* v2 emerald backup: src/theme-legacy-v2.css                                   */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
 
 /* Landing page: warm espresso dark + muted salmon accent — calm premium editorial */
 :root {
@@ -127,6 +128,22 @@
   justify-content: center;
   gap: 14px;
   flex-wrap: wrap;
+}
+
+.lp-hero-rent-link {
+  display: inline-block;
+  margin-top: 18px;
+  color: var(--lp-accent);
+  font-size: 0.95rem;
+  font-weight: 500;
+  text-decoration: none;
+  letter-spacing: 0.01em;
+  opacity: 0.85;
+  transition: opacity 0.2s;
+}
+.lp-hero-rent-link:hover {
+  opacity: 1;
+  text-decoration: underline;
 }
 
 .btn-coral-lg {
@@ -856,14 +873,5 @@
   max-width: 480px;
   margin: 24px auto 0;
   text-align: center;
-  line-height: 1.6;
-}
-
-/* Mobile */
-@media (max-width: 640px) {
-  .lp-rc-card { padding: 24px 20px; }
-  .lp-rc-stats { grid-template-columns: 1fr; }
-  .lp-rc-ctas { flex-direction: column; }
-  .lp-rc-cta-btn { min-width: unset; }
-  .lp-rc-contribute-row { flex-direction: column; }
+  line-height: 1.5;
 }

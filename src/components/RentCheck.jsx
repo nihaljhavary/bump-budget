@@ -111,7 +111,7 @@ export default function RentCheck() {
   }
 
   return (
-    <section className="lp-section lp-rc">
+    <section id="rent-check" className="lp-section lp-rc">
       <p className="lp-section-label">Free tool</p>
       <h2 className="lp-section-title">Is your Cape Town rent fair?</h2>
       <p className="lp-rc-sub">
@@ -275,3 +275,4 @@ export default function RentCheck() {
     </section>
   )
 }
+

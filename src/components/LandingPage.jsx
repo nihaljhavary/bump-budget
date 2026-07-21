@@ -113,6 +113,7 @@ export default function LandingPage() {
       <nav className="lp-nav">
         <span className="lp-nav-logo">bump<span>.</span></span>
         <div className="lp-nav-actions">
+          <a href="#rent-check" className="btn-ghost">Rent Check</a>
           <Link to="/auth" className="btn-ghost">Login</Link>
           <Link to="/book" className="btn-coral">Book a session</Link>
         </div>
@@ -130,6 +131,7 @@ export default function LandingPage() {
           <Link to="/auth" className="btn-coral-lg">Get started free</Link>
           <Link to="/book" className="btn-ghost-lg">Book a consult</Link>
         </div>
+        <a href="#rent-check" className="lp-hero-rent-link">Is your rent fair? Check free &darr;</a>
       </section>
 
       <hr className="lp-divider" />
