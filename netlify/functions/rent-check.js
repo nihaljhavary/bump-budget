@@ -1,9 +1,5 @@
-// rent-check.js — Public endpoint for Cape Town Rent Check
-// GET ?area=Sea+Point&bedrooms=2 → benchmarks + community data
-// POST { area, bedrooms, monthly_rent } → anonymous submission
-
-const { createClient } = require('@supabase/supabase-js')
-const crypto = require('crypto')
+import { createClient } from '@supabase/supabase-js'
+import crypto from 'crypto'
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -17,7 +13,7 @@ const CORS = {
   'Content-Type': 'application/json',
 }
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 204, headers: CORS, body: '' }
   }
